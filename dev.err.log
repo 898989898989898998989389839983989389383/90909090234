@@ -1,0 +1,22 @@
+error: insert or update on table "enrollments" violates foreign key constraint "enrollments_course_id_fkey"
+    at C:\Users\Sachin\Desktop\rbs-academy (1)\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async <anonymous> (C:\Users\Sachin\Desktop\rbs-academy (1)\lib\api-app.ts:558:5) {
+  length: 295,
+  severity: 'ERROR',
+  code: '23503',
+  detail: 'Key (course_id)=(c1776622768305f8d8fb51) is not present in table "courses".',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'enrollments',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'enrollments_course_id_fkey',
+  file: 'ri_triggers.c',
+  line: '2599',
+  routine: 'ri_ReportViolation'
+}

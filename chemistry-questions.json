@@ -1,0 +1,74 @@
+[
+  {
+    "text": "What is the chemical formula of water?",
+    "options": [
+      "H2O",
+      "CO2",
+      "O2",
+      "NaCl"
+    ],
+    "correctAnswer": 0,
+    "explanation": "Water is made of hydrogen and oxygen, so its chemical formula is H2O.",
+    "image_url": ""
+  },
+  {
+    "text": "Which of the following is an acid?",
+    "options": [
+      "NaOH",
+      "HCl",
+      "NaCl",
+      "NH3"
+    ],
+    "correctAnswer": 1,
+    "explanation": "HCl is hydrochloric acid. NaOH is a base, NaCl is a salt, and NH3 is basic.",
+    "image_url": ""
+  },
+  {
+    "text": "What is the valency of oxygen?",
+    "options": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "correctAnswer": 1,
+    "explanation": "Oxygen commonly has valency 2.",
+    "image_url": ""
+  },
+  {
+    "text": "Which gas is released when zinc reacts with dilute hydrochloric acid?",
+    "options": [
+      "Oxygen",
+      "Hydrogen",
+      "Nitrogen",
+      "Carbon Dioxide"
+    ],
+    "correctAnswer": 1,
+    "explanation": "Zinc reacts with dilute hydrochloric acid to produce zinc chloride and hydrogen gas.",
+    "image_url": ""
+  },
+  {
+    "text": "Identify the correct laboratory apparatus used for measuring liquid volume.",
+    "options": [
+      {
+        "text": "Beaker",
+        "image_url": "https://example.com/images/beaker.png"
+      },
+      {
+        "text": "Measuring Cylinder",
+        "image_url": "https://example.com/images/measuring-cylinder.png"
+      },
+      {
+        "text": "Test Tube",
+        "image_url": "https://example.com/images/test-tube.png"
+      },
+      {
+        "text": "Watch Glass",
+        "image_url": "https://example.com/images/watch-glass.png"
+      }
+    ],
+    "correctAnswer": 1,
+    "explanation": "A measuring cylinder is used to measure the volume of liquids accurately.",
+    "image_url": "https://example.com/images/lab-apparatus-question.png"
+  }
+]
