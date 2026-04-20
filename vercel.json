@@ -1,0 +1,18 @@
+{
+  "outputDirectory": "dist",
+  "functions": {
+    "api/[[...route]].ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/adminlogin",
+      "destination": "/"
+    },
+    {
+      "source": "/adminlogin/adminsachin",
+      "destination": "/"
+    }
+  ]
+}
