@@ -4,8 +4,8 @@ import os from "os";
 import path from "path";
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import type { Request, Response, NextFunction } from "express";
-import type { PoolConnection, RowDataPacket } from "./mysql";
-import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./mysql";
+import type { PoolConnection, RowDataPacket } from "./mysql.js";
+import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./mysql.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";

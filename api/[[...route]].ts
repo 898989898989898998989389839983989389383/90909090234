@@ -1,4 +1,4 @@
-import { createApiApp } from "../lib/api-app";
+import { createApiApp } from "../lib/api-app.js";
 
 const app = await createApiApp();
 
