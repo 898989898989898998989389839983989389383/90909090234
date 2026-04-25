@@ -6,8 +6,8 @@ import { createApiApp } from "./lib/api-app";
 
 async function startServer() {
   const app = await createApiApp();
-  const PORT = Number(process.env.PORT ?? 3000);
-  const HOST = process.env.HOST ?? "0.0.0.0";
+  const PORT = Number(process.env.PORT ?? 3001);
+  const HOST = process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

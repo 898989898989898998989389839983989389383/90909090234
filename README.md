@@ -10,7 +10,9 @@ This app now targets a Supabase Postgres database.
 
 ```env
 SUPABASE_DB_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
-BLOB_READ_WRITE_TOKEN=
+SUPABASE_URL=https://[YOUR-PROJECT-REF].supabase.co
+SUPABASE_SERVICE_ROLE_KEY=[YOUR-SERVICE-ROLE-KEY]
+SUPABASE_STORAGE_BUCKET=uploads
 VITE_APPS_SCRIPT_URL=
 ```
 
@@ -26,3 +28,4 @@ On first boot, the server creates the tables it needs and seeds starter data aut
 
 - `lib/mysql.ts` is still the shared database adapter file name, but it now uses Postgres so the existing API layer keeps working.
 - Supabase SSL is enabled by default. Set `SUPABASE_SSL=false` only for a local Postgres instance.
+- Create a public Supabase Storage bucket named `uploads` or set `SUPABASE_STORAGE_BUCKET` to your bucket name.

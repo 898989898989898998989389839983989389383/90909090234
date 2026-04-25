@@ -102,6 +102,36 @@ const seedCourses: SeedCourse[] = [
     type: "premium",
     category: "Chemistry",
   },
+  {
+    id: "21",
+    title: "Chemistry Crash Course 30 Days",
+    lessons: 3,
+    image: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=80",
+    price: 0,
+    oldPrice: 0,
+    type: "free",
+    category: "Chemistry",
+  },
+  {
+    id: "22",
+    title: "Physical Chemistry Problem Solving",
+    lessons: 3,
+    image: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=80",
+    price: 2999,
+    oldPrice: 7999,
+    type: "premium",
+    category: "Chemistry",
+  },
+  {
+    id: "23",
+    title: "Inorganic Chemistry Revision Batch",
+    lessons: 3,
+    image: "https://images.unsplash.com/photo-1518152006812-edab29b069ac?auto=format&fit=crop&w=800&q=80",
+    price: 1999,
+    oldPrice: 5999,
+    type: "premium",
+    category: "Chemistry",
+  },
 ];
 
 const seedLessons: SeedLesson[] = [
@@ -158,6 +188,87 @@ const seedLessons: SeedLesson[] = [
     note_content: "Practice session focused on mole concept, concentration, stoichiometry, and gas law numericals.",
     note_url: "",
     video_url: "https://www.youtube.com/embed/Gyd3C6l2NJE",
+  },
+  {
+    id: "l21",
+    course_id: "21",
+    title: "Mole Concept in One Shot",
+    duration: "18:40",
+    note_content: "Quick revision of mole concept, molar mass, Avogadro number, and unit conversions for rapid practice.",
+    note_url: "",
+    video_url: "https://www.youtube.com/watch?v=VbfpW0pbvaU",
+  },
+  {
+    id: "l22",
+    course_id: "21",
+    title: "Chemical Bonding Revision",
+    duration: "22:15",
+    note_content: "Covers ionic, covalent, coordinate bonding, VSEPR basics, and common board-style examples.",
+    note_url: "",
+    video_url: "https://youtu.be/e3l1UD4ZaY8",
+  },
+  {
+    id: "l23",
+    course_id: "21",
+    title: "Thermodynamics Fast Track",
+    duration: "20:05",
+    note_content: "High-speed walkthrough of system-surroundings, enthalpy, internal energy, and first law numericals.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/k0M4l6Q8DWI",
+  },
+  {
+    id: "l24",
+    course_id: "22",
+    title: "Gas Laws Numericals",
+    duration: "26:30",
+    note_content: "Practice ideal gas equation, Boyle's law, Charles' law, and mixed formula questions with shortcuts.",
+    note_url: "",
+    video_url: "https://www.youtube.com/watch?v=1Vd8dV2x0hM",
+  },
+  {
+    id: "l25",
+    course_id: "22",
+    title: "Chemical Equilibrium Problems",
+    duration: "24:10",
+    note_content: "Step-by-step equilibrium constant, Le Chatelier principle, and concentration-based problem solving.",
+    note_url: "",
+    video_url: "https://youtu.be/6x0sVqN6WbI",
+  },
+  {
+    id: "l26",
+    course_id: "22",
+    title: "Electrochemistry Numericals Marathon",
+    duration: "28:20",
+    note_content: "Focused practice on electrodes, cell notation, Nernst equation, and common entrance-style numericals.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/vl4sQ9xW8XQ",
+  },
+  {
+    id: "l27",
+    course_id: "23",
+    title: "Periodic Table Super Revision",
+    duration: "17:55",
+    note_content: "Fast revision of periodic trends, blocks, atomic size, ionization enthalpy, and metallic character.",
+    note_url: "",
+    video_url: "https://www.youtube.com/watch?v=rz4Dd1I_fX0",
+  },
+  {
+    id: "l28",
+    course_id: "23",
+    title: "Coordination Compounds Basics",
+    duration: "21:35",
+    note_content: "Introductory lesson on ligands, coordination number, nomenclature, and isomerism in complexes.",
+    note_url: "",
+    video_url: "https://youtu.be/0iMtlus-aFo",
+  },
+  {
+    id: "l29",
+    course_id: "23",
+    title: "d and f Block Revision Session",
+    duration: "23:50",
+    note_content: "Revision of transition elements, oxidation states, color, magnetic behavior, and lanthanoid trends.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/XVn7C8wF8Yw",
   },
 ];
 
@@ -277,13 +388,16 @@ const normalizeRow = <T extends RowDataPacket>(row: RowDataPacket): T => {
 const normalizeRows = <T extends RowDataPacket>(rows: RowDataPacket[]) => rows.map((row) => normalizeRow<T>(row));
 
 const getConnectionConfig = () => {
+  const ssl =
+    String(process.env.SUPABASE_SSL ?? "true").toLowerCase() === "false"
+      ? false
+      : { rejectUnauthorized: String(process.env.SUPABASE_SSL_REJECT_UNAUTHORIZED ?? "true").toLowerCase() !== "false" };
+
   const url = process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
   if (url) {
     return {
       connectionString: url,
-      ssl: String(process.env.SUPABASE_SSL ?? "true").toLowerCase() === "false"
-        ? false
-        : { rejectUnauthorized: false },
+      ssl,
     };
   }
 
@@ -303,9 +417,7 @@ const getConnectionConfig = () => {
     user,
     password,
     database,
-    ssl: String(process.env.SUPABASE_SSL ?? "true").toLowerCase() === "false"
-      ? false
-      : { rejectUnauthorized: false },
+    ssl,
   };
 };
 

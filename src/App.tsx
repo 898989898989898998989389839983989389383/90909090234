@@ -133,6 +133,7 @@ type AdminRole = 'admin' | 'superadmin';
 interface AdminSession {
   role: AdminRole;
   username: string;
+  token: string;
   rememberMe?: boolean;
 }
 
@@ -146,10 +147,6 @@ const APP_DATA_CACHE_KEY = 'rbs-academy-app-cache';
 const ADMIN_USERS_CACHE_KEY = 'rbs-academy-admin-users-cache';
 const DATA_REQUEST_TIMEOUT_MS = 1000;
 const ADMIN_USERS_RESOURCE_URL = 'https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users';
-const ADMIN_USERNAME = '9810RBS';
-const ADMIN_PASSWORD = '9810337844';
-const SUPER_ADMIN_USERNAME = 'adminsachin';
-const SUPER_ADMIN_PASSWORD = 'rbsSuperAdmin@123';
 const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || '').trim();
 
 const getAppsScriptActionUrl = (action: string) => {
@@ -372,6 +369,29 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit, ti
   }
 };
 
+const getStoredAdminToken = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const raw = window.localStorage.getItem(ADMIN_SESSION_KEY) || window.sessionStorage.getItem(ADMIN_SESSION_KEY);
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<AdminSession>;
+    return typeof parsed.token === 'string' ? parsed.token : '';
+  } catch {
+    return '';
+  }
+};
+
+const getAdminAuthHeaders = () => {
+  const token = getStoredAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 const extractUserArray = (payload: unknown) => {
   if (Array.isArray(payload)) {
     return payload;
@@ -392,7 +412,9 @@ const extractUserArray = (payload: unknown) => {
 
 const fetchAdminUsers = async (): Promise<AdminUser[]> => {
   try {
-    const response = await fetchWithTimeout('/api/admin-users');
+    const response = await fetchWithTimeout('/api/admin-users', {
+      headers: getAdminAuthHeaders(),
+    });
     const payload = await readLenientJsonResponse(response);
     const localUsers = mergeAdminUsers(extractUserArray(payload)).filter((user) => !isLegacySeedUser(user));
     if (localUsers.length) {
@@ -517,7 +539,7 @@ const apiPost = async (action: string, payload: Record<string, unknown>) => {
     }),
     () => fetch('/api/' + action, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
       body: JSON.stringify(payload)
     })
   );
@@ -668,15 +690,8 @@ const saveSessionUser = (user: AuthUser | null) => {
 };
 
 const getStoredAdminAccounts = (): AdminAccount[] => {
-  const defaultAccount: AdminAccount = {
-    id: 'admin-default',
-    username: ADMIN_USERNAME,
-    password: ADMIN_PASSWORD,
-    createdAt: 0,
-  };
-
   if (typeof window === 'undefined') {
-    return [defaultAccount];
+    return [];
   }
 
   try {
@@ -693,12 +708,12 @@ const getStoredAdminAccounts = (): AdminAccount[] => {
       .filter((item) => item.username && item.password);
 
     const deduped = new Map<string, AdminAccount>();
-    [defaultAccount, ...normalized].forEach((account) => {
+    normalized.forEach((account) => {
       deduped.set(account.username.toLowerCase(), account);
     });
     return Array.from(deduped.values());
   } catch {
-    return [defaultAccount];
+    return [];
   }
 };
 
@@ -750,9 +765,12 @@ const getAdminSession = (): AdminSession | null => {
     if (!parsed?.role || !parsed?.username) {
       return null;
     }
+    if (!parsed.token) {
+      return null;
+    }
     return parsed;
   } catch {
-    return raw === 'true' ? { role: 'admin', username: ADMIN_USERNAME } : null;
+    return null;
   }
 };
 
@@ -986,6 +1004,18 @@ const isEmbeddableVideoUrl = (url?: string) => {
   return /(youtube\.com\/embed|youtube\.com\/watch\?v=|youtu\.be\/|player\.vimeo\.com\/video\/|vimeo\.com\/)/i.test(url);
 };
 
+const appendQueryParams = (baseUrl: string, params: Record<string, string>) => {
+  try {
+    const parsedUrl = new URL(baseUrl);
+    Object.entries(params).forEach(([key, value]) => {
+      parsedUrl.searchParams.set(key, value);
+    });
+    return parsedUrl.toString();
+  } catch {
+    return baseUrl;
+  }
+};
+
 const normalizeVideoUrl = (url?: string) => {
   if (!url) {
     return '';
@@ -994,12 +1024,20 @@ const normalizeVideoUrl = (url?: string) => {
   const trimmedUrl = url.trim();
   const youtubeWatchMatch = trimmedUrl.match(/[?&]v=([^&]+)/i);
   if (trimmedUrl.includes('youtube.com/watch') && youtubeWatchMatch?.[1]) {
-    return `https://www.youtube.com/embed/${youtubeWatchMatch[1]}`;
+    return `https://www.youtube-nocookie.com/embed/${youtubeWatchMatch[1]}`;
   }
 
   const shortYoutubeMatch = trimmedUrl.match(/youtu\.be\/([^?&]+)/i);
   if (shortYoutubeMatch?.[1]) {
-    return `https://www.youtube.com/embed/${shortYoutubeMatch[1]}`;
+    return `https://www.youtube-nocookie.com/embed/${shortYoutubeMatch[1]}`;
+  }
+
+  if (trimmedUrl.includes('youtube.com/embed/')) {
+    return trimmedUrl.replace('https://www.youtube.com/embed/', 'https://www.youtube-nocookie.com/embed/');
+  }
+
+  if (trimmedUrl.includes('youtube-nocookie.com/embed/')) {
+    return trimmedUrl;
   }
 
   const vimeoMatch = trimmedUrl.match(/vimeo\.com\/(\d+)/i);
@@ -1008,6 +1046,38 @@ const normalizeVideoUrl = (url?: string) => {
   }
 
   return trimmedUrl;
+};
+
+const getProtectedEmbedUrl = (url?: string) => {
+  const normalizedUrl = normalizeVideoUrl(url);
+  if (!normalizedUrl) {
+    return '';
+  }
+
+  if (/youtube(-nocookie)?\.com\/embed\//i.test(normalizedUrl)) {
+    return appendQueryParams(normalizedUrl, {
+      autoplay: '0',
+      rel: '0',
+      modestbranding: '1',
+      playsinline: '1',
+      controls: '1',
+      fs: '0',
+      iv_load_policy: '3',
+      disablekb: '1',
+      origin: window.location.origin
+    });
+  }
+
+  if (/player\.vimeo\.com\/video\//i.test(normalizedUrl)) {
+    return appendQueryParams(normalizedUrl, {
+      autopause: '1',
+      title: '0',
+      byline: '0',
+      portrait: '0'
+    });
+  }
+
+  return normalizedUrl;
 };
 
 // --- Components ---
@@ -1876,8 +1946,9 @@ const VideoPlayerScreen = ({
 
   if (!course) return null;
 
-  const activeVideoUrl = normalizeVideoUrl(currentLesson?.video_url);
+  const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url);
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
+  const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(activeVideoUrl);
 
   return (
     <motion.div 
@@ -1888,12 +1959,28 @@ const VideoPlayerScreen = ({
     >
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
-          <iframe
-            src={activeVideoUrl}
-            className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          ></iframe>
+          <>
+            <iframe
+              src={activeVideoUrl}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+              sandbox="allow-scripts allow-same-origin allow-presentation"
+              referrerPolicy="strict-origin-when-cross-origin"
+              title={currentLesson?.title || course.title}
+            ></iframe>
+            {isProtectedYoutubeEmbed ? (
+              <>
+                <div
+                  className="absolute inset-x-0 top-0 z-10 h-14 bg-transparent"
+                  aria-hidden="true"
+                />
+                <div
+                  className="absolute inset-x-0 bottom-0 z-10 h-16 bg-transparent"
+                  aria-hidden="true"
+                />
+              </>
+            ) : null}
+          </>
         ) : activeVideoUrl ? (
           <video
             key={activeVideoUrl}
@@ -1916,7 +2003,7 @@ const VideoPlayerScreen = ({
         )}
         <button 
           onClick={onBack} 
-          className="absolute top-4 left-4 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white z-10"
+          className="absolute top-4 left-4 w-8 h-8 bg-black/70 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20"
         >
           <ArrowLeft size={20} />
         </button>
@@ -3493,29 +3580,37 @@ const AdminLoginScreen = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (mode === 'superadmin') {
-      if (username !== SUPER_ADMIN_USERNAME || password !== SUPER_ADMIN_PASSWORD) {
-        setError('Invalid super admin credentials');
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          username: username.trim(),
+          password,
+        }),
+      });
+      const data = await readJsonResponse(response);
+
+      if (!data.success || !data.session?.token) {
+        setError(data.message || 'Invalid admin credentials');
         return;
       }
-      onLogin({ role: 'superadmin', username, rememberMe });
+
+      onLogin({
+        role: data.session.role,
+        username: data.session.username,
+        token: data.session.token,
+        rememberMe,
+      });
       return;
+    } catch (error) {
+      setError('Unable to sign in. Check server admin configuration.');
     }
-
-    const matchedAdmin = getStoredAdminAccounts().find((account) =>
-      account.username.toLowerCase() === username.trim().toLowerCase() && account.password === password
-    );
-
-    if (!matchedAdmin) {
-      setError('Invalid admin credentials');
-      return;
-    }
-
-    onLogin({ role: 'admin', username: matchedAdmin.username, rememberMe });
   };
 
   return (
@@ -3909,32 +4004,8 @@ const AdminPanelScreen = ({
       }
 
       const action = editingSliderId ? 'updateSlider' : 'createSlider';
-      const response = sliderImageFile
-        ? await apiPostToAppsScript(action, payload)
-        : await apiPost(action, payload);
+      const response = await apiPost(action, payload);
       const data = await readJsonResponse(response);
-
-      if (sliderImageFile && String(data?.message || '').toLowerCase() === 'unsupported action') {
-        const fallbackResponse = await fetch('/api/' + action, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const fallbackData = await readJsonResponse(fallbackResponse);
-
-        if (!fallbackData.success) {
-          setMessage(fallbackData.message || 'Unable to save slider');
-          return;
-        }
-
-        setSliderForm({ title: '', subtitle: '', image_url: '', sort_order: '0', is_active: true });
-        setSliderImageFile(null);
-        setSliderPreviewUrl('');
-        setEditingSliderId('');
-        await onRefresh();
-        setMessage('Slider saved locally because Google Apps Script does not support this action yet.');
-        return;
-      }
 
       if (!data.success) {
         setMessage(data.message || 'Unable to save slider');
@@ -3950,7 +4021,7 @@ const AdminPanelScreen = ({
     } catch (error) {
       setMessage(
         sliderImageFile
-          ? 'Google Drive upload failed. Check your Apps Script deployment and folder permissions.'
+          ? 'Unable to upload slider image. Check Vercel Blob storage or Apps Script configuration.'
           : 'Unable to upload slider image'
       );
     } finally {
@@ -4076,46 +4147,15 @@ const AdminPanelScreen = ({
   };
 
   const handleCreateAdminAccount = () => {
-    const username = adminAccountForm.username.trim();
-    const password = adminAccountForm.password;
-
-    if (!username || !password) {
-      setMessage('Admin username and password are required');
-      return;
-    }
-
-    if (username.toLowerCase() === SUPER_ADMIN_USERNAME.toLowerCase()) {
-      setMessage('This username is reserved for super admin');
-      return;
-    }
-
-    const accounts = getStoredAdminAccounts();
-    if (accounts.some((account) => account.username.toLowerCase() === username.toLowerCase())) {
-      setMessage('Admin username already exists');
-      return;
-    }
-
-    const nextAccounts = [
-      ...accounts,
-      {
-        id: `admin-${Date.now()}`,
-        username,
-        password,
-        createdAt: Date.now(),
-      },
-    ];
-
-    saveStoredAdminAccounts(nextAccounts);
-    setAdminAccounts(nextAccounts);
     setAdminAccountForm({ username: '', password: '' });
-    setMessage('Admin account created successfully');
+    setMessage('Admin credentials are now managed by secure server environment variables.');
   };
 
   const handleDeleteAdminAccount = (accountId: string) => {
-    const nextAccounts = getStoredAdminAccounts().filter((account) => account.id !== accountId && account.username !== ADMIN_USERNAME);
+    const nextAccounts = getStoredAdminAccounts().filter((account) => account.id !== accountId);
     saveStoredAdminAccounts(nextAccounts);
     setAdminAccounts(nextAccounts);
-    setMessage('Admin account deleted successfully');
+    setMessage('Local legacy admin account removed');
   };
 
   const handleAddNoteCategory = () => {
@@ -4409,7 +4449,7 @@ const AdminPanelScreen = ({
                 <div className="admin-section-head">
                   <div>
                     <h3 className="font-bold text-gray-800">Create Admin</h3>
-                    <p className="text-xs text-gray-500 mt-1">Only super admin can create new admin credentials.</p>
+                    <p className="text-xs text-gray-500 mt-1">Admin credentials are configured securely on the server.</p>
                   </div>
                   <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
                     Super Admin Only
@@ -4430,7 +4470,7 @@ const AdminPanelScreen = ({
                     onChange={(e) => setAdminAccountForm((current) => ({ ...current, password: e.target.value }))}
                   />
                   <button type="button" onClick={handleCreateAdminAccount} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                    Create Admin
+                    Clear Form
                   </button>
                 </div>
               </div>
@@ -4439,7 +4479,7 @@ const AdminPanelScreen = ({
                 <div className="admin-section-head">
                   <div>
                     <h3 className="font-bold text-gray-800">Manage Admin Accounts</h3>
-                    <p className="text-xs text-gray-500 mt-1">Admins created here can log in from `/adminlogin`.</p>
+                    <p className="text-xs text-gray-500 mt-1">Legacy browser-only admin accounts are no longer trusted for login.</p>
                   </div>
                   <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
                     {adminAccounts.length} admins
@@ -4451,18 +4491,16 @@ const AdminPanelScreen = ({
                       <div>
                         <div className="font-bold text-slate-900">{account.username}</div>
                         <div className="text-xs text-slate-500 mt-1">
-                          {account.username === ADMIN_USERNAME ? 'Default admin account' : 'Custom admin account'}
+                          Legacy local account
                         </div>
                       </div>
-                      {account.username !== ADMIN_USERNAME && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAdminAccount(account.id)}
-                          className="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAdminAccount(account.id)}
+                        className="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold"
+                      >
+                        Delete
+                      </button>
                     </div>
                   ))}
                 </div>

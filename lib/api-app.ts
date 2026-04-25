@@ -1,15 +1,25 @@
 import express from "express";
-import { del, put } from "@vercel/blob";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import type { PoolConnection, RowDataPacket } from "./mysql";
 import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./mysql";
 
-const BLOB_READ_WRITE_TOKEN = process.env.BLOB_READ_WRITE_TOKEN?.trim() || "";
+const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "uploads";
 const ADMIN_USERS_RESOURCE_URL = "https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME?.trim() || "";
+const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "";
+const ADMIN_AUTH_SECRET = process.env.ADMIN_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const PASSWORD_PREFIX = "scrypt";
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const uploadRoot = process.env.VERCEL
   ? path.join(os.tmpdir(), "rbs-academy-uploads")
   : path.join(process.cwd(), "uploads");
@@ -33,7 +43,34 @@ const asyncHandler = (handler: (req: Request, res: Response, next: NextFunction)
 const createId = (prefix: string) => `${prefix}${Date.now()}${randomUUID().replace(/-/g, "").slice(0, 8)}`;
 
 const isValidStudentName = (value: string) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const normalizePhoneNumber = (value: string) => value.replace(/\D/g, "");
+const toBase64Url = (value: string) => Buffer.from(value).toString("base64url");
+const fromBase64Url = (value: string) => Buffer.from(value, "base64url").toString("utf8");
+const hashValue = (value: string) => createHash("sha256").update(value).digest("hex");
+const hashPassword = (password: string) => {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${PASSWORD_PREFIX}:${salt}:${hash}`;
+};
+const safeEqual = (left: string, right: string) => {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+};
+const verifyPassword = (password: string, storedPassword: string) => {
+  if (!storedPassword.startsWith(`${PASSWORD_PREFIX}:`)) {
+    return storedPassword === password;
+  }
+
+  const [, salt, expectedHash] = storedPassword.split(":");
+  if (!salt || !expectedHash) {
+    return false;
+  }
+
+  const actualHash = scryptSync(password, salt, 64).toString("hex");
+  return safeEqual(actualHash, expectedHash);
+};
 const createAccessCode = () => {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const chunk = () => Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
@@ -92,13 +129,84 @@ const parseImagePayload = (
   };
 };
 
+const assertValidImagePayload = (imageData: string, mimeType: string) => {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    throw new Error("Unsupported image type");
+  }
+
+  const byteLength = Buffer.byteLength(imageData, "base64");
+  if (!byteLength || byteLength > MAX_IMAGE_BYTES) {
+    throw new Error("Image must be smaller than 8 MB");
+  }
+};
+
 const getImageExtension = (mimeType: string) =>
   mimeType === "image/png" ? ".png"
   : mimeType === "image/webp" ? ".webp"
   : mimeType === "image/gif" ? ".gif"
   : ".jpg";
 
+const getSupabasePublicUrl = (objectPath: string) =>
+  `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${objectPath}`;
+
+const uploadToSupabaseStorage = async (
+  folder: string,
+  prefix: string,
+  imageData: string,
+  mimeType: string,
+) => {
+  assertValidImagePayload(imageData, mimeType);
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (process.env.VERCEL) {
+      throw new Error("Supabase Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    }
+
+    return "";
+  }
+
+  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${getImageExtension(mimeType)}`;
+  const objectPath = `${folder}/${fileName}`;
+  const response = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${objectPath}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": mimeType,
+        "x-upsert": "true",
+      },
+      body: Buffer.from(imageData, "base64"),
+    },
+  );
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Supabase Storage upload failed: ${message || response.statusText}`);
+  }
+
+  return getSupabasePublicUrl(objectPath);
+};
+
+const getSupabaseObjectPath = (imageUrl?: string) => {
+  const value = String(imageUrl || "").trim();
+  const publicPrefix = `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/`;
+  const signedPrefix = `${SUPABASE_URL}/storage/v1/object/sign/${SUPABASE_STORAGE_BUCKET}/`;
+
+  if (value.startsWith(publicPrefix)) {
+    return value.slice(publicPrefix.length).split("?")[0];
+  }
+
+  if (value.startsWith(signedPrefix)) {
+    return value.slice(signedPrefix.length).split("?")[0];
+  }
+
+  return "";
+};
+
 const saveImageLocally = (dir: string, prefix: string, imageData: string, mimeType: string) => {
+  assertValidImagePayload(imageData, mimeType);
   const extension = getImageExtension(mimeType);
   const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`;
   const filePath = path.join(dir, fileName);
@@ -112,14 +220,9 @@ const saveSliderImage = async (payload: Record<string, unknown>) => {
     return imageUrl;
   }
 
-  if (BLOB_READ_WRITE_TOKEN) {
-    const uploaded = await put(`sliders/slider-${Date.now()}${getImageExtension(mimeType)}`, Buffer.from(imageData, "base64"), {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: mimeType,
-      token: BLOB_READ_WRITE_TOKEN,
-    });
-    return uploaded.url;
+  const uploadedUrl = await uploadToSupabaseStorage("sliders", "slider", imageData, mimeType);
+  if (uploadedUrl) {
+    return uploadedUrl;
   }
 
   return saveImageLocally(sliderUploadDir, "slider", imageData, mimeType);
@@ -135,14 +238,9 @@ const saveQuestionImage = async (payload: Record<string, unknown>) => {
     return imageUrl;
   }
 
-  if (BLOB_READ_WRITE_TOKEN) {
-    const uploaded = await put(`questions/question-${Date.now()}${getImageExtension(mimeType)}`, Buffer.from(imageData, "base64"), {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: mimeType,
-      token: BLOB_READ_WRITE_TOKEN,
-    });
-    return uploaded.url;
+  const uploadedUrl = await uploadToSupabaseStorage("questions", "question", imageData, mimeType);
+  if (uploadedUrl) {
+    return uploadedUrl;
   }
 
   return saveImageLocally(questionUploadDir, "question", imageData, mimeType);
@@ -153,9 +251,19 @@ const deleteStoredImage = async (imageUrl?: string, localPrefix = "/uploads/") =
     return;
   }
 
-  if (imageUrl.includes(".blob.vercel-storage.com/") && BLOB_READ_WRITE_TOKEN) {
+  const supabaseObjectPath = getSupabaseObjectPath(imageUrl);
+  if (supabaseObjectPath && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      await del(imageUrl, { token: BLOB_READ_WRITE_TOKEN });
+      await fetch(
+        `${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${supabaseObjectPath}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        },
+      );
     } catch {}
     return;
   }
@@ -164,7 +272,12 @@ const deleteStoredImage = async (imageUrl?: string, localPrefix = "/uploads/") =
     return;
   }
 
-  const filePath = path.join(uploadRoot, imageUrl.replace(/^\/uploads\//, ""));
+  const filePath = path.resolve(uploadRoot, imageUrl.replace(/^\/uploads\//, ""));
+  const safeRoot = path.resolve(uploadRoot);
+  if (!filePath.startsWith(safeRoot + path.sep)) {
+    return;
+  }
+
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
@@ -209,6 +322,90 @@ const fetchJsonWithTimeout = async (url: string, timeoutMs = 1000) => {
     clearTimeout(timer);
   }
 };
+
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const checkLoginRateLimit = (req: Request, res: Response) => {
+  const key = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+
+  if (!current || current.resetAt < now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + 15 * 60 * 1000 });
+    return true;
+  }
+
+  if (current.count >= 10) {
+    res.status(429).json({ success: false, message: "Too many login attempts. Try again later." });
+    return false;
+  }
+
+  current.count += 1;
+  return true;
+};
+
+const createAdminToken = (role: AdminRole, username: string) => {
+  if (!ADMIN_AUTH_SECRET) {
+    throw new Error("Admin authentication is not configured. Set ADMIN_AUTH_SECRET.");
+  }
+
+  const payload = JSON.stringify({
+    role,
+    username,
+    exp: Date.now() + ADMIN_SESSION_TTL_MS,
+    nonce: randomUUID(),
+  });
+  const encodedPayload = toBase64Url(payload);
+  const signature = hashValue(`${encodedPayload}.${ADMIN_AUTH_SECRET}`);
+  return `${encodedPayload}.${signature}`;
+};
+
+type AdminRole = "admin" | "superadmin";
+
+const verifyAdminToken = (token: string) => {
+  if (!ADMIN_AUTH_SECRET || !token) {
+    return null;
+  }
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) {
+    return null;
+  }
+
+  const expectedSignature = hashValue(`${encodedPayload}.${ADMIN_AUTH_SECRET}`);
+  if (!safeEqual(signature, expectedSignature)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(fromBase64Url(encodedPayload)) as {
+      role?: AdminRole;
+      username?: string;
+      exp?: number;
+    };
+
+    if (!payload.username || !payload.role || !payload.exp || payload.exp < Date.now()) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+};
+
+const requireAdmin = (roles: AdminRole[] = ["admin", "superadmin"]) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const session = verifyAdminToken(token);
+
+    if (!session || !roles.includes(session.role)) {
+      res.status(401).json({ success: false, message: "Admin authentication required" });
+      return;
+    }
+
+    next();
+  };
 
 const getImportedQuestionSource = (payload: unknown) => {
   if (Array.isArray(payload)) return payload;
@@ -315,15 +512,57 @@ export const createApiApp = async () => {
   await initDatabase();
 
   const app = express();
+  app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; frame-src https://www.youtube.com https://youtube.com https://youtu.be; object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
+    next();
+  });
   app.use(express.json({ limit: "12mb" }));
   app.use("/uploads", express.static(uploadRoot));
+
+  app.post("/api/admin/login", asyncHandler(async (req, res) => {
+    if (!checkLoginRateLimit(req, res)) {
+      return;
+    }
+
+    const { username, password, mode } = req.body || {};
+    const requestedRole: AdminRole = mode === "superadmin" ? "superadmin" : "admin";
+    const expectedUsername = requestedRole === "superadmin" ? SUPER_ADMIN_USERNAME : ADMIN_USERNAME;
+    const expectedPassword = requestedRole === "superadmin" ? SUPER_ADMIN_PASSWORD : ADMIN_PASSWORD;
+
+    if (!expectedUsername || !expectedPassword || !ADMIN_AUTH_SECRET) {
+      res.status(503).json({ success: false, message: "Admin login is not configured" });
+      return;
+    }
+
+    const usernameMatches = String(username || "").trim().toLowerCase() === expectedUsername.toLowerCase();
+    const passwordMatches = safeEqual(String(password || ""), expectedPassword);
+    if (!usernameMatches || !passwordMatches) {
+      res.status(401).json({ success: false, message: "Invalid admin credentials" });
+      return;
+    }
+
+    const token = createAdminToken(requestedRole, expectedUsername);
+    res.json({
+      success: true,
+      session: {
+        role: requestedRole,
+        username: expectedUsername,
+        token,
+      },
+    });
+  }));
 
   app.post("/api/signup", asyncHandler(async (req, res) => {
     const { name, email, phone, password } = req.body || {};
     const trimmedName = String(name || "").trim();
+    const normalizedEmail = normalizeEmail(String(email || ""));
     const normalizedPhone = normalizePhoneNumber(String(phone || ""));
 
-    if (!trimmedName || !email || !password || !normalizedPhone) {
+    if (!trimmedName || !normalizedEmail || !password || !normalizedPhone) {
       res.status(400).json({ success: false, message: "All fields are required" });
       return;
     }
@@ -338,15 +577,15 @@ export const createApiApp = async () => {
       return;
     }
 
-    const existingUser = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [email]);
+    const existingUser = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
     if (existingUser) {
       res.status(409).json({ success: false, message: "Email already registered" });
       return;
     }
 
     const id = `u${Date.now()}`;
-    await execute("INSERT INTO users (id, name, email, phone, password) VALUES (?, ?, ?, ?, ?)", [id, trimmedName, email, normalizedPhone, password]);
-    res.status(201).json({ success: true, user: { id, name: trimmedName, email, phone: normalizedPhone } });
+    await execute("INSERT INTO users (id, name, email, phone, password) VALUES (?, ?, ?, ?, ?)", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
+    res.status(201).json({ success: true, user: { id, name: trimmedName, email: normalizedEmail, phone: normalizedPhone } });
   }));
 
   app.post("/api/login", asyncHandler(async (req, res) => {
@@ -356,10 +595,15 @@ export const createApiApp = async () => {
       return;
     }
 
-    const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [email]);
-    if (!user || user.password !== password) {
+    const normalizedEmail = normalizeEmail(String(email || ""));
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
+    if (!user || !verifyPassword(String(password), String(user.password || ""))) {
       res.status(401).json({ success: false, message: "Invalid credentials" });
       return;
+    }
+
+    if (!String(user.password || "").startsWith(`${PASSWORD_PREFIX}:`)) {
+      await execute("UPDATE users SET password = ? WHERE id = ?", [hashPassword(String(password)), user.id]);
     }
 
     res.json({
@@ -405,7 +649,7 @@ export const createApiApp = async () => {
     res.json(normalized);
   }));
 
-  app.get("/api/admin-users", asyncHandler(async (_req, res) => {
+  app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
     const users = await queryRows<DbUser>("SELECT id, name, email, phone FROM users ORDER BY name ASC, id ASC");
     const normalized = await Promise.all(users.map((user) => normalizeUser(user)));
     if (normalized.length > 0) {
@@ -430,7 +674,7 @@ export const createApiApp = async () => {
     res.json(sliders.map(normalizeSlider));
   }));
 
-  app.post("/api/createSlider", asyncHandler(async (req, res) => {
+  app.post("/api/createSlider", requireAdmin(), asyncHandler(async (req, res) => {
     const { title, subtitle, sort_order, is_active } = req.body || {};
     const imageUrl = await saveSliderImage(req.body || {});
     if (!title || !subtitle) {
@@ -452,7 +696,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, slider: normalizeSlider(slider || {}) });
   }));
 
-  app.post("/api/updateSlider", asyncHandler(async (req, res) => {
+  app.post("/api/updateSlider", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, title, subtitle, sort_order, is_active } = req.body || {};
     if (!id || !title || !subtitle) {
       res.status(400).json({ success: false, message: "Id, title and subtitle are required" });
@@ -479,7 +723,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Slider updated", slider: normalizeSlider(slider || {}) });
   }));
 
-  app.post("/api/deleteSlider", asyncHandler(async (req, res) => {
+  app.post("/api/deleteSlider", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Slider id is required" });
@@ -491,7 +735,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Slider deleted" });
   }));
 
-  app.post("/api/createCourse", asyncHandler(async (req, res) => {
+  app.post("/api/createCourse", requireAdmin(), asyncHandler(async (req, res) => {
     const { title, lessons, image, price, oldPrice, type, category, access_code } = req.body || {};
     if (!title || !image || !type || !category) {
       res.status(400).json({ success: false, message: "Title, image, type, and category are required" });
@@ -508,7 +752,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: "Course created", course });
   }));
 
-  app.post("/api/updateCourse", asyncHandler(async (req, res) => {
+  app.post("/api/updateCourse", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, title, lessons, image, price, oldPrice, type, category, access_code } = req.body || {};
     if (!id || !title || !image || !type || !category) {
       res.status(400).json({ success: false, message: "Id, title, image, type, and category are required" });
@@ -529,7 +773,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Course updated" });
   }));
 
-  app.post("/api/deleteCourse", asyncHandler(async (req, res) => {
+  app.post("/api/deleteCourse", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Course id is required" });
@@ -551,7 +795,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Course deleted" });
   }));
 
-  app.post("/api/updateCourseAccess", asyncHandler(async (req, res) => {
+  app.post("/api/updateCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
     const { courseId, accessCode } = req.body || {};
     if (!courseId) {
       res.status(400).json({ success: false, message: "Course id is required" });
@@ -568,7 +812,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Access code updated" });
   }));
 
-  app.post("/api/grantCourseAccess", asyncHandler(async (req, res) => {
+  app.post("/api/grantCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
     const { userId, courseId, accessCode } = req.body || {};
     if (!userId || !courseId) {
       res.status(400).json({ success: false, message: "User id and course id are required" });
@@ -638,7 +882,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Course unlocked" });
   }));
 
-  app.post("/api/createLesson", asyncHandler(async (req, res) => {
+  app.post("/api/createLesson", requireAdmin(), asyncHandler(async (req, res) => {
     const { course_id, title, duration, note_content, note_url, video_url } = req.body || {};
     if (!course_id || !title) {
       res.status(400).json({ success: false, message: "Course and lesson title are required" });
@@ -653,7 +897,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: "Lesson created" });
   }));
 
-  app.post("/api/updateLesson", asyncHandler(async (req, res) => {
+  app.post("/api/updateLesson", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, course_id, title, duration, note_content, note_url, video_url } = req.body || {};
     if (!id || !course_id || !title) {
       res.status(400).json({ success: false, message: "Id, course, and lesson title are required" });
@@ -673,7 +917,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Lesson updated" });
   }));
 
-  app.post("/api/deleteLesson", asyncHandler(async (req, res) => {
+  app.post("/api/deleteLesson", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Lesson id is required" });
@@ -683,7 +927,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Lesson deleted" });
   }));
 
-  app.post("/api/createNote", asyncHandler(async (req, res) => {
+  app.post("/api/createNote", requireAdmin(), asyncHandler(async (req, res) => {
     const { title, lessons, category, type, url, content } = req.body || {};
     if (!title || !category) {
       res.status(400).json({ success: false, message: "Title and category are required" });
@@ -698,7 +942,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: "Note created" });
   }));
 
-  app.post("/api/updateNote", asyncHandler(async (req, res) => {
+  app.post("/api/updateNote", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, title, lessons, category, type, url, content } = req.body || {};
     if (!id || !title || !category) {
       res.status(400).json({ success: false, message: "Id, title, and category are required" });
@@ -718,7 +962,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Note updated" });
   }));
 
-  app.post("/api/deleteNote", asyncHandler(async (req, res) => {
+  app.post("/api/deleteNote", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Note id is required" });
@@ -728,7 +972,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Note deleted" });
   }));
 
-  app.post("/api/createQuiz", asyncHandler(async (req, res) => {
+  app.post("/api/createQuiz", requireAdmin(), asyncHandler(async (req, res) => {
     const { topic, type } = req.body || {};
     if (!topic) {
       res.status(400).json({ success: false, message: "Quiz topic is required" });
@@ -739,7 +983,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: "Quiz created" });
   }));
 
-  app.post("/api/updateQuiz", asyncHandler(async (req, res) => {
+  app.post("/api/updateQuiz", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, topic, type } = req.body || {};
     if (!id || !topic) {
       res.status(400).json({ success: false, message: "Id and topic are required" });
@@ -754,7 +998,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Quiz updated" });
   }));
 
-  app.post("/api/deleteQuiz", asyncHandler(async (req, res) => {
+  app.post("/api/deleteQuiz", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Quiz id is required" });
@@ -767,7 +1011,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Quiz deleted" });
   }));
 
-  app.post("/api/createQuestion", asyncHandler(async (req, res) => {
+  app.post("/api/createQuestion", requireAdmin(), asyncHandler(async (req, res) => {
     const { quiz_id, text, options, correctAnswer, explanation } = req.body || {};
     if (!quiz_id || !text || !Array.isArray(options) || options.length < 2) {
       res.status(400).json({ success: false, message: "Quiz, question text, and options are required" });
@@ -791,7 +1035,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: "Question created" });
   }));
 
-  app.post("/api/importQuestions", asyncHandler(async (req, res) => {
+  app.post("/api/importQuestions", requireAdmin(), asyncHandler(async (req, res) => {
     const { quiz_id, questions } = req.body || {};
     if (!quiz_id) {
       res.status(400).json({ success: false, message: "Quiz is required" });
@@ -815,7 +1059,7 @@ export const createApiApp = async () => {
     res.status(201).json({ success: true, message: `${normalizedQuestions.length} questions imported` });
   }));
 
-  app.post("/api/updateQuestion", asyncHandler(async (req, res) => {
+  app.post("/api/updateQuestion", requireAdmin(), asyncHandler(async (req, res) => {
     const { id, quiz_id, text, options, correctAnswer, explanation } = req.body || {};
     if (!id || !quiz_id || !text || !Array.isArray(options) || options.length < 2) {
       res.status(400).json({ success: false, message: "Id, quiz, question text, and options are required" });
@@ -852,7 +1096,7 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Question updated" });
   }));
 
-  app.post("/api/deleteQuestion", asyncHandler(async (req, res) => {
+  app.post("/api/deleteQuestion", requireAdmin(), asyncHandler(async (req, res) => {
     const { id } = req.body || {};
     if (!id) {
       res.status(400).json({ success: false, message: "Question id is required" });
@@ -885,14 +1129,17 @@ export const createApiApp = async () => {
       return;
     }
 
-    await execute("UPDATE users SET name = ?, password = ? WHERE id = ?", [trimmedName, password || current.password, id]);
+    const nextPassword = password ? hashPassword(String(password)) : current.password;
+    await execute("UPDATE users SET name = ?, password = ? WHERE id = ?", [trimmedName, nextPassword, id]);
     const updatedUser = await queryOne<DbUser>("SELECT id, name, email, phone FROM users WHERE id = ?", [id]);
     res.json({ success: true, message: "Profile updated", user: updatedUser });
   }));
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error(error);
-    const message = error instanceof Error ? error.message : "Internal server error";
+    const message = process.env.NODE_ENV === "production"
+      ? "Internal server error"
+      : error instanceof Error ? error.message : "Internal server error";
     res.status(500).json({ success: false, message });
   });
 
