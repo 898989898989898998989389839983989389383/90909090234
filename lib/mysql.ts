@@ -272,33 +272,143 @@ const seedLessons: SeedLesson[] = [
   },
 ];
 
-const seedNotes: SeedNote[] = [
+const seedNotes: SeedNote[] = [];
+
+const driveClass12Notes: SeedNote[] = [
   {
-    id: "n1",
-    title: "Class 10 Chemistry Formula Sheet",
+    id: "drive-pdf-16jkJ-nobOf3YmRPGre9UW8a700xpCVSb",
+    title: "CHEMISTRY IN SERVICE TO MANKIND.pdf",
     lessons: 1,
-    category: "Chemistry",
+    category: "Chemistry - Class 12 Applied",
     type: "free",
-    url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf?note=chem-formula",
-    content: "# Chemistry Formulas\n\n- **Molarity (M)**: moles of solute / liters of solution\n- **Molality (m)**: moles of solute / kg of solvent\n- **Ideal Gas Law**: PV = nRT\n- **pH**: -log[H+]",
+    url: "https://drive.google.com/file/d/16jkJ-nobOf3YmRPGre9UW8a700xpCVSb/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/applied",
   },
   {
-    id: "n2",
-    title: "Organic Chemistry Revision Notes",
+    id: "drive-pdf-1pcmLpVKHIfF0IOe_c3JUfZ4Gv8YRQLQ4",
+    title: "iron.pdf",
     lessons: 1,
-    category: "Chemistry",
+    category: "Chemistry - Class 12 Inorganic",
     type: "free",
-    url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf?note=organic",
-    content: "# Organic Chemistry Revision\n\n- **Functional Groups**: Identify alcohols, aldehydes, ketones, carboxylic acids, and amines.\n- **Homologous Series**: Members differ by CH2.\n- **Isomerism**: Compounds can share the same molecular formula but differ in structure.",
+    url: "https://drive.google.com/file/d/1pcmLpVKHIfF0IOe_c3JUfZ4Gv8YRQLQ4/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
   },
   {
-    id: "n3",
-    title: "Inorganic Chemistry Quick Notes",
+    id: "drive-pdf-1kQEmyofO6C1O2BCVb_Y7cIuIISPeOUIm",
+    title: "mercury 2.pdf",
     lessons: 1,
-    category: "Chemistry",
+    category: "Chemistry - Class 12 Inorganic",
     type: "free",
-    url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf?note=inorganic",
-    content: "# Inorganic Chemistry Quick Notes\n\n- **Periodic Trends**: Atomic size, ionization energy, electronegativity, and metallic character.\n- **Coordination Compounds**: Central metal atom with ligands.\n- **Qualitative Analysis**: Basic color, precipitate, and flame observations.",
+    url: "https://drive.google.com/file/d/1kQEmyofO6C1O2BCVb_Y7cIuIISPeOUIm/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
+  },
+  {
+    id: "drive-pdf-1bSHWids8BdbhU896ZqRAdbkJtMBQnOFA",
+    title: "silver2.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Inorganic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1bSHWids8BdbhU896ZqRAdbkJtMBQnOFA/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
+  },
+  {
+    id: "drive-pdf-1JX4aLiZKLA0UTTUg0JsewMxJl8q_4aQN",
+    title: "transition metal.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Inorganic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1JX4aLiZKLA0UTTUg0JsewMxJl8q_4aQN/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
+  },
+  {
+    id: "drive-pdf-1stp4Tw7ayzG33QT3bl1uxG-X5qtESmwN",
+    title: "TRANSITION METALS (2) (1).pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Inorganic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1stp4Tw7ayzG33QT3bl1uxG-X5qtESmwN/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
+  },
+  {
+    id: "drive-pdf-19_IieZOubLYMmRRi3MUHQin2YU4O5Wwd",
+    title: "ZINC.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Inorganic",
+    type: "free",
+    url: "https://drive.google.com/file/d/19_IieZOubLYMmRRi3MUHQin2YU4O5Wwd/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/inorganic 12",
+  },
+  {
+    id: "drive-pdf-1k86d9V3bglk1NuqxNf8E8YMwSrSc7r55",
+    title: "amine.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1k86d9V3bglk1NuqxNf8E8YMwSrSc7r55/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1Sfhmn23VI7OaViDU4cox2l4LOiMjtni7",
+    title: "aniline.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1Sfhmn23VI7OaViDU4cox2l4LOiMjtni7/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1oHyKpRla7QVnRHFSG1zB5XozFhdWWlKm",
+    title: "ether.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1oHyKpRla7QVnRHFSG1zB5XozFhdWWlKm/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1vDMUGHXc8iFIdtIOapMEgdB5npnZLBY-",
+    title: "Grignard reagent.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1vDMUGHXc8iFIdtIOapMEgdB5npnZLBY-/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1Z6cAsmf3bL58N8Kye3Qx_PGm-wzba6nS",
+    title: "nitro compound.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1Z6cAsmf3bL58N8Kye3Qx_PGm-wzba6nS/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1VmNOjre9MLEUVIsjiM6h9BdZS02DuP_j",
+    title: "nitrobenzene.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Organic",
+    type: "free",
+    url: "https://drive.google.com/file/d/1VmNOjre9MLEUVIsjiM6h9BdZS02DuP_j/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/organic 12",
+  },
+  {
+    id: "drive-pdf-1kyufvKKFFEcW6h44Ykd0BINCBptSrilw",
+    title: "IONIC EQUILIBRIUM (new curriculum).pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Physical",
+    type: "free",
+    url: "https://drive.google.com/file/d/1kyufvKKFFEcW6h44Ykd0BINCBptSrilw/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/Physical 12/Ionic equilibrium (new curriculum)",
+  },
+  {
+    id: "drive-pdf-1d_Nx5GABXXZAfKI9ZG0meFIfMrWMdDcy",
+    title: "VOLUMETRIC ANALYSIS Theory.pdf",
+    lessons: 1,
+    category: "Chemistry - Class 12 Physical",
+    type: "free",
+    url: "https://drive.google.com/file/d/1d_Nx5GABXXZAfKI9ZG0meFIfMrWMdDcy/view?usp=drive_web",
+    content: "PDF note from Drive path: class 12/Physical 12/Volumetric Analysis Theory",
   },
 ];
 
@@ -332,6 +442,226 @@ const seedQuestions: SeedQuestion[] = [
     explanation: "Zinc reacts with sulphuric acid to produce zinc sulphate and hydrogen gas (Zn + H2SO4 -> ZnSO4 + H2).",
   },
 ];
+
+const nebChemistryChapters = [
+  {
+    slug: "applied",
+    title: "Chemistry in Service to Mankind",
+    branch: "Applied Chemistry",
+    facts: [
+      ["analgesics", "reduce pain without causing loss of consciousness", "antibiotics", "antacids", "fertilizers"],
+      ["antacids", "neutralize excess acid in the stomach", "detergents", "dyes", "polymers"],
+      ["fertilizers", "supply essential plant nutrients", "analgesics", "disinfectants", "antipyretics"],
+      ["disinfectants", "kill microorganisms on non-living surfaces", "antibiotics", "vitamins", "antacids"],
+      ["food preservatives", "slow microbial growth and oxidation in food", "explosives", "dyes", "fuels"],
+    ],
+  },
+  {
+    slug: "iron",
+    title: "Iron",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["haematite", "is the chief ore of iron", "bauxite", "cinnabar", "argentite"],
+      ["limestone", "acts as a flux in iron extraction", "coke", "slag", "haematite"],
+      ["coke", "reduces iron oxide and supplies heat", "limestone", "silica", "slag"],
+      ["slag", "removes earthy impurities during smelting", "pig iron", "wrought iron", "cast iron"],
+      ["rusting", "is corrosion of iron in moist air", "galvanization", "alloying", "annealing"],
+    ],
+  },
+  {
+    slug: "mercury",
+    title: "Mercury",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["cinnabar", "is the chief ore of mercury", "haematite", "bauxite", "galena"],
+      ["mercury", "is liquid at ordinary room temperature", "zinc", "silver", "iron"],
+      ["amalgam", "is an alloy of mercury with another metal", "slag", "flux", "ore"],
+      ["HgS", "is roasted to obtain mercury", "HgCl2", "HgO", "HgSO4"],
+      ["mercury barometer", "uses high density of mercury", "low melting point", "magnetism", "brittleness"],
+    ],
+  },
+  {
+    slug: "silver",
+    title: "Silver",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["argentite", "is the important ore of silver", "cinnabar", "haematite", "calamine"],
+      ["cyanide process", "is used for extraction of silver", "Hall process", "Contact process", "Solvay process"],
+      ["silver nitrate", "is used as a laboratory reagent for halides", "silver oxide", "silver chloride", "silver sulphide"],
+      ["AgCl", "is a white precipitate formed with chloride ion", "AgBr", "AgI", "Ag2S"],
+      ["tarnishing", "occurs due to formation of silver sulphide", "silver nitrate", "silver oxide", "silver carbonate"],
+    ],
+  },
+  {
+    slug: "transition-metals",
+    title: "Transition Metals",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["variable oxidation states", "are shown due to participation of d and s electrons", "complete octet", "large atomic size", "low density"],
+      ["colored compounds", "often arise from d-d electronic transitions", "s-s transition", "p-p transition", "nuclear transition"],
+      ["catalytic activity", "is common due to variable oxidation states and surface adsorption", "low melting point", "non-metallic nature", "no vacant orbitals"],
+      ["complex formation", "is favored by small size and vacant d orbitals", "large radius only", "no charge", "closed shell only"],
+      ["paramagnetism", "is due to unpaired electrons", "paired electrons only", "low density", "ionic radius"],
+    ],
+  },
+  {
+    slug: "zinc",
+    title: "Zinc",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["zinc blende", "is an important ore of zinc", "cinnabar", "argentite", "haematite"],
+      ["roasting", "converts zinc sulphide into zinc oxide", "zinc oxide into zinc sulphide", "zinc into zinc carbonate", "zinc chloride into zinc"],
+      ["galvanization", "protects iron by coating it with zinc", "coating with tin", "heating with carbon", "adding mercury"],
+      ["ZnO", "is amphoteric in nature", "strongly acidic only", "strongly basic only", "neutral only"],
+      ["brass", "is an alloy of copper and zinc", "iron and carbon", "silver and mercury", "lead and tin"],
+    ],
+  },
+  {
+    slug: "amine",
+    title: "Amines",
+    branch: "Organic Chemistry",
+    facts: [
+      ["amines", "are organic derivatives of ammonia", "water", "methane", "benzene"],
+      ["basicity of amines", "is due to lone pair on nitrogen", "pi bond on oxygen", "absence of electrons", "metallic bonding"],
+      ["primary amine", "contains one alkyl or aryl group attached to nitrogen", "two alkyl groups", "three alkyl groups", "no alkyl group"],
+      ["carbylamine test", "is given by primary amines", "secondary amines", "tertiary amines", "amides only"],
+      ["aniline", "is an aromatic amine", "aliphatic alcohol", "ketone", "ether"],
+    ],
+  },
+  {
+    slug: "aniline",
+    title: "Aniline",
+    branch: "Organic Chemistry",
+    facts: [
+      ["aniline", "is less basic than methylamine", "more basic than methylamine", "neutral like benzene", "strong acid"],
+      ["diazotization", "converts aniline into benzene diazonium chloride at low temperature", "aniline into phenol directly at room temperature", "benzene into aniline", "amine into amide"],
+      ["bromination of aniline", "gives 2,4,6-tribromoaniline in water", "nitrobenzene", "benzoic acid", "benzaldehyde"],
+      ["acetylation", "protects the amino group in aniline", "destroys benzene ring", "forms alcohol", "forms ether only"],
+      ["azo dye", "is formed by coupling diazonium salt with phenol or aniline", "oxidation of alkane", "reduction of ester", "polymerization of ethene"],
+    ],
+  },
+  {
+    slug: "ether",
+    title: "Ethers",
+    branch: "Organic Chemistry",
+    facts: [
+      ["ether", "has R-O-R functional group", "R-COOH", "R-CHO", "R-NH2"],
+      ["Williamson synthesis", "prepares ether from alkoxide and alkyl halide", "acid and base", "alkene and water", "aldehyde and hydrogen"],
+      ["diethyl ether", "is comparatively less reactive due to absence of active hydrogen", "strongly acidic", "highly ionic", "metallic"],
+      ["cleavage by HI", "breaks ether into alcohol and alkyl iodide", "forms ester only", "forms amide", "forms salt only"],
+      ["anisole", "is methoxybenzene", "ethoxyethane", "phenol", "benzaldehyde"],
+    ],
+  },
+  {
+    slug: "grignard",
+    title: "Grignard Reagent",
+    branch: "Organic Chemistry",
+    facts: [
+      ["Grignard reagent", "has general formula RMgX", "RX", "ROH", "RCOOH"],
+      ["dry ether", "is used as solvent for Grignard reagent", "water", "ethanol", "aqueous acid"],
+      ["Grignard reagent with formaldehyde", "gives primary alcohol after hydrolysis", "secondary alcohol", "tertiary alcohol", "carboxylic acid only"],
+      ["Grignard reagent", "is destroyed by moisture", "is stable in water", "requires sunlight", "is a weak acid"],
+      ["carbon dioxide reaction", "gives carboxylic acid after acidic hydrolysis", "amine", "ether", "alkane only"],
+    ],
+  },
+  {
+    slug: "nitro-compound",
+    title: "Nitro Compounds",
+    branch: "Organic Chemistry",
+    facts: [
+      ["nitro group", "is represented by -NO2", "-NH2", "-OH", "-CHO"],
+      ["reduction of nitrobenzene", "can produce aniline", "phenol", "toluene", "benzoic acid"],
+      ["nitration", "introduces nitro group using nitric acid and sulphuric acid", "removes nitro group", "adds chlorine only", "adds hydrogen only"],
+      ["nitroalkanes", "show acidic character due to alpha hydrogen", "lack of nitrogen", "metallic nature", "only ionic bonding"],
+      ["aromatic nitro compounds", "are deactivating and meta-directing", "activating ortho-para directing", "neutral directing", "strongly basic directing"],
+    ],
+  },
+  {
+    slug: "nitrobenzene",
+    title: "Nitrobenzene",
+    branch: "Organic Chemistry",
+    facts: [
+      ["nitrobenzene", "is obtained by nitration of benzene", "hydrolysis of benzene", "oxidation of phenol", "reduction of aniline"],
+      ["nitro group in nitrobenzene", "is meta directing", "ortho directing only", "para directing only", "no directing effect"],
+      ["reduction of nitrobenzene", "gives aniline under suitable conditions", "benzaldehyde", "benzoic acid", "phenol only"],
+      ["nitrobenzene", "is used in manufacture of aniline", "manufacture of sodium carbonate", "production of oxygen", "extraction of iron"],
+      ["mixed acid", "means concentrated nitric acid and concentrated sulphuric acid", "HCl and HNO3", "NaOH and HCl", "ethanol and water"],
+    ],
+  },
+  {
+    slug: "ionic-equilibrium",
+    title: "Ionic Equilibrium",
+    branch: "Physical Chemistry",
+    facts: [
+      ["pH", "is negative logarithm of hydrogen ion concentration", "positive logarithm of hydroxide ion", "mass by volume", "moles by mass"],
+      ["buffer solution", "resists change in pH on dilution or addition of small acid/base", "changes pH rapidly", "contains only water", "contains no ions"],
+      ["common ion effect", "suppresses ionization of a weak electrolyte", "increases ionization always", "removes ions completely", "causes combustion"],
+      ["solubility product", "is product of ionic concentrations in saturated solution", "sum of masses", "ratio of volumes", "product of gases only"],
+      ["acidic buffer", "contains weak acid and its salt with strong base", "strong acid only", "weak base only", "salt of strong acid only"],
+    ],
+  },
+  {
+    slug: "volumetric-analysis",
+    title: "Volumetric Analysis",
+    branch: "Physical Chemistry",
+    facts: [
+      ["standard solution", "has accurately known concentration", "unknown concentration", "no solute", "only solvent"],
+      ["end point", "is indicated by color change of indicator", "start of titration", "boiling point", "freezing point"],
+      ["molarity", "is moles of solute per litre of solution", "mass per kg solvent", "moles per kg solvent", "volume per mole"],
+      ["primary standard", "must be pure, stable and have high molar mass", "must be volatile", "must be hygroscopic", "must decompose quickly"],
+      ["phenolphthalein", "is commonly used in acid-base titration", "redox only", "precipitation only", "complexometric only"],
+    ],
+  },
+  {
+    slug: "transition-revision",
+    title: "Transition Metals Revision",
+    branch: "Inorganic Chemistry",
+    facts: [
+      ["lanthanoid contraction", "is due to poor shielding by 4f electrons", "excellent shielding by s electrons", "loss of protons", "increase of neutrons only"],
+      ["coordination number", "is number of donor atoms attached to central metal ion", "charge on ligand", "mass number", "atomic number"],
+      ["ligand", "donates electron pair to central metal ion", "accepts proton only", "removes neutron", "forms only covalent gas"],
+      ["oxidation state", "represents apparent charge on an atom in compound", "atomic mass", "molecular mass", "density"],
+      ["d-block elements", "have differentiating electron entering d-subshell", "s-subshell", "p-subshell", "f-subshell only"],
+    ],
+  },
+];
+
+const createNebChemistryQuestionBank = () => {
+  const quizzes: SeedQuiz[] = nebChemistryChapters.map((chapter) => ({
+    id: `neb12-${chapter.slug}`,
+    topic: `Chemistry Class 12 NEB - ${chapter.title}`,
+    type: "free",
+  }));
+  const stems = [
+    "In Class 12 NEB Chemistry, which statement about {term} is correct?",
+    "Choose the best answer for {term} from {chapter}.",
+    "Which option correctly explains {term}?",
+    "For board-style preparation, {term} is best described as which of the following?",
+    "Identify the correct concept related to {term}.",
+  ];
+  const questions: SeedQuestion[] = [];
+
+  nebChemistryChapters.forEach((chapter, chapterIndex) => {
+    for (let round = 0; round < 67; round += 1) {
+      const fact = chapter.facts[round % chapter.facts.length];
+      const stem = stems[(round + chapterIndex) % stems.length];
+      const correctPosition = (round + chapterIndex) % 4;
+      const distractors = fact.slice(2);
+      const options = [...distractors];
+      options.splice(correctPosition, 0, fact[1]);
+      questions.push({
+        id: `neb12-${chapter.slug}-q${String(round + 1).padStart(3, "0")}`,
+        quiz_id: `neb12-${chapter.slug}`,
+        text: `${stem.replace("{term}", fact[0]).replace("{chapter}", chapter.title)} (${chapter.branch}, set ${round + 1})`,
+        options,
+        correctAnswer: correctPosition,
+        explanation: `${fact[0]} ${fact[1]}. This is a high-frequency NEB-style concept from ${chapter.title}, so focus on the definition, key reagent/property, and common board wording.`,
+      });
+    }
+  });
+
+  return { quizzes, questions };
+};
 
 const seedSliders: SeedSlider[] = [
   {
@@ -487,6 +817,60 @@ const seedRowsIfEmpty = async (
   }
 };
 
+const upsertRows = async (
+  client: Pool | PoolClient,
+  table: string,
+  rows: Record<string, unknown>[],
+) => {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const columns = Object.keys(rows[0]);
+  const quotedColumns = columns.map((column) => `"${column}"`);
+  const updateColumns = columns.filter((column) => column !== "id");
+  const updates = updateColumns.map((column) => `"${column}" = EXCLUDED."${column}"`);
+
+  for (const row of rows) {
+    const values = columns.map((column) => row[column] ?? null);
+    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
+    await client.query(
+      `INSERT INTO "${table}" (${quotedColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT ("id") DO UPDATE SET ${updates.join(", ")}`,
+      values,
+    );
+  }
+};
+
+const upsertRowsInBatches = async (
+  client: Pool | PoolClient,
+  table: string,
+  rows: Record<string, unknown>[],
+  batchSize = 100,
+) => {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const columns = Object.keys(rows[0]);
+  const quotedColumns = columns.map((column) => `"${column}"`);
+  const updateColumns = columns.filter((column) => column !== "id");
+  const updates = updateColumns.map((column) => `"${column}" = EXCLUDED."${column}"`);
+
+  for (let start = 0; start < rows.length; start += batchSize) {
+    const batch = rows.slice(start, start + batchSize);
+    const values = batch.flatMap((row) => columns.map((column) => row[column] ?? null));
+    const rowPlaceholders = batch.map((_, rowIndex) => {
+      const offset = rowIndex * columns.length;
+      const placeholders = columns.map((__, columnIndex) => `$${offset + columnIndex + 1}`);
+      return `(${placeholders.join(", ")})`;
+    });
+    await client.query(
+      `INSERT INTO "${table}" (${quotedColumns.join(", ")}) VALUES ${rowPlaceholders.join(", ")} ON CONFLICT ("id") DO UPDATE SET ${updates.join(", ")}`,
+      values,
+    );
+  }
+};
+
 const createSchema = async (client: Pool | PoolClient) => {
   await client.query(`
     CREATE TABLE IF NOT EXISTS courses (
@@ -582,14 +966,28 @@ const createSchema = async (client: Pool | PoolClient) => {
 };
 
 const seedDatabase = async (client: Pool | PoolClient) => {
+  const nebQuestionBank = createNebChemistryQuestionBank();
   await seedRowsIfEmpty(client, "courses", seedCourses);
   await seedRowsIfEmpty(client, "lessons", seedLessons);
   await seedRowsIfEmpty(client, "notes", seedNotes);
+  await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
+  await client.query(`DELETE FROM "notes" WHERE "id" LIKE 'drive-folder-%'`);
+  await upsertRows(client, "notes", driveClass12Notes);
   await seedRowsIfEmpty(client, "quizzes", seedQuizzes);
+  await upsertRows(client, "quizzes", nebQuestionBank.quizzes);
   await seedRowsIfEmpty(
     client,
     "questions",
     seedQuestions.map((question) => ({
+      ...question,
+      options: JSON.stringify(question.options),
+      image_url: question.image_url || "",
+    })),
+  );
+  await upsertRowsInBatches(
+    client,
+    "questions",
+    nebQuestionBank.questions.map((question) => ({
       ...question,
       options: JSON.stringify(question.options),
       image_url: question.image_url || "",
