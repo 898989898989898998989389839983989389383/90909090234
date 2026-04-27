@@ -518,7 +518,7 @@ export const createApiApp = async () => {
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     const scriptSrc = process.env.NODE_ENV === "production" ? "script-src 'self'" : "script-src 'self' 'unsafe-inline'";
-    res.setHeader("Content-Security-Policy", `default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src 'self' https: ws:; frame-src https://www.youtube.com https://youtube.com https://youtu.be; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`);
+    res.setHeader("Content-Security-Policy", `default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src 'self' https: ws:; frame-src https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://youtu.be; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`);
     next();
   });
   app.use(express.json({ limit: "12mb" }));
