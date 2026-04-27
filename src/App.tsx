@@ -1904,8 +1904,8 @@ const CoursesScreen = ({
                   <p className="text-xs text-gray-500">{course.lessons}+ Video Lessons & Notes</p>
                   {course.type === 'premium' && (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-primary font-bold">₹{course.price}</span>
-                      <span className="text-gray-400 text-[10px] line-through">₹{course.oldPrice}</span>
+                      <span className="text-primary font-bold">Rs {course.price} Only</span>
+                      <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>
                     </div>
                   )}
                 </div>

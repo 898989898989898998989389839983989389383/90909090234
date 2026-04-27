@@ -74,11 +74,11 @@ type SeedSlider = {
 const seedCourses: SeedCourse[] = [
   {
     id: "5",
-    title: "NEET/JEE Chemistry: Organic Chemistry",
+    title: "NEB Chemistry: Organic Chemistry",
     lessons: 120,
     image: "https://images.unsplash.com/photo-1532187875605-1ef6c237ddc4?auto=format&fit=crop&w=800&q=80",
-    price: 4999,
-    oldPrice: 14999,
+    price: 100,
+    oldPrice: 4999,
     type: "premium",
     category: "Chemistry",
   },
@@ -968,6 +968,13 @@ const createSchema = async (client: Pool | PoolClient) => {
 const seedDatabase = async (client: Pool | PoolClient) => {
   const nebQuestionBank = createNebChemistryQuestionBank();
   await seedRowsIfEmpty(client, "courses", seedCourses);
+  const nebCourse = seedCourses.find((course) => course.id === "5");
+  if (nebCourse) {
+    await client.query(
+      `UPDATE "courses" SET "title" = $1, "price" = $2, "oldPrice" = $3, "category" = $4 WHERE "id" = $5`,
+      [nebCourse.title, nebCourse.price, nebCourse.oldPrice, nebCourse.category, nebCourse.id],
+    );
+  }
   await seedRowsIfEmpty(client, "lessons", seedLessons);
   await seedRowsIfEmpty(client, "notes", seedNotes);
   await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
