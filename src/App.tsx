@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   BookOpen, 
@@ -5701,7 +5701,13 @@ export default function App() {
   const isManagementRoute = isAdminRoute || isSuperAdminRoute;
   const cachedAppData = getCachedAppData();
   const cachedAdminUsers = getCachedAdminUsers();
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreenState] = useState<Screen>('home');
+  const screenRef = useRef<Screen>('home');
+  const historyReadyRef = useRef(false);
+  const restoringHistoryRef = useRef(false);
+  const setScreen = (nextScreen: Screen) => {
+    setScreenState((currentScreen) => currentScreen === nextScreen ? currentScreen : nextScreen);
+  };
   const [sliders, setSliders] = useState<SliderItem[]>(normalizeSliders(cachedAppData?.sliders));
   const [courses, setCourses] = useState<Course[]>(filterChemistryAppData({
     courses: cachedAppData?.courses || [],
@@ -5814,6 +5820,55 @@ export default function App() {
   useEffect(() => {
     fetchAppData();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) {
+      return;
+    }
+
+    const state = { rbsAcademyScreen: screen };
+    if (!historyReadyRef.current) {
+      window.history.replaceState(state, '', window.location.href);
+      historyReadyRef.current = true;
+      screenRef.current = screen;
+      return;
+    }
+
+    if (restoringHistoryRef.current) {
+      restoringHistoryRef.current = false;
+      screenRef.current = screen;
+      return;
+    }
+
+    if (screenRef.current !== screen) {
+      window.history.pushState(state, '', window.location.href);
+      screenRef.current = screen;
+    }
+  }, [screen, isManagementRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) {
+      return;
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const nextScreen = (event.state as { rbsAcademyScreen?: Screen } | null)?.rbsAcademyScreen;
+      if (nextScreen) {
+        restoringHistoryRef.current = true;
+        setScreenState(nextScreen);
+        return;
+      }
+
+      if (screenRef.current !== 'home') {
+        restoringHistoryRef.current = true;
+        window.history.replaceState({ rbsAcademyScreen: 'home' }, '', window.location.href);
+        setScreenState('home');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isManagementRoute]);
 
   useEffect(() => {
     if (!loading) {
