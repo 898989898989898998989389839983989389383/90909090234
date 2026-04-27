@@ -550,6 +550,8 @@ const fullChemistryCoursePlaylistLessons: Lesson[] = [
   },
 ];
 
+const dummyFullChemistryLessonIds = new Set(['l6', 'l7', 'l8']);
+
 const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((course) => {
   const isFullChemistryCourse =
     String(course.id) === '7' ||
@@ -559,7 +561,9 @@ const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((cou
     return course;
   }
 
-  const currentLessons = Array.isArray(course.lessonList) ? course.lessonList : [];
+  const currentLessons = Array.isArray(course.lessonList)
+    ? course.lessonList.filter((lesson) => !dummyFullChemistryLessonIds.has(String(lesson.id)))
+    : [];
   const lessonMap = new Map<string, Lesson>();
   [...currentLessons, ...fullChemistryCoursePlaylistLessons].forEach((lesson) => {
     lessonMap.set(String(lesson.id), { ...lesson, course_id: String(course.id || '7') });
@@ -568,7 +572,7 @@ const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((cou
 
   return {
     ...course,
-    lessons: Math.max(Number(course.lessons || 0), lessonList.length),
+    lessons: lessonList.length,
     lessonList,
   };
 });
@@ -1117,7 +1121,7 @@ const mergeQuizzes = (apiQuizzes: Quiz[]): Quiz[] => {
 const isEmbeddableVideoUrl = (url?: string) => {
   if (!url) return false;
 
-  return /(youtube\.com\/embed|youtube\.com\/watch\?v=|youtu\.be\/|player\.vimeo\.com\/video\/|vimeo\.com\/)/i.test(url);
+  return /(youtube(-nocookie)?\.com\/embed|youtube\.com\/watch\?v=|youtu\.be\/|player\.vimeo\.com\/video\/|vimeo\.com\/)/i.test(url);
 };
 
 const appendQueryParams = (baseUrl: string, params: Record<string, string>) => {

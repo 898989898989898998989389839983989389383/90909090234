@@ -85,7 +85,7 @@ const seedCourses: SeedCourse[] = [
   {
     id: "7",
     title: "Full Chemistry Course",
-    lessons: 13,
+    lessons: 10,
     image: "https://images.unsplash.com/photo-1532634993-15f421e42ec0?auto=format&fit=crop&w=800&q=80",
     price: 0,
     oldPrice: 0,
@@ -1077,6 +1077,7 @@ const seedDatabase = async (client: Pool | PoolClient) => {
     );
   }
   await seedRowsIfEmpty(client, "lessons", seedLessons);
+  await client.query(`DELETE FROM "lessons" WHERE "id" IN ('l6', 'l7', 'l8') AND "course_id" = '7'`);
   await upsertRows(client, "lessons", fullChemistryCoursePlaylistLessons);
   await seedRowsIfEmpty(client, "notes", seedNotes);
   await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
