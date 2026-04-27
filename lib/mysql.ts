@@ -85,7 +85,7 @@ const seedCourses: SeedCourse[] = [
   {
     id: "7",
     title: "Full Chemistry Course",
-    lessons: 36,
+    lessons: 13,
     image: "https://images.unsplash.com/photo-1532634993-15f421e42ec0?auto=format&fit=crop&w=800&q=80",
     price: 0,
     oldPrice: 0,
@@ -131,6 +131,99 @@ const seedCourses: SeedCourse[] = [
     oldPrice: 5999,
     type: "premium",
     category: "Chemistry",
+  },
+];
+
+const fullChemistryCoursePlaylistLessons: SeedLesson[] = [
+  {
+    id: "playlist-ygfWkUUe_mw",
+    course_id: "7",
+    title: "Prepare smarter for NEB Chemistry with RBS Sir!",
+    duration: "57:30",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/ygfWkUUe_mw",
+  },
+  {
+    id: "playlist-ctvAG2m0eck",
+    course_id: "7",
+    title: "Prepare smarter for NEB Chemistry with RBS Sir!",
+    duration: "34:41",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/ctvAG2m0eck",
+  },
+  {
+    id: "playlist-dJN_zde16e0",
+    course_id: "7",
+    title: "Prepare smarter for NEB Chemistry with RBS Sir!",
+    duration: "56:25",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/dJN_zde16e0",
+  },
+  {
+    id: "playlist-Go11beHIcDc",
+    course_id: "7",
+    title: "RBS sir Chemistry important questions solving for NEB students",
+    duration: "56:10",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/Go11beHIcDc",
+  },
+  {
+    id: "playlist-M-BNETidn8o",
+    course_id: "7",
+    title: "Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS",
+    duration: "1:02:22",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/M-BNETidn8o",
+  },
+  {
+    id: "playlist-l8f4e1_tWhE",
+    course_id: "7",
+    title: "First Part Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS |",
+    duration: "22:00",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/l8f4e1_tWhE",
+  },
+  {
+    id: "playlist-HOomRqoQi6g",
+    course_id: "7",
+    title: "Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS |Saral Shikshya Academy",
+    duration: "1:16:08",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/HOomRqoQi6g",
+  },
+  {
+    id: "playlist-fgJAyaWlUT8",
+    course_id: "7",
+    title: "Chemistry Class | Ravi Bhushan Sharma",
+    duration: "1:06:19",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/fgJAyaWlUT8",
+  },
+  {
+    id: "playlist-zE0JXXvbhP4",
+    course_id: "7",
+    title: "Chemistry Class | Ravi Bhushan Sharma",
+    duration: "1:12:21",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/zE0JXXvbhP4",
+  },
+  {
+    id: "playlist-hl2Q3Rhlq_0",
+    course_id: "7",
+    title: "Aldehydes, Ketones and Carboxylic Acid | Grade 12 | NEB | Saral Shikshya",
+    duration: "5:40",
+    note_content: "NEB Chemistry playlist lesson from Saral Shikshya Academy.",
+    note_url: "",
+    video_url: "https://www.youtube.com/embed/hl2Q3Rhlq_0",
   },
 ];
 
@@ -270,6 +363,7 @@ const seedLessons: SeedLesson[] = [
     note_url: "",
     video_url: "https://www.youtube.com/embed/XVn7C8wF8Yw",
   },
+  ...fullChemistryCoursePlaylistLessons,
 ];
 
 const seedNotes: SeedNote[] = [];
@@ -975,7 +1069,15 @@ const seedDatabase = async (client: Pool | PoolClient) => {
       [nebCourse.title, nebCourse.price, nebCourse.oldPrice, nebCourse.category, nebCourse.id],
     );
   }
+  const fullChemistryCourse = seedCourses.find((course) => course.id === "7");
+  if (fullChemistryCourse) {
+    await client.query(
+      `UPDATE "courses" SET "lessons" = $1 WHERE "id" = $2`,
+      [fullChemistryCourse.lessons, fullChemistryCourse.id],
+    );
+  }
   await seedRowsIfEmpty(client, "lessons", seedLessons);
+  await upsertRows(client, "lessons", fullChemistryCoursePlaylistLessons);
   await seedRowsIfEmpty(client, "notes", seedNotes);
   await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
   await client.query(`DELETE FROM "notes" WHERE "id" LIKE 'drive-folder-%'`);
