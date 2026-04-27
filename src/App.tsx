@@ -457,12 +457,128 @@ const isChemistryCourse = (course: Course) => String(course.category || '').toLo
 const isChemistryNote = (note: Note) => String(note.category || '').toLowerCase().includes('chem');
 const isChemistryQuiz = (quiz: Quiz) => String(quiz.topic || '').toLowerCase().includes('chem');
 
+const fullChemistryCoursePlaylistLessons: Lesson[] = [
+  {
+    id: 'playlist-ygfWkUUe_mw',
+    course_id: '7',
+    title: 'Prepare smarter for NEB Chemistry with RBS Sir!',
+    duration: '57:30',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/ygfWkUUe_mw',
+  },
+  {
+    id: 'playlist-ctvAG2m0eck',
+    course_id: '7',
+    title: 'Prepare smarter for NEB Chemistry with RBS Sir!',
+    duration: '34:41',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/ctvAG2m0eck',
+  },
+  {
+    id: 'playlist-dJN_zde16e0',
+    course_id: '7',
+    title: 'Prepare smarter for NEB Chemistry with RBS Sir!',
+    duration: '56:25',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/dJN_zde16e0',
+  },
+  {
+    id: 'playlist-Go11beHIcDc',
+    course_id: '7',
+    title: 'RBS sir Chemistry important questions solving for NEB students',
+    duration: '56:10',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/Go11beHIcDc',
+  },
+  {
+    id: 'playlist-M-BNETidn8o',
+    course_id: '7',
+    title: 'Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS',
+    duration: '1:02:22',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/M-BNETidn8o',
+  },
+  {
+    id: 'playlist-l8f4e1_tWhE',
+    course_id: '7',
+    title: 'First Part Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS |',
+    duration: '22:00',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/l8f4e1_tWhE',
+  },
+  {
+    id: 'playlist-HOomRqoQi6g',
+    course_id: '7',
+    title: 'Chemistry NEB Grade 12 Revision 2026 |Important Questions & Numerical | RBS |Saral Shikshya Academy',
+    duration: '1:16:08',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/HOomRqoQi6g',
+  },
+  {
+    id: 'playlist-fgJAyaWlUT8',
+    course_id: '7',
+    title: 'Chemistry Class | Ravi Bhushan Sharma',
+    duration: '1:06:19',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/fgJAyaWlUT8',
+  },
+  {
+    id: 'playlist-zE0JXXvbhP4',
+    course_id: '7',
+    title: 'Chemistry Class | Ravi Bhushan Sharma',
+    duration: '1:12:21',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/zE0JXXvbhP4',
+  },
+  {
+    id: 'playlist-hl2Q3Rhlq_0',
+    course_id: '7',
+    title: 'Aldehydes, Ketones and Carboxylic Acid | Grade 12 | NEB | Saral Shikshya',
+    duration: '5:40',
+    note_content: 'NEB Chemistry playlist lesson from Saral Shikshya Academy.',
+    note_url: '',
+    video_url: 'https://www.youtube.com/embed/hl2Q3Rhlq_0',
+  },
+];
+
+const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((course) => {
+  const isFullChemistryCourse =
+    String(course.id) === '7' ||
+    String(course.title || '').toLowerCase().includes('full chemistry course');
+
+  if (!isFullChemistryCourse) {
+    return course;
+  }
+
+  const currentLessons = Array.isArray(course.lessonList) ? course.lessonList : [];
+  const lessonMap = new Map<string, Lesson>();
+  [...currentLessons, ...fullChemistryCoursePlaylistLessons].forEach((lesson) => {
+    lessonMap.set(String(lesson.id), { ...lesson, course_id: String(course.id || '7') });
+  });
+  const lessonList = Array.from(lessonMap.values());
+
+  return {
+    ...course,
+    lessons: Math.max(Number(course.lessons || 0), lessonList.length),
+    lessonList,
+  };
+});
+
 const filterChemistryAppData = (payload: {
   courses: Course[];
   notes: Note[];
   quizzes: Quiz[];
 }) => ({
-  courses: (payload.courses || []).filter(isChemistryCourse),
+  courses: withFullChemistryPlaylistLessons((payload.courses || []).filter(isChemistryCourse)),
   notes: (payload.notes || []).filter(isChemistryNote),
   quizzes: (payload.quizzes || []).filter(isChemistryQuiz),
 });
