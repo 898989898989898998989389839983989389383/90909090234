@@ -42,7 +42,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'subscriptions' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details';
 
 interface Lesson {
   id: string;
@@ -1815,40 +1815,6 @@ const HomeScreen = ({
         </div>
       </a>
 
-      {/* My Premium Courses (Unlocked) */}
-      {courses.filter(c => c.type === 'premium' && unlockedCourseIds.includes(c.id)).length > 0 && (
-        <div className="mt-6 mb-4">
-          <SectionHeader title="My Premium Courses" />
-          <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-            {courses
-              .filter(c => c.type === 'premium' && unlockedCourseIds.includes(c.id))
-              .map(course => (
-                <button 
-                  key={course.id} 
-                  onClick={() => {
-                    onCourseSelect(course);
-                    setScreen('course-details');
-                  }}
-                  className="min-w-[280px] bg-white rounded-2xl overflow-hidden border border-primary/20 shadow-md shadow-primary/5 text-left flex items-center p-3 gap-3"
-                >
-                  <img src={course.image} alt={course.title} className="w-20 h-20 rounded-xl object-cover" referrerPolicy="no-referrer" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1 mb-1">
-                      <ShieldCheck size={12} className="text-primary" />
-                      <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Unlocked</span>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-800 line-clamp-1">{course.title}</h3>
-                    <p className="text-[10px] text-gray-500 mt-1">Continue Learning</p>
-                    <div className="w-full h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                      <div className="w-1/3 h-full bg-primary"></div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
-
       {/* Main Actions */}
       <div className="grid grid-cols-2 gap-4 mb-8">
         <button onClick={() => onOpenCoursesTab('free')} className="card-gradient-green p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-green-100">
@@ -1856,13 +1822,6 @@ const HomeScreen = ({
           <div>
             <p className="font-bold">Free Chemistry</p>
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Start Learning</span>
-          </div>
-        </button>
-        <button onClick={() => onOpenCoursesTab('premium')} className="card-gradient-orange p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-orange-100">
-          <Bell size={24} className="mb-2" />
-          <div>
-            <p className="font-bold">Premium Chemistry</p>
-            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Upgrade Now</span>
           </div>
         </button>
         <button onClick={() => setScreen('notes')} className="card-gradient-blue p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-blue-100">
@@ -1884,7 +1843,7 @@ const HomeScreen = ({
       {/* Popular Courses */}
       <SectionHeader title="Chemistry Courses" onSeeAll={() => setScreen('courses')} />
       <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-        {courses.slice(0, 4).map(course => {
+        {courses.filter(course => course.type === 'free').slice(0, 4).map(course => {
           const isUnlocked = course.type === 'free' || unlockedCourseIds.includes(course.id);
           return (
             <button 
@@ -1947,15 +1906,15 @@ const CoursesScreen = ({
   onBuyClick: (course: Course) => void,
   onCourseSelect: (course: Course) => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'free' | 'premium'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    setActiveTab(initialTab);
+    setActiveTab('free');
   }, [initialTab]);
 
   const filteredCourses = courses.filter(c => 
-    c.type === activeTab && 
+    c.type === 'free' && 
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -1988,12 +1947,6 @@ const CoursesScreen = ({
             className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
           >
             Free Courses
-          </button>
-          <button 
-            onClick={() => setActiveTab('premium')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
-          >
-            Premium Courses
           </button>
         </div>
       </div>
@@ -2916,22 +2869,19 @@ const ProfileScreen = ({
   onOpenSettings,
   onOpenProfileInfo,
   onOpenMyCourses,
-  onOpenOfflineNotes,
-  onOpenSubscriptions
+  onOpenOfflineNotes
 }: {
   user: any,
   onLogout: () => void,
   onOpenSettings: () => void,
   onOpenProfileInfo: () => void,
   onOpenMyCourses: () => void,
-  onOpenOfflineNotes: () => void,
-  onOpenSubscriptions: () => void
+  onOpenOfflineNotes: () => void
 }) => {
   const menuItems = [
     { icon: <BookOpen size={20} />, label: 'My Courses' },
     { icon: <HelpCircle size={20} />, label: 'Quiz Results' },
     { icon: <Download size={20} />, label: 'Download Note Offline' },
-    { icon: <Bell size={20} />, label: 'Subscriptions' },
     { icon: <Settings size={20} />, label: 'Settings' },
   ];
 
@@ -2967,7 +2917,6 @@ const ProfileScreen = ({
               onClick={() => {
                 if (item.label === 'My Courses') onOpenMyCourses();
                 if (item.label === 'Download Note Offline') onOpenOfflineNotes();
-                if (item.label === 'Subscriptions') onOpenSubscriptions();
                 if (item.label === 'Settings') onOpenSettings();
               }}
               className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${idx !== menuItems.length - 1 ? 'border-b border-gray-50' : ''}`}
@@ -3539,20 +3488,18 @@ const MyCoursesScreen = ({
   unlockedCourseIds: string[],
   onCourseSelect: (course: Course) => void
 }) => {
-  const subscribedCourses = courses.filter(
-    (course) => course.type === 'premium' && unlockedCourseIds.includes(course.id)
-  );
+  const visibleCourses = courses.filter((course) => course.type === 'free');
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
       <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] rounded-[28px] p-5 text-white shadow-xl shadow-blue-100">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Premium Learning</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Chemistry Learning</p>
         <h2 className="text-2xl font-bold">My Courses</h2>
-        <p className="text-sm text-white/75 mt-2">This page shows only premium courses currently unlocked for your account.</p>
+        <p className="text-sm text-white/75 mt-2">Continue learning with the currently available chemistry courses.</p>
       </div>
 
       <div className="mt-5 space-y-4">
-        {subscribedCourses.length ? subscribedCourses.map((course) => (
+        {visibleCourses.length ? visibleCourses.map((course) => (
           <button
             key={course.id}
             onClick={() => onCourseSelect(course)}
@@ -3563,75 +3510,17 @@ const MyCoursesScreen = ({
               <div className="text-base font-bold text-gray-800">{course.title}</div>
               <div className="text-sm text-gray-500 mt-1">{course.category}</div>
               <div className="mt-2 inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-                Premium Access Active
+                Available Now
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-300" />
           </button>
         )) : (
           <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center">
-            <div className="text-base font-bold text-gray-800">No premium course subscription yet</div>
-            <div className="text-sm text-gray-500 mt-2">Unlock a premium course to see it here automatically.</div>
+            <div className="text-base font-bold text-gray-800">No courses available yet</div>
+            <div className="text-sm text-gray-500 mt-2">Available courses will appear here automatically.</div>
           </div>
         )}
-      </div>
-    </motion.div>
-  );
-};
-
-const SubscriptionScreen = ({
-  courses,
-  unlockedCourseIds
-}: {
-  courses: Course[],
-  unlockedCourseIds: string[]
-}) => {
-  const subscribedCourses = courses.filter(
-    (course) => course.type === 'premium' && unlockedCourseIds.includes(course.id)
-  );
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
-      <div className="bg-white rounded-[28px] border border-gray-100 shadow-xl shadow-slate-200/60 p-5">
-        <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] rounded-[24px] p-5 text-white">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Account</p>
-          <h2 className="text-2xl font-bold">Subscriptions</h2>
-          <p className="text-sm text-white/75 mt-2">Your active premium course subscriptions are recorded here.</p>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-blue-50 p-4">
-            <div className="text-xs font-bold uppercase tracking-wide text-primary">Active Plans</div>
-            <div className="mt-2 text-3xl font-black text-slate-900">{subscribedCourses.length}</div>
-          </div>
-          <div className="rounded-2xl bg-green-50 p-4">
-            <div className="text-xs font-bold uppercase tracking-wide text-green-700">Status</div>
-            <div className="mt-2 text-lg font-black text-slate-900">{subscribedCourses.length ? 'Active' : 'Inactive'}</div>
-          </div>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {subscribedCourses.length ? subscribedCourses.map((course) => (
-            <div key={course.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-base font-bold text-gray-800">{course.title}</div>
-                  <div className="text-sm text-gray-500 mt-1">{course.category}</div>
-                </div>
-                <div className="rounded-full bg-green-100 px-3 py-1 text-[11px] font-bold text-green-700">
-                  Active
-                </div>
-              </div>
-              <div className="mt-3 text-xs text-gray-500">
-                Premium access is available for this course in your account.
-              </div>
-            </div>
-          )) : (
-            <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-500">
-              No subscription record yet. Premium access will appear here automatically after unlock.
-            </div>
-          )}
-        </div>
       </div>
     </motion.div>
   );
@@ -6224,7 +6113,6 @@ export default function App() {
           onOpenProfileInfo={() => setScreen('profile-edit')}
           onOpenMyCourses={() => setScreen('my-courses')}
           onOpenOfflineNotes={() => setScreen('offline-notes')}
-          onOpenSubscriptions={() => setScreen('subscriptions')}
         />
       );
       case 'settings': return (
@@ -6246,12 +6134,6 @@ export default function App() {
             setSelectedCourse(course);
             setScreen('course-details');
           }}
-        />
-      );
-      case 'subscriptions': return (
-        <SubscriptionScreen
-          courses={courses}
-          unlockedCourseIds={unlockedCourseIds}
         />
       );
       case 'offline-notes': return <OfflineNotesScreen />;
@@ -6348,7 +6230,6 @@ export default function App() {
       case 'about-developer': return 'About Developer';
       case 'privacy-policy': return 'Privacy Policy';
       case 'my-courses': return 'My Courses';
-      case 'subscriptions': return 'Subscriptions';
       case 'offline-notes': return 'Download Note Offline';
       case 'video-player': return 'Video Player';
       case 'course-details': return 'Course Details';
@@ -6370,7 +6251,6 @@ export default function App() {
       case 'privacy-policy':
         return 'home';
       case 'my-courses':
-      case 'subscriptions':
       case 'offline-notes':
         return 'profile';
       default:
