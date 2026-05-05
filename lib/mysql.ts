@@ -87,9 +87,9 @@ const seedCourses: SeedCourse[] = [
     title: "Full Chemistry Course",
     lessons: 10,
     image: "https://images.unsplash.com/photo-1532634993-15f421e42ec0?auto=format&fit=crop&w=800&q=80",
-    price: 0,
-    oldPrice: 0,
-    type: "free",
+    price: 999,
+    oldPrice: 2999,
+    type: "premium",
     category: "Chemistry",
   },
   {
@@ -107,9 +107,9 @@ const seedCourses: SeedCourse[] = [
     title: "Chemistry Crash Course 30 Days",
     lessons: 3,
     image: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=80",
-    price: 0,
-    oldPrice: 0,
-    type: "free",
+    price: 999,
+    oldPrice: 2999,
+    type: "premium",
     category: "Chemistry",
   },
   {
@@ -1065,17 +1065,18 @@ const seedDatabase = async (client: Pool | PoolClient) => {
   const nebCourse = seedCourses.find((course) => course.id === "5");
   if (nebCourse) {
     await client.query(
-      `UPDATE "courses" SET "title" = $1, "price" = $2, "oldPrice" = $3, "category" = $4 WHERE "id" = $5`,
-      [nebCourse.title, nebCourse.price, nebCourse.oldPrice, nebCourse.category, nebCourse.id],
+      `UPDATE "courses" SET "title" = $1, "price" = $2, "oldPrice" = $3, "type" = $4, "category" = $5 WHERE "id" = $6`,
+      [nebCourse.title, nebCourse.price, nebCourse.oldPrice, nebCourse.type, nebCourse.category, nebCourse.id],
     );
   }
   const fullChemistryCourse = seedCourses.find((course) => course.id === "7");
   if (fullChemistryCourse) {
     await client.query(
-      `UPDATE "courses" SET "lessons" = $1 WHERE "id" = $2`,
-      [fullChemistryCourse.lessons, fullChemistryCourse.id],
+      `UPDATE "courses" SET "lessons" = $1, "price" = $2, "oldPrice" = $3, "type" = $4 WHERE "id" = $5`,
+      [fullChemistryCourse.lessons, fullChemistryCourse.price, fullChemistryCourse.oldPrice, fullChemistryCourse.type, fullChemistryCourse.id],
     );
   }
+  await client.query(`UPDATE "courses" SET "type" = 'premium', "price" = CASE WHEN COALESCE("price", 0) <= 0 THEN 999 ELSE "price" END, "oldPrice" = CASE WHEN COALESCE("oldPrice", 0) <= COALESCE("price", 0) THEN GREATEST(COALESCE("price", 999) * 2, 2999) ELSE "oldPrice" END`);
   await seedRowsIfEmpty(client, "lessons", seedLessons);
   await client.query(`DELETE FROM "lessons" WHERE "id" IN ('l6', 'l7', 'l8') AND "course_id" = '7'`);
   await upsertRows(client, "lessons", fullChemistryCoursePlaylistLessons);

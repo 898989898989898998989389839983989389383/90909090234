@@ -457,6 +457,18 @@ const isChemistryCourse = (course: Course) => String(course.category || '').toLo
 const isChemistryNote = (note: Note) => String(note.category || '').toLowerCase().includes('chem');
 const isChemistryQuiz = (quiz: Quiz) => String(quiz.topic || '').toLowerCase().includes('chem');
 
+const makeCoursePremium = (course: Course): Course => {
+  const price = Number(course.price || 0);
+  const oldPrice = Number(course.oldPrice || 0);
+
+  return {
+    ...course,
+    type: 'premium',
+    price: price > 0 ? price : 999,
+    oldPrice: oldPrice > price ? oldPrice : Math.max((price > 0 ? price : 999) * 2, 2999),
+  };
+};
+
 const fullChemistryCoursePlaylistLessons: Lesson[] = [
   {
     id: 'playlist-ygfWkUUe_mw',
@@ -582,7 +594,7 @@ const filterChemistryAppData = (payload: {
   notes: Note[];
   quizzes: Quiz[];
 }) => ({
-  courses: withFullChemistryPlaylistLessons((payload.courses || []).filter(isChemistryCourse)),
+  courses: withFullChemistryPlaylistLessons((payload.courses || []).filter(isChemistryCourse)).map(makeCoursePremium),
   notes: (payload.notes || []).filter(isChemistryNote),
   quizzes: (payload.quizzes || []).filter(isChemistryQuiz),
 });
@@ -1793,7 +1805,6 @@ const HomeScreen = ({
     notes[0] ? `New note: ${notes[0].title}` : '',
     quizzes[0] ? `Quiz ready: ${quizzes[0].topic}` : '',
   ].filter(Boolean).slice(0, 4);
-  const freeCourses = courses.filter(course => course.type === 'free');
   const premiumCourses = courses.filter(course => course.type === 'premium');
 
   return (
@@ -1819,11 +1830,11 @@ const HomeScreen = ({
 
       {/* Main Actions */}
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <button onClick={() => onOpenCoursesTab('free')} className="card-gradient-green p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-green-100">
+        <button onClick={() => onOpenCoursesTab('premium')} className="card-gradient-green p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-green-100">
           <BookOpen size={24} className="mb-2" />
           <div>
-            <p className="font-bold">Free Chemistry</p>
-            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Start Learning</span>
+            <p className="font-bold">Chemistry Courses</p>
+            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Premium Catalog</span>
           </div>
         </button>
         <button onClick={() => onOpenCoursesTab('premium')} className="premium-action-card p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-amber-100">
@@ -1852,38 +1863,9 @@ const HomeScreen = ({
         </button>
       </div>
 
-      {/* Popular Courses */}
-      <SectionHeader title="Chemistry Courses" onSeeAll={() => setScreen('courses')} />
-      <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-        {freeCourses.slice(0, 4).map(course => {
-          const isUnlocked = course.type === 'free' || unlockedCourseIds.includes(course.id);
-          return (
-            <button 
-              key={course.id} 
-              onClick={() => {
-                onCourseSelect(course);
-                setScreen('course-details');
-              }}
-              className="min-w-[160px] bg-white rounded-xl overflow-hidden border border-gray-100 shadow-sm text-left relative"
-            >
-              <img src={course.image} alt={course.title} className="w-full h-24 object-cover" referrerPolicy="no-referrer" />
-              {!isUnlocked && (
-                <div className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full backdrop-blur-sm">
-                  <ShieldCheck size={12} />
-                </div>
-              )}
-              <div className="p-3">
-                <h3 className="text-sm font-bold text-gray-800 line-clamp-1">{course.title}</h3>
-                <p className="text-[10px] text-gray-500">{course.lessons}+ Video Lessons</p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
       {!!premiumCourses.length && (
-        <div className="mt-4">
-          <SectionHeader title="Premium Picks" onSeeAll={() => onOpenCoursesTab('premium')} />
+        <div>
+          <SectionHeader title="Premium Chemistry Courses" onSeeAll={() => onOpenCoursesTab('premium')} />
           <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
             {premiumCourses.slice(0, 4).map(course => {
               const isUnlocked = unlockedCourseIds.includes(course.id);
@@ -1954,14 +1936,14 @@ const CoursesScreen = ({
   onBuyClick: (course: Course) => void,
   onCourseSelect: (course: Course) => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
+  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('premium');
   const [searchQuery, setSearchQuery] = useState('');
   const freeCount = courses.filter(c => c.type === 'free').length;
   const premiumCount = courses.filter(c => c.type === 'premium').length;
 
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+    setActiveTab(initialTab === 'free' && freeCount === 0 ? 'premium' : initialTab);
+  }, [initialTab, freeCount]);
 
   const filteredCourses = courses.filter(c => 
     c.type === activeTab && 
@@ -1978,7 +1960,7 @@ const CoursesScreen = ({
         <div className={`mb-4 rounded-2xl p-4 text-white shadow-lg ${activeTab === 'premium' ? 'premium-course-hero shadow-amber-100' : 'bg-[linear-gradient(135deg,#0f8a45_0%,#075a35_100%)] shadow-green-100'}`}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Chemistry' : 'Free Chemistry'}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Chemistry' : 'Chemistry Courses'}</p>
               <h2 className="mt-1 text-xl font-black">{activeTab === 'premium' ? 'Unlock focused batches' : 'Start learning today'}</h2>
               <p className="mt-1 text-xs text-white/75">{activeTab === 'premium' ? `${premiumCount} premium courses with admin access code` : `${freeCount} free courses available now`}</p>
             </div>
@@ -2005,12 +1987,14 @@ const CoursesScreen = ({
 
         {/* Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-lg">
-          <button 
-            onClick={() => setActiveTab('free')}
-            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
-          >
-            Free ({freeCount})
-          </button>
+          {freeCount > 0 && (
+            <button 
+              onClick={() => setActiveTab('free')}
+              className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
+            >
+              Free ({freeCount})
+            </button>
+          )}
           <button 
             onClick={() => setActiveTab('premium')}
             className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500'}`}
@@ -2022,7 +2006,7 @@ const CoursesScreen = ({
 
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         {filteredCourses.map(course => {
-          const isUnlocked = course.type === 'free' || unlockedCourseIds.includes(course.id);
+          const isUnlocked = unlockedCourseIds.includes(course.id);
           
           return (
             <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${course.type === 'premium' ? 'border-amber-100' : 'border-gray-100'}`}>
@@ -3579,7 +3563,7 @@ const MyCoursesScreen = ({
   unlockedCourseIds: string[],
   onCourseSelect: (course: Course) => void
 }) => {
-  const visibleCourses = courses.filter((course) => course.type === 'free' || unlockedCourseIds.includes(course.id));
+  const visibleCourses = courses.filter((course) => unlockedCourseIds.includes(course.id));
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
@@ -6266,7 +6250,7 @@ export default function App() {
           onBack={() => setScreen('courses')}
           onStartLearning={() => {
             if (selectedCourse) {
-              const isUnlocked = selectedCourse.type === 'free' || unlockedCourseIds.includes(selectedCourse.id);
+              const isUnlocked = unlockedCourseIds.includes(selectedCourse.id);
               if (isUnlocked) {
                 setScreen('video-player');
               } else {
@@ -6287,7 +6271,7 @@ export default function App() {
             setSelectedQuizTopic(quiz || null);
             setScreen('quiz');
           }}
-          isUnlocked={!!selectedCourse && (selectedCourse.type === 'free' || unlockedCourseIds.includes(selectedCourse.id))}
+          isUnlocked={!!selectedCourse && unlockedCourseIds.includes(selectedCourse.id)}
         />
       );
       default: return (
