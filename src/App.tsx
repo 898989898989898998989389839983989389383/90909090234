@@ -5831,8 +5831,8 @@ const NoteViewerScreen = ({
 
 export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-  const isSuperAdminRoute = pathname === '/adminlogin/adminsachin';
-  const isAdminRoute = pathname === '/adminlogin';
+  const isSuperAdminRoute = pathname === '/adminlogin/adminsachin' || pathname === '/superadmin';
+  const isAdminRoute = pathname === '/adminlogin' || pathname === '/admin';
   const isManagementRoute = isAdminRoute || isSuperAdminRoute;
   const cachedAppData = getCachedAppData();
   const cachedAdminUsers = getCachedAdminUsers();

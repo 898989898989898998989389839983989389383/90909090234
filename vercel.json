@@ -11,7 +11,15 @@
       "destination": "/"
     },
     {
+      "source": "/admin",
+      "destination": "/"
+    },
+    {
       "source": "/adminlogin/adminsachin",
+      "destination": "/"
+    },
+    {
+      "source": "/superadmin",
       "destination": "/"
     }
   ]
