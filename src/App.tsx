@@ -4033,9 +4033,9 @@ const AdminPanelScreen = ({
     title: '',
     lessons: '0',
     image: '',
-    price: '0',
-    oldPrice: '0',
-    type: 'free',
+    price: '999',
+    oldPrice: '2999',
+    type: 'premium',
     category: 'Chemistry',
   });
   const [lessonForm, setLessonForm] = useState({
@@ -4207,6 +4207,23 @@ const AdminPanelScreen = ({
     `${users[1]?.name || 'Priya'}: Student access requests need approval.`,
   ];
   const isSuperAdmin = authSession.role === 'superadmin';
+  const adminControlCards: Array<{
+    id: typeof activeTab;
+    title: string;
+    description: string;
+    count: string;
+    tone: string;
+    icon: React.ReactNode;
+  }> = [
+    { id: 'course', title: 'Courses', description: 'Create, price, edit, and remove premium chemistry courses.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
+    { id: 'lesson', title: 'Videos', description: 'Attach video lessons, durations, notes, and resources to any course.', count: `${lessons.length} lessons`, tone: 'green', icon: <Play size={22} /> },
+    { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
+    { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
+    { id: 'note', title: 'Notes', description: 'Publish downloadable notes and organize study material categories.', count: `${notes.length} notes`, tone: 'slate', icon: <FileText size={22} /> },
+    { id: 'quiz', title: 'Quizzes', description: 'Create quiz sets and manage quiz visibility by topic.', count: `${quizzes.length} quizzes`, tone: 'rose', icon: <HelpCircle size={22} /> },
+    { id: 'question', title: 'Questions', description: 'Add MCQs, import JSON question banks, and review answers.', count: `${questions.length} questions`, tone: 'cyan', icon: <MessageSquare size={22} /> },
+    { id: 'user', title: 'Students', description: 'Search student records and check unlocked course access.', count: `${users.length} students`, tone: 'emerald', icon: <User size={22} /> },
+  ];
 
   useEffect(() => {
     if (sliderImageFile) {
@@ -4583,6 +4600,39 @@ const AdminPanelScreen = ({
                 <div className="admin-reference-kpi-note">{item.note}</div>
               </div>
             ))}
+          </div>
+
+          <div className="admin-control-center">
+            <div className="admin-control-center-head">
+              <div>
+                <p className="admin-control-eyebrow">Single Admin Control</p>
+                <h2>Manage everything from one page</h2>
+                <span>Courses, videos, notes, quizzes, students, sliders, and premium access stay one click away.</span>
+              </div>
+              <button type="button" onClick={onRefresh} className="admin-control-refresh">
+                <ShieldCheck size={18} />
+                Refresh Data
+              </button>
+            </div>
+
+            <div className="admin-control-grid">
+              {adminControlCards.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`admin-control-card admin-control-card--${item.tone}`}
+                >
+                  <span className="admin-control-icon">{item.icon}</span>
+                  <span className="admin-control-copy">
+                    <strong>{item.title}</strong>
+                    <em>{item.description}</em>
+                  </span>
+                  <span className="admin-control-count">{item.count}</span>
+                  <ChevronRight size={18} className="admin-control-arrow" />
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="admin-reference-grid">
@@ -5045,10 +5095,10 @@ const AdminPanelScreen = ({
               <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Thumbnail image URL" value={courseForm.image} onChange={(e) => setCourseForm({ ...courseForm, image: e.target.value })} />
               <div className="grid grid-cols-2 gap-3">
                 <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson count" value={courseForm.lessons} onChange={(e) => setCourseForm({ ...courseForm, lessons: e.target.value })} />
-                <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={courseForm.type} onChange={(e) => setCourseForm({ ...courseForm, type: e.target.value })}>
-                  <option value="free">Free</option>
-                  <option value="premium">Premium</option>
-                </select>
+                <div className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                  <span>Premium Course</span>
+                  <ShieldCheck size={18} />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Price" value={courseForm.price} onChange={(e) => setCourseForm({ ...courseForm, price: e.target.value })} />
@@ -5065,11 +5115,12 @@ const AdminPanelScreen = ({
                 onClick={() => submitAction(editingCourseId ? 'updateCourse' : 'createCourse', {
                   ...(editingCourseId ? { id: editingCourseId } : {}),
                   ...courseForm,
+                  type: 'premium',
                   lessons: Number(courseForm.lessons || 0),
                   price: Number(courseForm.price || 0),
                   oldPrice: Number(courseForm.oldPrice || 0),
                 }, () => {
-                  setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'Chemistry' });
+                  setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
                   setEditingCourseId('');
                 })}
                 className="w-full bg-primary text-white py-3 rounded-xl font-bold"
@@ -5079,7 +5130,7 @@ const AdminPanelScreen = ({
               {editingCourseId && (
                 <button onClick={() => {
                   setEditingCourseId('');
-                  setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'Chemistry' });
+                  setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
                 }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
                   Cancel Edit
                 </button>
@@ -5106,7 +5157,7 @@ const AdminPanelScreen = ({
                           image: course.image,
                           price: String(course.price || 0),
                           oldPrice: String(course.oldPrice || 0),
-                          type: course.type,
+                          type: 'premium',
                           category: course.category,
                         });
                         setActiveTab('course');
