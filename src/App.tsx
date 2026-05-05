@@ -4085,6 +4085,7 @@ const AdminPanelScreen = ({
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [accessStudentSearchQuery, setAccessStudentSearchQuery] = useState('');
   const [accessCourseSearchQuery, setAccessCourseSearchQuery] = useState('');
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <Home size={18} /> },
@@ -4224,6 +4225,13 @@ const AdminPanelScreen = ({
     { id: 'question', title: 'Questions', description: 'Add MCQs, import JSON question banks, and review answers.', count: `${questions.length} questions`, tone: 'cyan', icon: <MessageSquare size={22} /> },
     { id: 'user', title: 'Students', description: 'Search student records and check unlocked course access.', count: `${users.length} students`, tone: 'emerald', icon: <User size={22} /> },
   ];
+  const normalizedAdminSearch = adminSearchQuery.trim().toLowerCase();
+  const filteredAdminControlCards = adminControlCards.filter((item) => {
+    if (!normalizedAdminSearch) {
+      return true;
+    }
+    return [item.title, item.description, item.count].some((value) => value.toLowerCase().includes(normalizedAdminSearch));
+  });
 
   useEffect(() => {
     if (sliderImageFile) {
@@ -4567,7 +4575,19 @@ const AdminPanelScreen = ({
             <header className="admin-reference-topbar">
               <div className="admin-reference-search">
                 <Search size={22} />
-                <input type="text" placeholder="Search..." aria-label="Search admin dashboard" />
+                <input
+                  type="text"
+                  placeholder="Search admin tools..."
+                  aria-label="Search admin tools"
+                  value={adminSearchQuery}
+                  onChange={(e) => setAdminSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && filteredAdminControlCards[0]) {
+                      setActiveTab(filteredAdminControlCards[0].id);
+                      setAdminSearchQuery('');
+                    }
+                  }}
+                />
               </div>
               <div className="admin-reference-actions">
                 <button type="button" className="admin-bell-button" onClick={onRefresh} aria-label="Refresh dashboard">
@@ -4592,6 +4612,22 @@ const AdminPanelScreen = ({
 
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
+          <div className="admin-command-hero">
+            <div>
+              <p className="admin-control-eyebrow">RBS Academy Admin</p>
+              <h1>Control the full learning app from here.</h1>
+              <span>Use the cards below to manage premium courses, videos, notes, quizzes, students, sliders, and access codes.</span>
+            </div>
+            <div className="admin-command-actions">
+              <button type="button" onClick={() => setActiveTab('course')} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                Add Premium Course
+              </button>
+              <button type="button" onClick={() => setActiveTab('access')} className="admin-secondary-button px-5 py-3 text-sm font-bold">
+                Generate Access
+              </button>
+            </div>
+          </div>
+
           <div className="admin-reference-kpis">
             {dashboardStats.map((item) => (
               <div key={item.label} className={`admin-reference-kpi admin-reference-kpi--${item.tone}`}>
@@ -4616,7 +4652,7 @@ const AdminPanelScreen = ({
             </div>
 
             <div className="admin-control-grid">
-              {adminControlCards.map((item) => (
+              {filteredAdminControlCards.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -4632,157 +4668,63 @@ const AdminPanelScreen = ({
                   <ChevronRight size={18} className="admin-control-arrow" />
                 </button>
               ))}
+              {!filteredAdminControlCards.length && (
+                <div className="admin-empty-control">
+                  No admin tool matched "{adminSearchQuery}". Try course, access, quiz, notes, or students.
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="admin-reference-grid">
-            <div className="admin-reference-panel admin-reference-panel--chart">
-              <div className="admin-reference-panel-head">
-                <h3>Sales Overview</h3>
-                <div className="admin-reference-legend">
-                  {overviewSeries.map((series) => (
-                    <span key={series.label}>
-                      <i style={{ backgroundColor: series.color }} />
-                      {series.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="admin-line-chart">
-                <div className="admin-line-chart-y">
-                  {['80k', '60k', '40k', '20k', '0k'].map((tick) => (
-                    <span key={tick}>{tick}</span>
-                  ))}
-                </div>
-                <div className="admin-line-chart-canvas">
-                  <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" className="admin-line-chart-svg">
-                    {[0, 1, 2, 3, 4].map((line) => (
-                      <line key={line} x1="0" y1={line * (chartHeight / 4)} x2={chartWidth} y2={line * (chartHeight / 4)} className="admin-chart-grid-line" />
-                    ))}
-                    {overviewSeries.map((series) => (
-                      <path
-                        key={series.label}
-                        d={buildChartPath(series.values)}
-                        fill="none"
-                        stroke={series.color}
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    ))}
-                    {overviewSeries.map((series) =>
-                      series.values.map((value, index) => {
-                        const x = (index / (series.values.length - 1)) * chartWidth;
-                        const y = chartHeight - (value / chartMax) * (chartHeight - 20);
-                        return <circle key={`${series.label}-${chartLabels[index]}`} cx={x} cy={y} r="6" fill={series.color} />;
-                      })
-                    )}
-                  </svg>
-                  <div className="admin-line-chart-labels">
-                    {chartLabels.map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="admin-reference-summary">
-                <div>
-                  <span>Today's Sales</span>
-                  <strong>{courses.length + notes.length}</strong>
-                </div>
-                <div>
-                  <span>Weekly Revenue</span>
-                  <strong>{questions.length + quizzes.length}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="admin-reference-side">
-              <div className="admin-reference-panel">
-                <div className="admin-reference-panel-head">
-                  <h3>Recent Orders</h3>
-                  <button type="button" onClick={onRefresh}>View All</button>
-                </div>
-                <div className="admin-reference-table">
-                  <div className="admin-reference-table-head">
-                    <span>Order ID</span>
-                    <span>Title</span>
-                    <span>Status</span>
-                    <span>Total</span>
-                  </div>
-                  {recentItems.map((item) => (
-                    <div key={item.id} className="admin-reference-table-row">
-                      <span>#{item.id}</span>
-                      <span>{item.title}</span>
-                      <span><em className={`admin-status-pill admin-status-pill--${item.tone}`}>{item.status}</em></span>
-                      <span>{item.metric}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="admin-reference-panel">
-                <div className="admin-reference-panel-head">
-                  <h3>Customer Messages</h3>
-                </div>
-                <div className="admin-reference-messages">
-                  {adminMessages.map((messageItem) => (
-                    <div key={messageItem} className="admin-reference-message">
-                      <div className="admin-reference-message-icon">
-                        <MessageSquare size={18} />
-                      </div>
-                      <p>{messageItem}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="admin-reference-bottom">
+          <div className="admin-live-grid">
             <div className="admin-reference-panel">
               <div className="admin-reference-panel-head">
-                <h3>Top Products</h3>
+                <h3>Premium Course Status</h3>
+                <button type="button" onClick={() => setActiveTab('course')}>Manage</button>
               </div>
-              <div className="admin-progress-list">
-                {spotlightItems.map((item, index) => (
-                  <div key={item.label} className="admin-progress-item">
-                    <div className="admin-progress-meta">
-                      <span>{item.label}</span>
-                      <strong>{item.value}%</strong>
+              <div className="admin-clean-list">
+                {courses.slice(0, 5).map((course) => (
+                  <button key={course.id} type="button" onClick={() => setActiveTab('course')} className="admin-clean-row">
+                    <img src={course.image} alt={course.title} referrerPolicy="no-referrer" />
+                    <span>
+                      <strong>{course.title}</strong>
+                      <em>{course.lessons} lessons • Rs {course.price || 0}</em>
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+                ))}
+                {!courses.length && <div className="admin-soft-panel px-4 py-5 text-sm text-slate-500">No courses yet. Add your first premium course.</div>}
+              </div>
+            </div>
+
+            <div className="admin-reference-panel">
+              <div className="admin-reference-panel-head">
+                <h3>Access & Students</h3>
+                <button type="button" onClick={() => setActiveTab('access')}>Grant Access</button>
+              </div>
+              <div className="admin-access-snapshot">
+                <div>
+                  <span>Registered Students</span>
+                  <strong>{users.length}</strong>
+                </div>
+                <div>
+                  <span>Premium Courses</span>
+                  <strong>{premiumCourseCount}</strong>
+                </div>
+                <div>
+                  <span>Active Sliders</span>
+                  <strong>{activeSliderCount}</strong>
+                </div>
+              </div>
+              <div className="admin-reference-messages">
+                {adminMessages.map((messageItem) => (
+                  <div key={messageItem} className="admin-reference-message">
+                    <div className="admin-reference-message-icon">
+                      <MessageSquare size={18} />
                     </div>
-                    <div className="admin-progress-track">
-                      <div className={`admin-progress-bar admin-progress-bar--${index + 1}`} style={{ width: `${Math.min(item.value, 100)}%` }} />
-                    </div>
+                    <p>{messageItem}</p>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            <div className="admin-reference-panel">
-              <div className="admin-reference-panel-head">
-                <h3>Quick Actions</h3>
-                <button type="button" onClick={() => setActiveTab('course')}>View All</button>
-              </div>
-              <div className="admin-quick-actions">
-                <button onClick={() => setActiveTab('course')} className="admin-quick-action-card">
-                  <BookOpen size={20} />
-                  <span>Manage Courses</span>
-                </button>
-                <button onClick={() => setActiveTab('quiz')} className="admin-quick-action-card">
-                  <HelpCircle size={20} />
-                  <span>Create Quiz</span>
-                </button>
-                <button onClick={() => setActiveTab('slider')} className="admin-quick-action-card">
-                  <Eye size={20} />
-                  <span>Update Slider</span>
-                </button>
-                <button onClick={() => setActiveTab('user')} className="admin-quick-action-card">
-                  <User size={20} />
-                  <span>Student Data</span>
-                </button>
               </div>
             </div>
           </div>
