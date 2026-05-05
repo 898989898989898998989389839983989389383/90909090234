@@ -1793,6 +1793,8 @@ const HomeScreen = ({
     notes[0] ? `New note: ${notes[0].title}` : '',
     quizzes[0] ? `Quiz ready: ${quizzes[0].topic}` : '',
   ].filter(Boolean).slice(0, 4);
+  const freeCourses = courses.filter(course => course.type === 'free');
+  const premiumCourses = courses.filter(course => course.type === 'premium');
 
   return (
     <motion.div 
@@ -1824,11 +1826,14 @@ const HomeScreen = ({
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Start Learning</span>
           </div>
         </button>
-        <button onClick={() => onOpenCoursesTab('premium')} className="card-gradient-orange p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-orange-100">
-          <ShieldCheck size={24} className="mb-2" />
+        <button onClick={() => onOpenCoursesTab('premium')} className="premium-action-card p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-amber-100">
+          <div className="flex items-start justify-between">
+            <ShieldCheck size={24} className="mb-2" />
+            <span className="rounded-full bg-white/18 px-2 py-0.5 text-[10px] font-black uppercase">Pro</span>
+          </div>
           <div>
             <p className="font-bold">Premium Chemistry</p>
-            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Unlock Access</span>
+            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{premiumCourses.length || 0} Courses</span>
           </div>
         </button>
         <button onClick={() => setScreen('notes')} className="card-gradient-blue p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-blue-100">
@@ -1850,7 +1855,7 @@ const HomeScreen = ({
       {/* Popular Courses */}
       <SectionHeader title="Chemistry Courses" onSeeAll={() => setScreen('courses')} />
       <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-        {courses.filter(course => course.type === 'free').slice(0, 4).map(course => {
+        {freeCourses.slice(0, 4).map(course => {
           const isUnlocked = course.type === 'free' || unlockedCourseIds.includes(course.id);
           return (
             <button 
@@ -1875,6 +1880,42 @@ const HomeScreen = ({
           );
         })}
       </div>
+
+      {!!premiumCourses.length && (
+        <div className="mt-4">
+          <SectionHeader title="Premium Picks" onSeeAll={() => onOpenCoursesTab('premium')} />
+          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+            {premiumCourses.slice(0, 4).map(course => {
+              const isUnlocked = unlockedCourseIds.includes(course.id);
+              return (
+                <button
+                  key={course.id}
+                  onClick={() => {
+                    onCourseSelect(course);
+                    setScreen('course-details');
+                  }}
+                  className="premium-mini-card min-w-[190px] overflow-hidden rounded-xl border text-left shadow-sm"
+                >
+                  <div className="relative h-24">
+                    <img src={course.image} alt={course.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                    <div className="absolute left-3 top-3 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-black text-amber-700">
+                      Rs {course.price || 0}
+                    </div>
+                    <div className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
+                      {isUnlocked ? <CheckCircle2 size={14} /> : <Lock size={14} />}
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <h3 className="line-clamp-1 text-sm font-black text-gray-900">{course.title}</h3>
+                    <p className="mt-1 text-[10px] font-semibold text-gray-500">{course.lessons}+ lessons • Premium access</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent Updates */}
       <div className="mt-6">
@@ -1915,6 +1956,8 @@ const CoursesScreen = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
   const [searchQuery, setSearchQuery] = useState('');
+  const freeCount = courses.filter(c => c.type === 'free').length;
+  const premiumCount = courses.filter(c => c.type === 'premium').length;
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -1931,7 +1974,20 @@ const CoursesScreen = ({
       animate={{ opacity: 1 }} 
       className="flex-1 flex flex-col overflow-hidden"
     >
-      <div className="px-4 pt-4 pb-2 bg-white border-b border-gray-100">
+      <div className="px-4 pt-4 pb-3 bg-white border-b border-gray-100">
+        <div className={`mb-4 rounded-2xl p-4 text-white shadow-lg ${activeTab === 'premium' ? 'premium-course-hero shadow-amber-100' : 'bg-[linear-gradient(135deg,#0f8a45_0%,#075a35_100%)] shadow-green-100'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Chemistry' : 'Free Chemistry'}</p>
+              <h2 className="mt-1 text-xl font-black">{activeTab === 'premium' ? 'Unlock focused batches' : 'Start learning today'}</h2>
+              <p className="mt-1 text-xs text-white/75">{activeTab === 'premium' ? `${premiumCount} premium courses with admin access code` : `${freeCount} free courses available now`}</p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/16">
+              {activeTab === 'premium' ? <CreditCard size={22} /> : <BookOpen size={22} />}
+            </div>
+          </div>
+        </div>
+
         {/* Search Bar */}
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -1951,15 +2007,15 @@ const CoursesScreen = ({
         <div className="flex bg-gray-100 p-1 rounded-lg">
           <button 
             onClick={() => setActiveTab('free')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
+            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
           >
-            Free Courses
+            Free ({freeCount})
           </button>
           <button 
             onClick={() => setActiveTab('premium')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
+            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500'}`}
           >
-            Premium Courses
+            Premium ({premiumCount})
           </button>
         </div>
       </div>
@@ -1969,9 +2025,18 @@ const CoursesScreen = ({
           const isUnlocked = course.type === 'free' || unlockedCourseIds.includes(course.id);
           
           return (
-            <div key={course.id} className="bg-white rounded-xl overflow-hidden border border-gray-100 shadow-sm flex flex-col">
+            <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${course.type === 'premium' ? 'border-amber-100' : 'border-gray-100'}`}>
               <div className="relative h-40">
                 <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                {course.type === 'premium' && (
+                  <div className="absolute left-3 top-3 rounded-full bg-white/92 px-3 py-1 text-[10px] font-black uppercase text-amber-700 shadow-sm">
+                    Premium
+                  </div>
+                )}
+                <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isUnlocked ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
+                  {isUnlocked ? <CheckCircle2 size={12} /> : <Lock size={12} />}
+                  {isUnlocked ? 'Unlocked' : 'Locked'}
+                </div>
                 <button 
                   onClick={() => {
                     onCourseSelect(course);
@@ -1984,14 +2049,14 @@ const CoursesScreen = ({
                   </div>
                 </button>
               </div>
-              <div className="p-4 flex justify-between items-center">
-                <div>
+              <div className="p-4 flex justify-between items-center gap-4">
+                <div className="min-w-0">
                   <h3 className="font-bold text-gray-800">{course.title}</h3>
                   <p className="text-xs text-gray-500">{course.lessons}+ Video Lessons & Notes</p>
                   {course.type === 'premium' && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-primary font-bold">Rs {course.price} Only</span>
-                      <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700">Rs {course.price} Only</span>
+                      {!!course.oldPrice && <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>}
                     </div>
                   )}
                 </div>
@@ -2004,7 +2069,7 @@ const CoursesScreen = ({
                     }
                     onBuyClick(course);
                   }}
-                  className={`${isUnlocked ? 'bg-primary' : 'bg-orange-500'} text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-orange-100 transition-transform active:scale-95`}
+                  className={`${isUnlocked ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
                 >
                   {isUnlocked ? 'View Details' : 'Buy Now'}
                 </button>

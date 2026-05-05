@@ -1644,6 +1644,55 @@ body {
   background: linear-gradient(135deg, #F27D26 0%, #D15B00 100%);
 }
 
+.premium-action-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #9a5b00 0%, #d97706 46%, #7c2d12 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-action-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -22px -36px auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.premium-course-hero {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 45%),
+    linear-gradient(135deg, #7c2d12 0%, #d97706 52%, #111827 100%);
+}
+
+.premium-mini-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fff8ed 100%);
+  border-color: rgba(245, 158, 11, 0.22);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.premium-mini-card:active,
+.course-list-card:active {
+  transform: scale(0.985);
+}
+
+.course-list-card {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.course-list-card:hover,
+.premium-mini-card:hover {
+  border-color: rgba(217, 119, 6, 0.35);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+}
+
+.premium-buy-button {
+  background: linear-gradient(135deg, #f59e0b 0%, #c2410c 100%);
+}
+
 .card-gradient-green {
   background: linear-gradient(135deg, #28A745 0%, #1E7E34 100%);
 }
