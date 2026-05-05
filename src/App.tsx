@@ -1824,6 +1824,13 @@ const HomeScreen = ({
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Start Learning</span>
           </div>
         </button>
+        <button onClick={() => onOpenCoursesTab('premium')} className="card-gradient-orange p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-orange-100">
+          <ShieldCheck size={24} className="mb-2" />
+          <div>
+            <p className="font-bold">Premium Chemistry</p>
+            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Unlock Access</span>
+          </div>
+        </button>
         <button onClick={() => setScreen('notes')} className="card-gradient-blue p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-blue-100">
           <FileText size={24} className="mb-2" />
           <div>
@@ -1910,11 +1917,11 @@ const CoursesScreen = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    setActiveTab('free');
+    setActiveTab(initialTab);
   }, [initialTab]);
 
   const filteredCourses = courses.filter(c => 
-    c.type === 'free' && 
+    c.type === activeTab && 
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -1947,6 +1954,12 @@ const CoursesScreen = ({
             className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
           >
             Free Courses
+          </button>
+          <button 
+            onClick={() => setActiveTab('premium')}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
+          >
+            Premium Courses
           </button>
         </div>
       </div>
@@ -1984,8 +1997,12 @@ const CoursesScreen = ({
                 </div>
                 <button 
                   onClick={() => {
-                    onCourseSelect(course);
-                    setScreen('course-details');
+                    if (isUnlocked) {
+                      onCourseSelect(course);
+                      setScreen('course-details');
+                      return;
+                    }
+                    onBuyClick(course);
                   }}
                   className={`${isUnlocked ? 'bg-primary' : 'bg-orange-500'} text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-orange-100 transition-transform active:scale-95`}
                 >
@@ -1995,6 +2012,15 @@ const CoursesScreen = ({
             </div>
           );
         })}
+        {!filteredCourses.length && (
+          <div className="bg-white rounded-xl border border-gray-100 p-6 text-center shadow-sm">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <BookOpen size={22} />
+            </div>
+            <h3 className="font-bold text-gray-800">No {activeTab} courses found</h3>
+            <p className="mt-1 text-sm text-gray-500">Try another search or check back after new chemistry courses are added.</p>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -3488,7 +3514,7 @@ const MyCoursesScreen = ({
   unlockedCourseIds: string[],
   onCourseSelect: (course: Course) => void
 }) => {
-  const visibleCourses = courses.filter((course) => course.type === 'free');
+  const visibleCourses = courses.filter((course) => course.type === 'free' || unlockedCourseIds.includes(course.id));
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
@@ -3509,8 +3535,8 @@ const MyCoursesScreen = ({
             <div className="flex-1">
               <div className="text-base font-bold text-gray-800">{course.title}</div>
               <div className="text-sm text-gray-500 mt-1">{course.category}</div>
-              <div className="mt-2 inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-                Available Now
+              <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${course.type === 'premium' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'}`}>
+                {course.type === 'premium' ? 'Premium Unlocked' : 'Available Now'}
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-300" />
