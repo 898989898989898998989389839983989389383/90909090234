@@ -4530,6 +4530,56 @@ const AdminPanelScreen = ({
     }
   };
 
+  const resetCourseForm = () => {
+    setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
+    setEditingCourseId('');
+  };
+
+  const submitCourseForm = () => {
+    const title = courseForm.title.trim();
+    const image = courseForm.image.trim();
+    const category = courseForm.category.trim() || 'Chemistry';
+    const lessonsCount = Number(courseForm.lessons || 0);
+    const price = Number(courseForm.price || 0);
+    const oldPrice = Number(courseForm.oldPrice || 0);
+
+    if (!title) {
+      setMessage('Course title is required');
+      return;
+    }
+
+    if (!image || !/^https?:\/\//i.test(image)) {
+      setMessage('Add a valid thumbnail image URL starting with http or https');
+      return;
+    }
+
+    if (!Number.isFinite(lessonsCount) || lessonsCount < 0) {
+      setMessage('Lesson count must be 0 or more');
+      return;
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      setMessage('Premium course price must be greater than 0');
+      return;
+    }
+
+    if (!Number.isFinite(oldPrice) || oldPrice < price) {
+      setMessage('Old price should be equal to or higher than the current price');
+      return;
+    }
+
+    submitAction(editingCourseId ? 'updateCourse' : 'createCourse', {
+      ...(editingCourseId ? { id: editingCourseId } : {}),
+      title,
+      image,
+      category,
+      type: 'premium',
+      lessons: lessonsCount,
+      price,
+      oldPrice,
+    }, resetCourseForm);
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-panel min-h-screen w-full">
       <div className="admin-dashboard-wrap">
@@ -5030,59 +5080,102 @@ const AdminPanelScreen = ({
 
       {activeTab === 'course' && (
         <div className="space-y-4">
-          <div className={cardClass}>
-            <h3 className="font-bold text-gray-800 mb-4">{editingCourseId ? 'Edit Course' : 'Add Course'}</h3>
-            <div className="space-y-3">
-              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Course title" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
-              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Thumbnail image URL" value={courseForm.image} onChange={(e) => setCourseForm({ ...courseForm, image: e.target.value })} />
-              <div className="grid grid-cols-2 gap-3">
-                <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson count" value={courseForm.lessons} onChange={(e) => setCourseForm({ ...courseForm, lessons: e.target.value })} />
-                <div className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-                  <span>Premium Course</span>
-                  <ShieldCheck size={18} />
+          <div className="admin-course-builder">
+            <div className="admin-course-form-panel">
+              <div className="admin-section-head">
+                <div>
+                  <p className="admin-control-eyebrow">Premium Course Builder</p>
+                  <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Premium Course' : 'Add Premium Course'}</h3>
+                  <p className="text-xs text-slate-500 mt-1">Add accurate course details. Students need an access code before they can watch lessons.</p>
+                </div>
+                <div className="admin-course-status-pill">
+                  <ShieldCheck size={15} />
+                  Premium Locked
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Price" value={courseForm.price} onChange={(e) => setCourseForm({ ...courseForm, price: e.target.value })} />
-                <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Old price" value={courseForm.oldPrice} onChange={(e) => setCourseForm({ ...courseForm, oldPrice: e.target.value })} />
+
+              <div className="admin-course-field-grid">
+                <label className="admin-course-field admin-course-field--wide">
+                  <span>Course title</span>
+                  <input placeholder="Example: NEB Chemistry Complete Batch" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
+                </label>
+                <label className="admin-course-field admin-course-field--wide">
+                  <span>Thumbnail image URL</span>
+                  <input placeholder="https://example.com/course-thumbnail.jpg" value={courseForm.image} onChange={(e) => setCourseForm({ ...courseForm, image: e.target.value })} />
+                </label>
+                <label className="admin-course-field">
+                  <span>Lesson count</span>
+                  <input inputMode="numeric" placeholder="0" value={courseForm.lessons} onChange={(e) => setCourseForm({ ...courseForm, lessons: e.target.value.replace(/[^\d]/g, '') })} />
+                </label>
+                <label className="admin-course-field">
+                  <span>Category</span>
+                  <input placeholder="Chemistry" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
+                </label>
+                <label className="admin-course-field">
+                  <span>Current price</span>
+                  <input inputMode="numeric" placeholder="999" value={courseForm.price} onChange={(e) => setCourseForm({ ...courseForm, price: e.target.value.replace(/[^\d]/g, '') })} />
+                </label>
+                <label className="admin-course-field">
+                  <span>Old price</span>
+                  <input inputMode="numeric" placeholder="2999" value={courseForm.oldPrice} onChange={(e) => setCourseForm({ ...courseForm, oldPrice: e.target.value.replace(/[^\d]/g, '') })} />
+                </label>
               </div>
-              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Category" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
-              {courseForm.type === 'premium' && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-                  Premium access codes are now generated per student from the dashboard card, not stored once on the course.
-                </div>
-              )}
-              <button
-                disabled={loading}
-                onClick={() => submitAction(editingCourseId ? 'updateCourse' : 'createCourse', {
-                  ...(editingCourseId ? { id: editingCourseId } : {}),
-                  ...courseForm,
-                  type: 'premium',
-                  lessons: Number(courseForm.lessons || 0),
-                  price: Number(courseForm.price || 0),
-                  oldPrice: Number(courseForm.oldPrice || 0),
-                }, () => {
-                  setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
-                  setEditingCourseId('');
-                })}
-                className="w-full bg-primary text-white py-3 rounded-xl font-bold"
-              >
-                {loading ? 'Saving...' : editingCourseId ? 'Update Course' : 'Save Course'}
-              </button>
-              {editingCourseId && (
-                <button onClick={() => {
-                  setEditingCourseId('');
-                  setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
-                }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
-                  Cancel Edit
+
+              <div className="admin-course-note">
+                <Lock size={16} />
+                Premium access codes are generated per student from the Premium Access section.
+              </div>
+
+              <div className="admin-course-actions">
+                <button disabled={loading} onClick={submitCourseForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                  {loading ? 'Saving...' : editingCourseId ? 'Update Premium Course' : 'Create Premium Course'}
                 </button>
-              )}
+                <button onClick={resetCourseForm} className="admin-secondary-button px-5 py-3 text-sm font-bold">
+                  {editingCourseId ? 'Cancel Edit' : 'Clear'}
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-course-preview-panel">
+              <div className="admin-course-preview-media">
+                {courseForm.image.trim() ? (
+                  <img src={courseForm.image.trim()} alt={courseForm.title || 'Course preview'} referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="admin-course-preview-placeholder">
+                    <BookOpen size={30} />
+                    <span>Image preview</span>
+                  </div>
+                )}
+                <div className="admin-course-preview-badge">Premium</div>
+              </div>
+              <div className="admin-course-preview-body">
+                <h3>{courseForm.title.trim() || 'Course title preview'}</h3>
+                <p>{courseForm.category.trim() || 'Chemistry'} - {Number(courseForm.lessons || 0)} lessons</p>
+                <div className="admin-course-preview-price">
+                  <strong>Rs {Number(courseForm.price || 0).toLocaleString()}</strong>
+                  <span>Rs {Number(courseForm.oldPrice || 0).toLocaleString()}</span>
+                </div>
+                <div className="admin-course-preview-checks">
+                  <span className={courseForm.title.trim() ? 'is-ready' : ''}>Title</span>
+                  <span className={/^https?:\/\//i.test(courseForm.image.trim()) ? 'is-ready' : ''}>Image</span>
+                  <span className={Number(courseForm.price || 0) > 0 ? 'is-ready' : ''}>Price</span>
+                  <span className={courseForm.category.trim() ? 'is-ready' : ''}>Category</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className={cardClass}>
-            <h3 className="font-bold text-gray-800 mb-4">Manage Courses</h3>
-            <div className="space-y-3">
+            <div className="admin-section-head">
+              <div>
+                <h3 className="font-bold text-gray-800">Manage Premium Courses</h3>
+                <p className="text-xs text-gray-500 mt-1">Edit pricing, thumbnails, lesson counts, and course metadata.</p>
+              </div>
+              <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
+                {courses.length} courses
+              </div>
+            </div>
+            <div className="admin-course-list">
               {courses.map((course) => (
                 <div key={course.id} className="border border-gray-100 rounded-xl p-3">
                   <div className="flex items-start justify-between gap-3">

@@ -1396,6 +1396,197 @@ body {
   font-weight: 950;
 }
 
+.admin-course-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 1rem;
+}
+
+.admin-course-form-panel,
+.admin-course-preview-panel {
+  padding: 1.35rem;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #dbe4ee;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.admin-course-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.admin-course-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.admin-course-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.admin-course-field--wide {
+  grid-column: 1 / -1;
+}
+
+.admin-course-field span {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.admin-course-field input {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 0.8rem 0.95rem;
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.admin-course-note {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  border-radius: 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  padding: 0.85rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.admin-course-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.admin-course-actions button {
+  flex: 1;
+}
+
+.admin-course-preview-panel {
+  align-self: start;
+  overflow: hidden;
+  padding: 0;
+}
+
+.admin-course-preview-media {
+  position: relative;
+  height: 220px;
+  background: linear-gradient(135deg, #e2e8f0, #f8fafc);
+}
+
+.admin-course-preview-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-course-preview-placeholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.5rem;
+  color: #64748b;
+  font-weight: 900;
+}
+
+.admin-course-preview-badge {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #b45309;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.admin-course-preview-body {
+  padding: 1rem;
+}
+
+.admin-course-preview-body h3 {
+  color: #0f172a;
+  font-size: 1.1rem;
+  font-weight: 950;
+}
+
+.admin-course-preview-body p {
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.admin-course-preview-price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.admin-course-preview-price strong {
+  color: #d97706;
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.admin-course-preview-price span {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: line-through;
+}
+
+.admin-course-preview-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+
+.admin-course-preview-checks span {
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.admin-course-preview-checks span.is-ready {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.admin-course-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .admin-reference-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
@@ -1874,6 +2065,7 @@ body {
   .admin-reference-kpis,
   .admin-reference-grid,
   .admin-live-grid,
+  .admin-course-builder,
   .admin-control-grid,
   .admin-reference-bottom {
     grid-template-columns: 1fr;
@@ -1900,6 +2092,18 @@ body {
 
   .admin-access-snapshot {
     grid-template-columns: 1fr;
+  }
+
+  .admin-course-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-course-actions {
+    flex-direction: column;
+  }
+
+  .admin-course-actions button {
+    width: 100%;
   }
 
   .admin-reference-table-head,
