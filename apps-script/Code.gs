@@ -671,12 +671,14 @@ function getCourses_() {
 function getSliders_() {
   return readSheetObjects_(SHEET_NAMES.sliders)
     .map(function(slider) {
+      var driveFileId = String(slider.drive_file_id || '').trim();
+      var imageUrl = String(slider.image_url || '').trim();
       return {
         id: slider.id,
         title: slider.title || '',
         subtitle: slider.subtitle || '',
-        image_url: slider.image_url || '',
-        drive_file_id: slider.drive_file_id || '',
+        image_url: imageUrl || (driveFileId ? buildDriveImageUrl_(driveFileId) : ''),
+        drive_file_id: driveFileId,
         sort_order: Number(slider.sort_order || 0),
         is_active: String(slider.is_active || 'true').toLowerCase() !== 'false',
       };
@@ -1106,6 +1108,12 @@ function saveSliderImage_(body) {
   var base64Data = String(body.imageData).split(',').pop();
   var bytes = Utilities.base64Decode(base64Data);
   var contentType = body.mimeType || 'image/jpeg';
+  if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(contentType)) {
+    throw new Error('Only JPG, PNG, WEBP, and GIF slider images are supported');
+  }
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error('Slider image must be 5 MB or smaller');
+  }
   var extension = getFileExtension_(contentType);
   var fileName = (body.fileName || ('slider-' + new Date().getTime() + extension)).replace(/[^\w.\- ]/g, '');
   var blob = Utilities.newBlob(bytes, contentType, fileName);
@@ -1115,7 +1123,7 @@ function saveSliderImage_(body) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   return {
-    imageUrl: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1600',
+    imageUrl: buildDriveImageUrl_(file.getId()),
     driveFileId: file.getId(),
   };
 }
@@ -1126,7 +1134,17 @@ function getSliderUploadFolder_() {
     return DriveApp.getFolderById(folderId);
   }
 
-  return DriveApp.getRootFolder();
+  var folderName = 'RBS Academy Slider Uploads';
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+
+  return DriveApp.createFolder(folderName);
+}
+
+function buildDriveImageUrl_(fileId) {
+  return 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(fileId) + '=w1600';
 }
 
 function trashDriveFile_(fileId) {

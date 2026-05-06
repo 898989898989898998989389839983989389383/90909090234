@@ -10,6 +10,8 @@ import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./m
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "uploads";
+const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec";
+const APPS_SCRIPT_URL = process.env.VITE_APPS_SCRIPT_URL?.trim() || DEFAULT_APPS_SCRIPT_URL;
 const ADMIN_USERS_RESOURCE_URL = "https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users";
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -35,7 +37,7 @@ type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; 
 type DbNote = RowDataPacket & { id: string; title: string; lessons: number; category: string; type: string; url?: string; content?: string };
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
 type DbQuestion = RowDataPacket & { id: string; quiz_id: string; text: string; options: string; correctAnswer: number; explanation: string; image_url?: string };
-type DbSlider = RowDataPacket & { id: string; title: string; subtitle: string; image_url: string; sort_order: number; is_active: number | boolean };
+type DbSlider = RowDataPacket & { id: string; title: string; subtitle: string; image_url: string; drive_file_id?: string; sort_order: number; is_active: number | boolean };
 type AdminRole = "admin" | "superadmin";
 type DbAdminCredential = RowDataPacket & { id: string; role: AdminRole; username: string; password: string; created_at?: Date | string; updated_at?: Date | string };
 
@@ -101,8 +103,34 @@ const normalizeQuestion = (question: Partial<DbQuestion> & { options?: unknown }
 const normalizeSlider = (slider: Partial<DbSlider>) => ({
   ...slider,
   sort_order: Number(slider.sort_order || 0),
-  is_active: Boolean(slider.is_active),
+  is_active: typeof slider.is_active === "string"
+    ? String(slider.is_active).toLowerCase() !== "false"
+    : Boolean(slider.is_active),
+  drive_file_id: String(slider.drive_file_id || ""),
 });
+
+const getDriveFileIdFromUrl = (url?: string) => {
+  const value = String(url || "");
+  return value.match(/[?&]id=([^&]+)/)?.[1]
+    || value.match(/\/d\/([^/?]+)/)?.[1]
+    || "";
+};
+
+const getDriveImageUrls = (fileId: string) => [
+  `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600`,
+  `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`,
+  `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`,
+];
+
+const normalizeSliderForClient = (slider: Partial<DbSlider>) => {
+  const normalized = normalizeSlider(slider);
+  const driveFileId = String(normalized.drive_file_id || getDriveFileIdFromUrl(normalized.image_url)).trim();
+  return {
+    ...normalized,
+    drive_file_id: driveFileId,
+    image_url: driveFileId ? `/api/drive-image/${encodeURIComponent(driveFileId)}` : String(normalized.image_url || ""),
+  };
+};
 
 const parseImagePayload = (
   payload: Record<string, unknown>,
@@ -827,12 +855,59 @@ export const createApiApp = async () => {
   }));
 
   app.get("/api/sliders", asyncHandler(async (_req, res) => {
+    if (APPS_SCRIPT_URL) {
+      try {
+        const separator = APPS_SCRIPT_URL.includes("?") ? "&" : "?";
+        const payload = await fetchJsonWithTimeout(`${APPS_SCRIPT_URL}${separator}resource=sliders`, 15000);
+        if (Array.isArray(payload) && payload.length > 0) {
+          res.json(payload.map((slider) => normalizeSliderForClient(slider as Partial<DbSlider>)));
+          return;
+        }
+      } catch (error) {
+        console.error("Apps Script sliders fetch failed, using local sliders:", error);
+      }
+    }
+
     const sliders = await queryRows<DbSlider>("SELECT * FROM sliders ORDER BY sort_order ASC, id ASC");
-    res.json(sliders.map(normalizeSlider));
+    res.json(sliders.map(normalizeSliderForClient));
+  }));
+
+  app.get("/api/drive-image/:fileId", asyncHandler(async (req, res) => {
+    const fileId = getDriveFileIdFromUrl(req.params.fileId) || String(req.params.fileId || "").trim();
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(fileId)) {
+      res.status(400).json({ success: false, message: "Invalid Drive file id" });
+      return;
+    }
+
+    let lastStatus = 0;
+    for (const url of getDriveImageUrls(fileId)) {
+      try {
+        const response = await fetch(url, {
+          redirect: "follow",
+          headers: {
+            "User-Agent": "Mozilla/5.0 RBS Academy Slider Loader",
+            Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          },
+        });
+        lastStatus = response.status;
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.toLowerCase().startsWith("image/")) {
+          continue;
+        }
+
+        const imageBuffer = Buffer.from(await response.arrayBuffer());
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+        res.send(imageBuffer);
+        return;
+      } catch {}
+    }
+
+    res.status(lastStatus || 502).json({ success: false, message: "Unable to load Drive image" });
   }));
 
   app.post("/api/createSlider", requireAdmin(), asyncHandler(async (req, res) => {
-    const { title, subtitle, sort_order, is_active } = req.body || {};
+    const { title, subtitle, sort_order, is_active, drive_file_id } = req.body || {};
     const imageUrl = await saveSliderImage(req.body || {});
     if (!title || !subtitle) {
       res.status(400).json({ success: false, message: "Title and subtitle are required" });
@@ -845,8 +920,8 @@ export const createApiApp = async () => {
 
     const id = `sl${Date.now()}`;
     await execute(
-      "INSERT INTO sliders (id, title, subtitle, image_url, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-      [id, title, subtitle, imageUrl, Number(sort_order || 0), String(is_active) === "false" ? 0 : 1],
+      "INSERT INTO sliders (id, title, subtitle, image_url, drive_file_id, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, title, subtitle, imageUrl, String(drive_file_id || ""), Number(sort_order || 0), String(is_active) === "false" ? 0 : 1],
     );
 
     const slider = await queryOne<DbSlider>("SELECT * FROM sliders WHERE id = ?", [id]);
@@ -854,7 +929,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateSlider", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, title, subtitle, sort_order, is_active } = req.body || {};
+    const { id, title, subtitle, sort_order, is_active, drive_file_id } = req.body || {};
     if (!id || !title || !subtitle) {
       res.status(400).json({ success: false, message: "Id, title and subtitle are required" });
       return;
@@ -872,8 +947,8 @@ export const createApiApp = async () => {
     }
 
     await execute(
-      "UPDATE sliders SET title = ?, subtitle = ?, image_url = ?, sort_order = ?, is_active = ? WHERE id = ?",
-      [title, subtitle, imageUrl, Number(sort_order || 0), String(is_active) === "false" ? 0 : 1, id],
+      "UPDATE sliders SET title = ?, subtitle = ?, image_url = ?, drive_file_id = ?, sort_order = ?, is_active = ? WHERE id = ?",
+      [title, subtitle, imageUrl, String(drive_file_id || current.drive_file_id || ""), Number(sort_order || 0), String(is_active) === "false" ? 0 : 1, id],
     );
 
     const slider = await queryOne<DbSlider>("SELECT * FROM sliders WHERE id = ?", [id]);

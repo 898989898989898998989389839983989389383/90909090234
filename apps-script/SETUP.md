@@ -72,7 +72,9 @@ If you already have old mixed quiz data in the `Questions` sheet, run `migrateQu
 4. Who has access: `Anyone`
 5. Deploy and copy the web app URL
 
-## 3.1 Optional Google Drive folder for slider uploads
+## 3.1 Google Drive folder for slider uploads
+
+Slider images uploaded from the admin panel are saved to Google Drive by Apps Script. By default, the script creates or reuses a folder named `RBS Academy Slider Uploads`.
 
 If you want slider images stored in a specific Google Drive folder:
 
@@ -82,7 +84,7 @@ If you want slider images stored in a specific Google Drive folder:
 
 `SLIDER_UPLOAD_FOLDER_ID=your_google_drive_folder_id`
 
-If this property is not set, slider images are uploaded to the script owner's root Drive.
+If this property is not set, slider images are uploaded to the auto-created `RBS Academy Slider Uploads` folder.
 
 ## 4. Connect frontend
 

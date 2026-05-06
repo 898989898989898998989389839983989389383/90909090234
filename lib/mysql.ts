@@ -1054,10 +1054,13 @@ const createSchema = async (client: Pool | PoolClient) => {
       title TEXT,
       subtitle TEXT,
       image_url TEXT,
+      drive_file_id TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0,
       is_active BOOLEAN DEFAULT TRUE
     )
   `);
+
+  await client.query(`ALTER TABLE "sliders" ADD COLUMN IF NOT EXISTS "drive_file_id" TEXT DEFAULT ''`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS questions (

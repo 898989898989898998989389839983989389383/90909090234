@@ -148,7 +148,8 @@ const APP_DATA_CACHE_KEY = 'rbs-academy-app-cache';
 const ADMIN_USERS_CACHE_KEY = 'rbs-academy-admin-users-cache';
 const DATA_REQUEST_TIMEOUT_MS = 8000;
 const ADMIN_USERS_RESOURCE_URL = 'https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users';
-const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || '').trim();
+const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec';
+const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL).trim();
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
@@ -198,6 +199,10 @@ const fetchWithFallback = async (
 };
 
 const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders', params?: Record<string, string>) => {
+  if (resource === 'sliders') {
+    return fetch('/api/sliders');
+  }
+
   const query = new URLSearchParams(params || {});
   query.set('resource', resource);
   return fetchWithFallback(
@@ -696,6 +701,14 @@ const apiPostToAppsScript = async (action: string, payload: Record<string, unkno
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, ...payload })
   });
+};
+
+const apiSliderPost = async (action: 'createSlider' | 'updateSlider' | 'deleteSlider', payload: Record<string, unknown>) => {
+  if (payload.imageData) {
+    return apiPostToAppsScript(action, payload);
+  }
+
+  return apiPost(action, payload);
 };
 
 const isValidStudentName = (value: string) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
@@ -1643,6 +1656,59 @@ const SectionHeader = ({ title, onSeeAll }: { title: string, onSeeAll?: () => vo
   </div>
 );
 
+const getDriveFileIdFromUrl = (url?: string) => {
+  const value = String(url || '');
+  return value.match(/[?&]id=([^&]+)/)?.[1]
+    || value.match(/\/d\/([^/?]+)/)?.[1]
+    || '';
+};
+
+const getImageSourceCandidates = (imageUrl?: string, driveFileId?: string) => {
+  const fileId = String(driveFileId || getDriveFileIdFromUrl(imageUrl)).trim();
+  const candidates = [
+    fileId ? `/api/drive-image/${encodeURIComponent(fileId)}` : '',
+    String(imageUrl || '').trim(),
+    fileId ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600` : '',
+    fileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600` : '',
+    fileId ? `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}` : '',
+  ].filter(Boolean);
+
+  return Array.from(new Set(candidates));
+};
+
+const SmartImage = ({
+  src,
+  driveFileId,
+  alt,
+  className,
+}: {
+  src?: string;
+  driveFileId?: string;
+  alt: string;
+  className?: string;
+}) => {
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const sources = getImageSourceCandidates(src, driveFileId);
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [src, driveFileId]);
+
+  return (
+    <img
+      src={sources[sourceIndex] || src || ''}
+      alt={alt}
+      className={className}
+      referrerPolicy="no-referrer"
+      onError={() => {
+        setSourceIndex((current) => (
+          current + 1 < sources.length ? current + 1 : current
+        ));
+      }}
+    />
+  );
+};
+
 const ImageSlider = ({ sliders }: { sliders: SliderItem[] }) => {
   const activeSlides = [...sliders]
     .filter((slider) => slider.is_active)
@@ -1665,19 +1731,30 @@ const ImageSlider = ({ sliders }: { sliders: SliderItem[] }) => {
   }, [slides.length]);
 
   const currentSlide = slides[currentIndex] || fallbackSliders[0];
+  const [imageSourceIndex, setImageSourceIndex] = useState(0);
+  const currentImageSources = getImageSourceCandidates(currentSlide.image_url, currentSlide.drive_file_id);
+
+  useEffect(() => {
+    setImageSourceIndex(0);
+  }, [currentSlide.id, currentSlide.image_url, currentSlide.drive_file_id]);
 
   return (
     <div className="relative w-full h-52 overflow-hidden mb-6 shadow-xl shadow-slate-200/60">
       <AnimatePresence mode="wait">
         <motion.img
-          key={currentIndex}
-          src={currentSlide.image_url}
+          key={`${currentSlide.id}-${imageSourceIndex}`}
+          src={currentImageSources[imageSourceIndex] || currentSlide.image_url}
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -50 }}
           transition={{ duration: 0.5 }}
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
+          onError={() => {
+            setImageSourceIndex((current) => (
+              current + 1 < currentImageSources.length ? current + 1 : current
+            ));
+          }}
         />
       </AnimatePresence>
       <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
@@ -4034,6 +4111,14 @@ const AdminPanelScreen = ({
   const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'user' | 'access' | 'push-notification'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    tone?: 'danger' | 'primary';
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
   const [uploadingSlider, setUploadingSlider] = useState(false);
   const [editingSliderId, setEditingSliderId] = useState('');
   const [sliderForm, setSliderForm] = useState({
@@ -4168,13 +4253,67 @@ const AdminPanelScreen = ({
   const freeCourseCount = freeCourses.length;
   const premiumCourseCount = premiumCourses.length;
   const freeNoteCount = notes.filter((note) => (note.type || 'free') === 'free').length;
+  const totalCourseLessons = courses.reduce((sum, course) => sum + Number(course.lessons || 0), 0);
+  const coursesWithVideos = courses.filter((course) => (course.lessonList || []).length > 0).length;
+  const emptyCourseCount = Math.max(0, courses.length - coursesWithVideos);
+  const quizQuestionAverage = quizzes.length ? Math.round(questions.length / quizzes.length) : 0;
+  const studentAccessCount = users.reduce((sum, userItem) => sum + (userItem.grantedCourseIds?.length || 0), 0);
+  const contentHealthScore = Math.min(
+    100,
+    Math.round(
+      (courses.length ? (coursesWithVideos / courses.length) * 44 : 0)
+      + (activeSliderCount ? 18 : 0)
+      + (notes.length ? 18 : 0)
+      + (quizzes.length ? 20 : 0)
+    )
+  );
   const alertCount = Math.max(0, premiumCourseCount - activeSliderCount);
   const dashboardStats = [
-    { label: 'Total Courses', value: courses.length.toLocaleString(), note: `This month +${Math.max(1, Math.min(12, courses.length))}`, tone: 'slate' },
-    { label: 'Lessons Live', value: lessons.length.toLocaleString(), note: `This month +${Math.max(2, Math.min(18, lessons.length))}`, tone: 'teal' },
-    { label: 'New Students', value: users.length.toLocaleString(), note: `This month +${Math.max(1, Math.min(25, users.length))}`, tone: 'green' },
-    { label: 'Alert', value: `${alertCount}`, note: alertCount ? 'Pending homepage updates' : 'Everything looks good', tone: 'danger' },
+    { label: 'Courses', value: courses.length.toLocaleString(), note: `${freeCourseCount} free, ${premiumCourseCount} premium`, tone: 'slate', icon: <BookOpen size={20} /> },
+    { label: 'Video Lessons', value: lessons.length.toLocaleString(), note: `${totalCourseLessons} lesson slots planned`, tone: 'teal', icon: <Play size={20} /> },
+    { label: 'Students', value: users.length.toLocaleString(), note: `${studentAccessCount} course grants issued`, tone: 'green', icon: <User size={20} /> },
+    { label: 'Health', value: `${contentHealthScore}%`, note: alertCount ? `${alertCount} homepage attention items` : 'Publishing system balanced', tone: alertCount ? 'danger' : 'blue', icon: <ShieldCheck size={20} /> },
   ] as const;
+  const adminInsights = [
+    {
+      title: 'Course Coverage',
+      value: `${coursesWithVideos}/${courses.length || 0}`,
+      detail: emptyCourseCount ? `${emptyCourseCount} courses still need videos` : 'Every course has attached lessons',
+      tone: emptyCourseCount ? 'amber' : 'emerald',
+      action: 'Open Videos',
+      tab: 'lesson' as typeof activeTab,
+    },
+    {
+      title: 'Free Learning',
+      value: freeCourseCount.toLocaleString(),
+      detail: 'Courses students can open without access codes',
+      tone: 'green',
+      action: 'Manage Free',
+      tab: 'free-course' as typeof activeTab,
+    },
+    {
+      title: 'Quiz Depth',
+      value: quizQuestionAverage ? `${quizQuestionAverage}/quiz` : '0/quiz',
+      detail: `${questions.length} questions across ${quizzes.length} quizzes`,
+      tone: 'blue',
+      action: 'Review MCQs',
+      tab: 'question' as typeof activeTab,
+    },
+    {
+      title: 'Homepage Readiness',
+      value: `${activeSliderCount}`,
+      detail: activeSliderCount ? 'Active banners are visible to students' : 'Add one active slider for the home screen',
+      tone: activeSliderCount ? 'violet' : 'rose',
+      action: 'Edit Slider',
+      tab: 'slider' as typeof activeTab,
+    },
+  ];
+  const overviewMetrics = [
+    { label: 'Notes', value: notes.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'blue' },
+    { label: 'Courses', value: courses.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'emerald' },
+    { label: 'Lessons', value: lessons.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'amber' },
+    { label: 'Quizzes', value: quizzes.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'rose' },
+  ];
   const chartLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
   const overviewSeries = [
     {
@@ -4228,6 +4367,26 @@ const AdminPanelScreen = ({
     `${adminDisplayName}: Review new course uploads before publishing.`,
     `${users[1]?.name || 'Priya'}: Student access requests need approval.`,
   ];
+  const dashboardPriorityItems = [
+    {
+      label: 'Homepage',
+      value: activeSliderCount ? 'Live' : 'Needs slider',
+      tone: activeSliderCount ? 'green' : 'amber',
+      tab: 'slider' as typeof activeTab,
+    },
+    {
+      label: 'Free Access',
+      value: `${freeCourseCount} open courses`,
+      tone: 'blue',
+      tab: 'free-course' as typeof activeTab,
+    },
+    {
+      label: 'Premium',
+      value: `${premiumCourseCount} locked courses`,
+      tone: 'violet',
+      tab: 'access' as typeof activeTab,
+    },
+  ];
   const isSuperAdmin = authSession.role === 'superadmin';
   const adminControlCards: Array<{
     id: typeof activeTab;
@@ -4257,6 +4416,31 @@ const AdminPanelScreen = ({
   });
   const isFreeCourseSection = activeTab === 'free-course';
   const displayedCourses = isFreeCourseSection ? freeCourses : courses;
+  const showNotice = (nextMessage: string, tone: 'success' | 'error' | 'info' = 'info') => {
+    setMessage(nextMessage);
+    setToast({ message: nextMessage, tone });
+  };
+
+  const getNoticeTone = (value: string): 'success' | 'error' | 'info' => {
+    const normalized = value.toLowerCase();
+    if (normalized.includes('success') || normalized.includes('saved') || normalized.includes('created') || normalized.includes('updated') || normalized.includes('deleted') || normalized.includes('generated') || normalized.includes('removed') || normalized.includes('imported')) {
+      return 'success';
+    }
+    if (normalized.includes('fail') || normalized.includes('unable') || normalized.includes('required') || normalized.includes('invalid') || normalized.includes('error') || normalized.includes('smaller') || normalized.includes('choose') || normalized.includes('select')) {
+      return 'error';
+    }
+    return 'info';
+  };
+
+  const confirmDelete = (title: string, description: string, onConfirm: () => Promise<void> | void) => {
+    setConfirmDialog({
+      title,
+      description,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      onConfirm,
+    });
+  };
 
   const openAdminTab = (tabId: typeof activeTab) => {
     if (tabId === 'free-course') {
@@ -4318,6 +4502,21 @@ const AdminPanelScreen = ({
   useEffect(() => {
     loadAdminAccounts();
   }, []);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setToast(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (message) {
+      setToast({ message, tone: getNoticeTone(message) });
+    }
+  }, [message]);
 
   useEffect(() => {
     const mergedCategories = Array.from(new Set([
@@ -4385,8 +4584,8 @@ const AdminPanelScreen = ({
       }
 
       const action = editingSliderId ? 'updateSlider' : 'createSlider';
-      const response = await apiPost(action, payload);
-      const data = await readJsonResponse(response);
+      const response = await apiSliderPost(action, payload);
+      const data = await readLenientJsonResponse(response);
 
       if (!data.success) {
         setMessage(data.message || 'Unable to save slider');
@@ -4402,7 +4601,9 @@ const AdminPanelScreen = ({
     } catch (error) {
       setMessage(
         sliderImageFile
-          ? 'Unable to upload slider image. Check Vercel Blob storage or Apps Script configuration.'
+          ? error instanceof Error
+            ? `Drive upload failed: ${error.message}`
+            : 'Drive upload failed. Check Apps Script deployment and Drive permission.'
           : 'Unable to upload slider image'
       );
     } finally {
@@ -4747,6 +4948,10 @@ const AdminPanelScreen = ({
             </nav>
 
             <div className="admin-sidebar-footer">
+              <div className="admin-sidebar-status">
+                <span>{isSuperAdmin ? 'Superadmin Mode' : 'Admin Mode'}</span>
+                <strong>{contentHealthScore}% system health</strong>
+              </div>
               <button onClick={onRefresh} className="admin-sidebar-link">
                 <span className="admin-sidebar-link-icon"><ShieldCheck size={18} /></span>
                 <span>{activeTabLabel}</span>
@@ -4783,7 +4988,10 @@ const AdminPanelScreen = ({
                 </button>
                 <div className="admin-reference-user">
                   <div className="admin-avatar admin-avatar--small">{adminInitials}</div>
-                  <span>{adminDisplayName}</span>
+                  <span>
+                    <strong>{adminDisplayName}</strong>
+                    <em>{isSuperAdmin ? 'Super Admin' : 'Admin'}</em>
+                  </span>
                   <ChevronDown size={18} />
                 </div>
               </div>
@@ -4801,28 +5009,133 @@ const AdminPanelScreen = ({
         <div className="space-y-6">
           <div className="admin-command-hero">
             <div>
-              <p className="admin-control-eyebrow">RBS Academy Admin</p>
-              <h1>Control the full learning app from here.</h1>
-              <span>Use the cards below to manage premium courses, videos, notes, quizzes, students, sliders, and access codes.</span>
+              <p className="admin-control-eyebrow">{isSuperAdmin ? 'Superadmin Command Center' : 'Admin Command Center'}</p>
+              <h1>Operate the academy with clean insight and fast control.</h1>
+              <span>Track publishing health, manage free and premium learning, grant access, and keep student content fresh from one focused workspace.</span>
+              <div className="admin-hero-pills">
+                <button type="button" onClick={() => setActiveTab('slider')}>
+                  <Eye size={16} />
+                  {activeSliderCount} live slider{activeSliderCount === 1 ? '' : 's'}
+                </button>
+                <button type="button" onClick={() => setActiveTab('user')}>
+                  <User size={16} />
+                  {users.length} students
+                </button>
+                <button type="button" onClick={() => setActiveTab('question')}>
+                  <MessageSquare size={16} />
+                  {questions.length} MCQs
+                </button>
+              </div>
             </div>
-            <div className="admin-command-actions">
-              <button type="button" onClick={() => setActiveTab('course')} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                Add Premium Course
-              </button>
-              <button type="button" onClick={() => setActiveTab('access')} className="admin-secondary-button px-5 py-3 text-sm font-bold">
-                Generate Access
-              </button>
+            <div className="admin-hero-score-card">
+              <span>System Health</span>
+              <strong>{contentHealthScore}%</strong>
+              <em>{alertCount ? `${alertCount} item${alertCount === 1 ? '' : 's'} need attention` : 'Everything is ready'}</em>
+              <div className="admin-hero-score-track">
+                <i style={{ width: `${contentHealthScore}%` }} />
+              </div>
+              <div className="admin-command-actions">
+                <button type="button" onClick={() => setActiveTab('course')} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                  Add Course
+                </button>
+                <button type="button" onClick={() => setActiveTab('access')} className="admin-secondary-button px-5 py-3 text-sm font-bold">
+                  Generate Access
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-priority-strip">
+            <div>
+              <p className="admin-control-eyebrow">Today</p>
+              <h2>Priority overview</h2>
+            </div>
+            <div className="admin-priority-items">
+              {dashboardPriorityItems.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => openAdminTab(item.tab)}
+                  className={`admin-priority-item admin-priority-item--${item.tone}`}
+                >
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="admin-reference-kpis">
             {dashboardStats.map((item) => (
               <div key={item.label} className={`admin-reference-kpi admin-reference-kpi--${item.tone}`}>
-                <div className="admin-reference-kpi-label">{item.label}</div>
+                <div className="admin-reference-kpi-top">
+                  <div className="admin-reference-kpi-label">{item.label}</div>
+                  <span>{item.icon}</span>
+                </div>
                 <div className="admin-reference-kpi-value">{item.value}</div>
                 <div className="admin-reference-kpi-note">{item.note}</div>
               </div>
             ))}
+          </div>
+
+          <div className="admin-overview-grid">
+            <div className="admin-insight-panel">
+              <div className="admin-reference-panel-head">
+                <div>
+                  <p className="admin-control-eyebrow">Overview Insights</p>
+                  <h3>What needs attention</h3>
+                </div>
+                <button type="button" onClick={onRefresh}>Refresh</button>
+              </div>
+              <div className="admin-insight-grid">
+                {adminInsights.map((insight) => (
+                  <button
+                    key={insight.title}
+                    type="button"
+                    onClick={() => openAdminTab(insight.tab)}
+                    className={`admin-insight-card admin-insight-card--${insight.tone}`}
+                  >
+                    <span>
+                      <strong>{insight.title}</strong>
+                      <em>{insight.detail}</em>
+                    </span>
+                    <b>{insight.value}</b>
+                    <small>{insight.action}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="admin-activity-panel">
+              <div className="admin-reference-panel-head">
+                <div>
+                  <p className="admin-control-eyebrow">Content Mix</p>
+                  <h3>Publishing balance</h3>
+                </div>
+                <span
+                  className="admin-health-ring"
+                  style={{ '--score': contentHealthScore } as React.CSSProperties}
+                >
+                  {contentHealthScore}%
+                </span>
+              </div>
+              <div className="admin-metric-bars">
+                {overviewMetrics.map((metric) => (
+                  <div key={metric.label} className="admin-metric-bar-row">
+                    <div>
+                      <span>{metric.label}</span>
+                      <strong>{metric.value}</strong>
+                    </div>
+                    <i>
+                      <b
+                        className={`admin-metric-fill admin-metric-fill--${metric.tone}`}
+                        style={{ width: `${Math.max(8, Math.round((metric.value / metric.max) * 100))}%` }}
+                      />
+                    </i>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="admin-control-center">
@@ -4969,7 +5282,11 @@ const AdminPanelScreen = ({
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDeleteAdminAccount(account.id)}
+                        onClick={() => confirmDelete(
+                          'Delete admin account?',
+                          `This will remove ${account.username} from admin access.`,
+                          () => handleDeleteAdminAccount(account.id)
+                        )}
                         className="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold"
                       >
                         Delete
@@ -5111,7 +5428,7 @@ const AdminPanelScreen = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-gray-800">{editingSliderId ? 'Edit Slider' : 'Create Slider'}</h3>
-                <p className="text-xs text-gray-500 mt-1">Uploaded slider images are saved to Google Drive through Apps Script and shown on the home slider.</p>
+                <p className="text-xs text-gray-500 mt-1">Upload image here. It will save in Google Drive, store the Drive file id, and load on the home slider from Drive.</p>
               </div>
               <div className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-primary">
                 Drive Sync
@@ -5194,7 +5511,12 @@ const AdminPanelScreen = ({
               {sliders.length ? [...sliders].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((slider) => (
                 <div key={slider.id} className="admin-list-card p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div className="flex items-center gap-4 min-w-0">
-                    <img src={slider.image_url} alt={slider.title} className="w-28 h-20 rounded-2xl object-cover bg-gray-100" referrerPolicy="no-referrer" />
+                    <SmartImage
+                      src={slider.image_url}
+                      driveFileId={slider.drive_file_id}
+                      alt={slider.title}
+                      className="w-28 h-20 rounded-2xl object-cover bg-gray-100"
+                    />
                     <div className="min-w-0">
                       <div className="font-bold text-base text-gray-800 truncate">{slider.title}</div>
                       <div className="text-sm text-gray-500 mt-1 line-clamp-2">{slider.subtitle}</div>
@@ -5202,6 +5524,9 @@ const AdminPanelScreen = ({
                         <span>Order {slider.sort_order}</span>
                         <span className={`rounded-full px-2 py-1 font-bold ${slider.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {slider.is_active ? 'Active' : 'Hidden'}
+                        </span>
+                        <span className={`rounded-full px-2 py-1 font-bold ${slider.drive_file_id ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {slider.drive_file_id ? 'Drive saved' : 'External URL'}
                         </span>
                       </div>
                     </div>
@@ -5225,7 +5550,11 @@ const AdminPanelScreen = ({
                       Edit
                     </button>
                     <button
-                      onClick={() => submitAction('deleteSlider', { id: slider.id }, () => {})}
+                      onClick={() => confirmDelete(
+                        'Delete slider?',
+                        `This will remove "${slider.title}" from the homepage slider.`,
+                        () => submitAction('deleteSlider', { id: slider.id }, () => {})
+                      )}
                       className="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs font-bold"
                     >
                       Delete
@@ -5396,7 +5725,11 @@ const AdminPanelScreen = ({
                         });
                         setActiveTab(isFreeCourseSection ? 'free-course' : 'course');
                       }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
-                      <button onClick={() => submitAction('deleteCourse', { id: course.id }, () => {})} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                      <button onClick={() => confirmDelete(
+                        'Delete course?',
+                        `This will delete "${course.title}" and its related lessons/access records.`,
+                        () => submitAction('deleteCourse', { id: course.id }, () => {})
+                      )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
                     </div>
                   </div>
                 </div>
@@ -5474,7 +5807,11 @@ const AdminPanelScreen = ({
                       });
                       setActiveTab('lesson');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
-                    <button onClick={() => submitAction('deleteLesson', { id: lesson.id }, () => {})} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                    <button onClick={() => confirmDelete(
+                      'Delete lesson?',
+                      `This will delete "${lesson.title}".`,
+                      () => submitAction('deleteLesson', { id: lesson.id }, () => {})
+                    )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
                   </div>
                 </div>
               </div>
@@ -5587,7 +5924,11 @@ const AdminPanelScreen = ({
                       });
                       setActiveTab('note');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
-                    <button onClick={() => submitAction('deleteNote', { id: note.id }, () => {})} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                    <button onClick={() => confirmDelete(
+                      'Delete note?',
+                      `This will delete "${note.title}".`,
+                      () => submitAction('deleteNote', { id: note.id }, () => {})
+                    )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
                   </div>
                 </div>
               </div>
@@ -5643,7 +5984,11 @@ const AdminPanelScreen = ({
                       setQuizForm({ topic: quiz.topic, type: (quiz as any).type || 'free' });
                       setActiveTab('quiz');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
-                    <button onClick={() => submitAction('deleteQuiz', { id: quiz.id }, () => {})} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                    <button onClick={() => confirmDelete(
+                      'Delete quiz?',
+                      `This will delete "${quiz.topic}" and its questions.`,
+                      () => submitAction('deleteQuiz', { id: quiz.id }, () => {})
+                    )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
                   </div>
                 </div>
               </div>
@@ -5820,7 +6165,11 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                       setQuestionImageFile(null);
                       setActiveTab('question');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
-                    <button onClick={() => submitAction('deleteQuestion', { id: question.id }, () => {})} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                    <button onClick={() => confirmDelete(
+                      'Delete question?',
+                      'This MCQ will be permanently removed from the quiz.',
+                      () => submitAction('deleteQuestion', { id: question.id }, () => {})
+                    )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
                   </div>
                 </div>
               </div>
@@ -5986,6 +6335,70 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
           </section>
         </div>
       </div>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -18, scale: 0.98 }}
+            className={`admin-toast admin-toast--${toast.tone}`}
+          >
+            <span className="admin-toast-icon">
+              {toast.tone === 'success' ? <CheckCircle2 size={20} /> : toast.tone === 'error' ? <XCircle size={20} /> : <Info size={20} />}
+            </span>
+            <p>{toast.message}</p>
+            <button type="button" onClick={() => setToast(null)} aria-label="Close notification">
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDialog && (
+          <motion.div
+            className="admin-confirm-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="admin-confirm-card"
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+            >
+              <div className={`admin-confirm-icon admin-confirm-icon--${confirmDialog.tone || 'primary'}`}>
+                {confirmDialog.tone === 'danger' ? <XCircle size={26} /> : <Info size={26} />}
+              </div>
+              <h3>{confirmDialog.title}</h3>
+              <p>{confirmDialog.description}</p>
+              <div className="admin-confirm-actions">
+                <button
+                  type="button"
+                  className="admin-confirm-cancel"
+                  onClick={() => setConfirmDialog(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`admin-confirm-submit admin-confirm-submit--${confirmDialog.tone || 'primary'}`}
+                  disabled={loading}
+                  onClick={async () => {
+                    const action = confirmDialog.onConfirm;
+                    setConfirmDialog(null);
+                    await action();
+                  }}
+                >
+                  {loading ? 'Working...' : confirmDialog.confirmLabel || 'Confirm'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
