@@ -615,18 +615,30 @@ export const createApiApp = async () => {
     const credential = submittedUsername
       ? await getAdminCredential(requestedRole, submittedUsername)
       : null;
+    const fallbackUsername = requestedRole === "superadmin" ? SUPER_ADMIN_USERNAME : ADMIN_USERNAME;
+    const fallbackPassword = requestedRole === "superadmin" ? SUPER_ADMIN_PASSWORD : ADMIN_PASSWORD;
+    const envCredentialMatches =
+      fallbackUsername
+      && fallbackPassword
+      && submittedUsername.toLowerCase() === fallbackUsername.toLowerCase()
+      && safeEqual(String(password || ""), fallbackPassword);
 
-    if (!credential || !verifyPassword(String(password || ""), credential.password)) {
+    if ((!credential || !verifyPassword(String(password || ""), credential.password)) && !envCredentialMatches) {
       res.status(401).json({ success: false, message: "Invalid admin credentials" });
       return;
     }
 
-    const token = createAdminToken(requestedRole, credential.username);
+    if (!credential && envCredentialMatches) {
+      await seedAdminCredential(requestedRole, fallbackUsername, fallbackPassword);
+    }
+
+    const authenticatedUsername = credential?.username || fallbackUsername;
+    const token = createAdminToken(requestedRole, authenticatedUsername);
     res.json({
       success: true,
       session: {
         role: requestedRole,
-        username: credential.username,
+        username: authenticatedUsername,
         token,
       },
     });

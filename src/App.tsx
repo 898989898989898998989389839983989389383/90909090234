@@ -3904,7 +3904,7 @@ const AdminLoginScreen = ({
       });
       return;
     } catch (error) {
-      setError('Unable to sign in. Check server admin configuration.');
+      setError(error instanceof Error ? error.message : 'Unable to sign in. Check server admin configuration.');
     }
   };
 
