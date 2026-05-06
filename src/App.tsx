@@ -156,6 +156,10 @@ const DEMO_STUDENT_ACCOUNT = {
   phone: '9800000000',
   password: 'demo1234',
 };
+const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
+  admin: { username: 'admin', password: 'admin123' },
+  superadmin: { username: 'adminsachin', password: 'admin123' },
+};
 
 const getAppsScriptActionUrl = (action: string) => {
   if (!APPS_SCRIPT_URL) {
@@ -3929,8 +3933,7 @@ const AdminLoginScreen = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const signInAdmin = async (credentials: { username: string; password: string }) => {
     setError('');
 
     try {
@@ -3939,8 +3942,8 @@ const AdminLoginScreen = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode,
-          username: username.trim(),
-          password,
+          username: credentials.username.trim(),
+          password: credentials.password,
         }),
       });
       const data = await readJsonResponse(response);
@@ -3960,6 +3963,18 @@ const AdminLoginScreen = ({
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to sign in. Check server admin configuration.');
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await signInAdmin({ username, password });
+  };
+
+  const handleDemoAdminLogin = async () => {
+    const demoAccount = DEMO_ADMIN_ACCOUNTS[mode];
+    setUsername(demoAccount.username);
+    setPassword(demoAccount.password);
+    await signInAdmin(demoAccount);
   };
 
   return (
@@ -4042,6 +4057,13 @@ const AdminLoginScreen = ({
 
             <button type="submit" className="auth-scenic-button auth-login-submit py-4 text-lg">
               Continue
+            </button>
+            <button
+              type="button"
+              onClick={handleDemoAdminLogin}
+              className="w-full rounded-2xl border border-white/20 bg-white/12 px-4 py-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/18"
+            >
+              Demo {mode === 'superadmin' ? 'Super Admin' : 'Admin'}
             </button>
           </form>
         </div>
