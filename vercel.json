@@ -7,19 +7,7 @@
   },
   "rewrites": [
     {
-      "source": "/adminlogin",
-      "destination": "/"
-    },
-    {
-      "source": "/admin",
-      "destination": "/"
-    },
-    {
-      "source": "/adminlogin/adminsachin",
-      "destination": "/"
-    },
-    {
-      "source": "/superadmin",
+      "source": "/((?!api).*)",
       "destination": "/"
     }
   ]

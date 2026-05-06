@@ -149,13 +149,6 @@ const ADMIN_USERS_CACHE_KEY = 'rbs-academy-admin-users-cache';
 const DATA_REQUEST_TIMEOUT_MS = 8000;
 const ADMIN_USERS_RESOURCE_URL = 'https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users';
 const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || '').trim();
-const DEMO_STUDENT_ACCOUNT = {
-  id: 'demo-student',
-  name: 'Demo Student',
-  email: 'demo@rbsacademy.com',
-  phone: '9800000000',
-  password: 'demo1234',
-};
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
@@ -1312,41 +1305,6 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      let res = await apiAuthPost('login', {
-        email: DEMO_STUDENT_ACCOUNT.email,
-        password: DEMO_STUDENT_ACCOUNT.password,
-      });
-      let data = await res.json();
-
-      if (!data.success) {
-        res = await apiAuthPost('signup', DEMO_STUDENT_ACCOUNT);
-        data = await res.json();
-      }
-
-      if (data.success) {
-        onLogin(normalizeAuthUser(data.user, DEMO_STUDENT_ACCOUNT));
-        return;
-      }
-
-      throw new Error(data.message || 'Demo login failed');
-    } catch {
-      const storedUsers = getStoredUsers();
-      const existingUser = storedUsers.find((user) => user.email.toLowerCase() === DEMO_STUDENT_ACCOUNT.email);
-      const demoUser: StoredUser = existingUser || DEMO_STUDENT_ACCOUNT;
-      if (!existingUser) {
-        saveStoredUsers([...storedUsers, demoUser]);
-      }
-      onLogin(normalizeAuthUser(demoUser, DEMO_STUDENT_ACCOUNT));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }} 
@@ -1470,16 +1428,6 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isSignup ? 'Create Account' : 'Log In')}
         </button>
 
-        {!isSignup && (
-          <button
-            type="button"
-            disabled={loading}
-            onClick={handleDemoLogin}
-            className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
-          >
-            Demo Account
-          </button>
-        )}
       </form>
 
       <p className="auth-login-footer">
@@ -4725,7 +4673,13 @@ const AdminPanelScreen = ({
         <div className="admin-panel-layout">
           <aside className="admin-sidebar-shell">
             <div className="admin-sidebar-brand">
-              <div className="admin-sidebar-brand-mark">RBS</div>
+              <div className="admin-sidebar-brand-mark">
+                <img
+                  src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg-nhTfx_bz8KVVBvV8TET9GeLLMpwjHt3hYdwSV4RnkHI0VxgQ3_FGtzfcH9RwehZJ1qnDSEgwj8v-pksCSnJz7APCIYxaKF_y231t2rgu8oKuQkphKNyKm_5s1ZGJ_9mIEpNkFJl1OJlaqKi2-_SSmBOapbpLOThS_CLZs0nJlSA12nDPNZsFojK-EQ/s1600/a7e4c4df-fc23-4adf-9412-a3b4fe6ade3c-removebg-preview.png"
+                  alt="RBS Academy logo"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
               <div>
                 <div className="admin-sidebar-brand-title">RBS Academy</div>
                 <div className="admin-sidebar-brand-subtitle">Admin Dashboard</div>
@@ -6004,7 +5958,9 @@ const NoteViewerScreen = ({
 // --- Main App ---
 
 export default function App() {
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const pathname = typeof window !== 'undefined'
+    ? window.location.pathname.replace(/\/+$/, '') || '/'
+    : '';
   const isSuperAdminRoute = pathname === '/adminlogin/adminsachin' || pathname === '/superadmin';
   const isAdminRoute = pathname === '/adminlogin' || pathname === '/admin';
   const isManagementRoute = isAdminRoute || isSuperAdminRoute;
