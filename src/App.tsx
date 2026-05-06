@@ -4675,7 +4675,7 @@ const AdminPanelScreen = ({
             <div className="admin-sidebar-brand">
               <div className="admin-sidebar-brand-mark">
                 <img
-                  src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg-nhTfx_bz8KVVBvV8TET9GeLLMpwjHt3hYdwSV4RnkHI0VxgQ3_FGtzfcH9RwehZJ1qnDSEgwj8v-pksCSnJz7APCIYxaKF_y231t2rgu8oKuQkphKNyKm_5s1ZGJ_9mIEpNkFJl1OJlaqKi2-_SSmBOapbpLOThS_CLZs0nJlSA12nDPNZsFojK-EQ/s1600/a7e4c4df-fc23-4adf-9412-a3b4fe6ade3c-removebg-preview.png"
+                  src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjDh7QBYsTfWZc9MtN5tZ_FEnWodgeXDaFBjqKF0GIY1DOzOep5NC76_GJgqLSTfkllAZD20jOiwm-5FSABCZnbT7vXx8xBzWNaKIfXPZQIlsRuzxSB8c7MNBixJTQHq2skFedwBf8wRyuG6aS-qk1rrL9C-Vl0mmMScZQMGddoMKaGGdiR4FePzprpKQ/s1600/Untitled_design-removebg-preview.png"
                   alt="RBS Academy logo"
                   referrerPolicy="no-referrer"
                 />
