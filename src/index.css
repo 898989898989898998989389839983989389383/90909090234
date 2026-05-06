@@ -1545,7 +1545,8 @@ body {
   font-weight: 650;
 }
 
-.admin-course-field input:disabled {
+.admin-course-field input:disabled,
+.admin-course-field select:disabled {
   color: #64748b;
   background: #eef2f7;
   cursor: not-allowed;
