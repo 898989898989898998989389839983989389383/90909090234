@@ -36,6 +36,8 @@ type DbNote = RowDataPacket & { id: string; title: string; lessons: number; cate
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
 type DbQuestion = RowDataPacket & { id: string; quiz_id: string; text: string; options: string; correctAnswer: number; explanation: string; image_url?: string };
 type DbSlider = RowDataPacket & { id: string; title: string; subtitle: string; image_url: string; sort_order: number; is_active: number | boolean };
+type AdminRole = "admin" | "superadmin";
+type DbAdminCredential = RowDataPacket & { id: string; role: AdminRole; username: string; password: string; created_at?: Date | string; updated_at?: Date | string };
 
 const asyncHandler = (handler: (req: Request, res: Response, next: NextFunction) => Promise<void>) =>
   (req: Request, res: Response, next: NextFunction) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -299,6 +301,39 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
   grantedCourseIds: await getGrantedCourseIds(String(user.id)),
 });
 
+const normalizeUsers = async (users: Pick<DbUser, "id" | "name" | "email" | "phone">[]) => {
+  const userIds = users.map((user) => String(user.id)).filter(Boolean);
+  const enrollments = userIds.length
+    ? await queryRows<RowDataPacket & { user_id: string; course_id: string }>(
+        "SELECT user_id, course_id FROM enrollments WHERE user_id = ANY($1::text[]) ORDER BY granted_at DESC, id DESC",
+        [userIds],
+      )
+    : [];
+  const courseIdsByUser = new Map<string, string[]>();
+
+  for (const enrollment of enrollments) {
+    const userId = String(enrollment.user_id || "").trim();
+    const courseId = String(enrollment.course_id || "").trim();
+    if (!userId || !courseId) {
+      continue;
+    }
+
+    const currentCourseIds = courseIdsByUser.get(userId) || [];
+    if (!currentCourseIds.includes(courseId)) {
+      currentCourseIds.push(courseId);
+    }
+    courseIdsByUser.set(userId, currentCourseIds);
+  }
+
+  return users.map((user) => ({
+    id: String(user.id),
+    name: String(user.name || ""),
+    email: String(user.email || ""),
+    phone: String(user.phone || ""),
+    grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
+  }));
+};
+
 const extractUsersPayload = (payload: unknown) => {
   if (Array.isArray(payload)) {
     return payload;
@@ -359,7 +394,45 @@ const createAdminToken = (role: AdminRole, username: string) => {
   return `${encodedPayload}.${signature}`;
 };
 
-type AdminRole = "admin" | "superadmin";
+const seedAdminCredential = async (role: AdminRole, username: string, password: string) => {
+  const trimmedUsername = username.trim();
+  if (!trimmedUsername || !password) {
+    return;
+  }
+
+  const existing = await queryOne<DbAdminCredential>(
+    "SELECT id FROM admin_credentials WHERE role = ? AND LOWER(username) = LOWER(?)",
+    [role, trimmedUsername],
+  );
+  if (existing) {
+    return;
+  }
+
+  const now = new Date();
+  await execute(
+    "INSERT INTO admin_credentials (id, role, username, password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    [createId("ad"), role, trimmedUsername, hashPassword(password), now, now],
+  );
+};
+
+const seedConfiguredAdminCredentials = async () => {
+  await seedAdminCredential("admin", ADMIN_USERNAME, ADMIN_PASSWORD);
+  await seedAdminCredential("superadmin", SUPER_ADMIN_USERNAME, SUPER_ADMIN_PASSWORD);
+};
+
+const getAdminCredential = async (role: AdminRole, username: string) =>
+  queryOne<DbAdminCredential>(
+    "SELECT * FROM admin_credentials WHERE role = ? AND LOWER(username) = LOWER(?)",
+    [role, username.trim()],
+  );
+
+const serializeAdminCredential = (credential: DbAdminCredential) => ({
+  id: String(credential.id),
+  role: credential.role,
+  username: String(credential.username || ""),
+  createdAt: credential.created_at || null,
+  updatedAt: credential.updated_at || null,
+});
 
 const verifyAdminToken = (token: string) => {
   if (!ADMIN_AUTH_SECRET || !token) {
@@ -510,6 +583,7 @@ const removeQuestionsForQuiz = async (quizId: string, connection?: PoolConnectio
 
 export const createApiApp = async () => {
   await initDatabase();
+  await seedConfiguredAdminCredentials();
 
   const app = express();
   app.disable("x-powered-by");
@@ -531,30 +605,100 @@ export const createApiApp = async () => {
 
     const { username, password, mode } = req.body || {};
     const requestedRole: AdminRole = mode === "superadmin" ? "superadmin" : "admin";
-    const expectedUsername = requestedRole === "superadmin" ? SUPER_ADMIN_USERNAME : ADMIN_USERNAME;
-    const expectedPassword = requestedRole === "superadmin" ? SUPER_ADMIN_PASSWORD : ADMIN_PASSWORD;
+    const submittedUsername = String(username || "").trim();
 
-    if (!expectedUsername || !expectedPassword || !ADMIN_AUTH_SECRET) {
+    if (!ADMIN_AUTH_SECRET) {
       res.status(503).json({ success: false, message: "Admin login is not configured" });
       return;
     }
 
-    const usernameMatches = String(username || "").trim().toLowerCase() === expectedUsername.toLowerCase();
-    const passwordMatches = safeEqual(String(password || ""), expectedPassword);
-    if (!usernameMatches || !passwordMatches) {
+    const credential = submittedUsername
+      ? await getAdminCredential(requestedRole, submittedUsername)
+      : null;
+
+    if (!credential || !verifyPassword(String(password || ""), credential.password)) {
       res.status(401).json({ success: false, message: "Invalid admin credentials" });
       return;
     }
 
-    const token = createAdminToken(requestedRole, expectedUsername);
+    const token = createAdminToken(requestedRole, credential.username);
     res.json({
       success: true,
       session: {
         role: requestedRole,
-        username: expectedUsername,
+        username: credential.username,
         token,
       },
     });
+  }));
+
+  app.get("/api/admin/accounts", requireAdmin(["superadmin"]), asyncHandler(async (_req, res) => {
+    const accounts = await queryRows<DbAdminCredential>(
+      "SELECT id, role, username, created_at, updated_at FROM admin_credentials ORDER BY role DESC, username ASC",
+    );
+    res.json({ success: true, accounts: accounts.map(serializeAdminCredential) });
+  }));
+
+  app.post("/api/createAdminAccount", requireAdmin(["superadmin"]), asyncHandler(async (req, res) => {
+    const username = String(req.body?.username || "").trim();
+    const password = String(req.body?.password || "");
+    const role: AdminRole = req.body?.role === "superadmin" ? "superadmin" : "admin";
+
+    if (!username || !password) {
+      res.status(400).json({ success: false, message: "Admin username and password are required" });
+      return;
+    }
+
+    if (password.length < 6) {
+      res.status(400).json({ success: false, message: "Admin password must be at least 6 characters" });
+      return;
+    }
+
+    const existing = await getAdminCredential(role, username);
+    const now = new Date();
+    if (existing) {
+      await execute(
+        "UPDATE admin_credentials SET password = ?, updated_at = ? WHERE id = ?",
+        [hashPassword(password), now, existing.id],
+      );
+      const updated = await queryOne<DbAdminCredential>("SELECT id, role, username, created_at, updated_at FROM admin_credentials WHERE id = ?", [existing.id]);
+      res.json({ success: true, message: "Admin account updated", account: updated ? serializeAdminCredential(updated) : null });
+      return;
+    }
+
+    const id = createId("ad");
+    await execute(
+      "INSERT INTO admin_credentials (id, role, username, password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, role, username, hashPassword(password), now, now],
+    );
+    const account = await queryOne<DbAdminCredential>("SELECT id, role, username, created_at, updated_at FROM admin_credentials WHERE id = ?", [id]);
+    res.status(201).json({ success: true, message: "Admin account created", account: account ? serializeAdminCredential(account) : null });
+  }));
+
+  app.post("/api/deleteAdminAccount", requireAdmin(["superadmin"]), asyncHandler(async (req, res) => {
+    const id = String(req.body?.id || "").trim();
+    if (!id) {
+      res.status(400).json({ success: false, message: "Admin account id is required" });
+      return;
+    }
+
+    const current = await queryOne<DbAdminCredential>("SELECT * FROM admin_credentials WHERE id = ?", [id]);
+    if (!current) {
+      res.status(404).json({ success: false, message: "Admin account not found" });
+      return;
+    }
+
+    const roleCount = await queryOne<RowDataPacket & { count: number }>(
+      "SELECT COUNT(*)::int AS count FROM admin_credentials WHERE role = ?",
+      [current.role],
+    );
+    if (Number(roleCount?.count || 0) <= 1) {
+      res.status(400).json({ success: false, message: `At least one ${current.role} account is required` });
+      return;
+    }
+
+    await execute("DELETE FROM admin_credentials WHERE id = ?", [id]);
+    res.json({ success: true, message: "Admin account deleted" });
   }));
 
   app.post("/api/signup", asyncHandler(async (req, res) => {
@@ -646,13 +790,13 @@ export const createApiApp = async () => {
 
   app.get("/api/users", asyncHandler(async (_req, res) => {
     const users = await queryRows<DbUser>("SELECT id, name, email, phone FROM users ORDER BY name ASC, id ASC");
-    const normalized = await Promise.all(users.map((user) => normalizeUser(user)));
+    const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
 
   app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
     const users = await queryRows<DbUser>("SELECT id, name, email, phone FROM users ORDER BY name ASC, id ASC");
-    const normalized = await Promise.all(users.map((user) => normalizeUser(user)));
+    const normalized = await normalizeUsers(users);
     if (normalized.length > 0) {
       res.json(normalized);
       return;

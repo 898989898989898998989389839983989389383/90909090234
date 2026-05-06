@@ -123,6 +123,7 @@ interface AdminUser extends AuthUser {
 
 interface AdminAccount {
   id: string;
+  role?: AdminRole;
   username: string;
   password: string;
   createdAt: number;
@@ -4253,8 +4254,29 @@ const AdminPanelScreen = ({
     setQuestionImagePreviewUrl(questionForm.image_url || '');
   }, [questionImageFile, questionForm.image_url]);
 
-  useEffect(() => {
+  const loadAdminAccounts = async () => {
+    try {
+      const response = await fetchWithTimeout('/api/admin/accounts', {
+        headers: getAdminAuthHeaders(),
+      });
+      const data = await readJsonResponse(response);
+      if (data.success && Array.isArray(data.accounts)) {
+        setAdminAccounts(data.accounts.map((account: any) => ({
+          id: String(account.id),
+          role: account.role === 'superadmin' ? 'superadmin' : 'admin',
+          username: String(account.username || ''),
+          password: '',
+          createdAt: Date.parse(String(account.createdAt || '')) || Date.now(),
+        })));
+        return;
+      }
+    } catch {}
+
     setAdminAccounts(getStoredAdminAccounts());
+  };
+
+  useEffect(() => {
+    loadAdminAccounts();
   }, []);
 
   useEffect(() => {
@@ -4465,16 +4487,57 @@ const AdminPanelScreen = ({
     }
   };
 
-  const handleCreateAdminAccount = () => {
-    setAdminAccountForm({ username: '', password: '' });
-    setMessage('Admin credentials are now managed by secure server environment variables.');
+  const handleCreateAdminAccount = async () => {
+    const username = adminAccountForm.username.trim();
+    const password = adminAccountForm.password;
+    if (!username || !password) {
+      setMessage('Admin username and password are required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await apiPost('createAdminAccount', {
+        role: 'admin',
+        username,
+        password,
+      });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to save admin account');
+        return;
+      }
+
+      setAdminAccountForm({ username: '', password: '' });
+      await loadAdminAccounts();
+      setMessage(data.message || 'Admin account saved');
+    } catch {
+      setMessage('Unable to save admin account');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteAdminAccount = (accountId: string) => {
-    const nextAccounts = getStoredAdminAccounts().filter((account) => account.id !== accountId);
-    saveStoredAdminAccounts(nextAccounts);
-    setAdminAccounts(nextAccounts);
-    setMessage('Local legacy admin account removed');
+  const handleDeleteAdminAccount = async (accountId: string) => {
+    try {
+      setLoading(true);
+      const response = await apiPost('deleteAdminAccount', { id: accountId });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to delete admin account');
+        return;
+      }
+
+      await loadAdminAccounts();
+      setMessage(data.message || 'Admin account deleted');
+    } catch {
+      const nextAccounts = getStoredAdminAccounts().filter((account) => account.id !== accountId);
+      saveStoredAdminAccounts(nextAccounts);
+      setAdminAccounts(nextAccounts);
+      setMessage('Local legacy admin account removed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddNoteCategory = () => {
@@ -4785,7 +4848,7 @@ const AdminPanelScreen = ({
                 <div className="admin-section-head">
                   <div>
                     <h3 className="font-bold text-gray-800">Create Admin</h3>
-                    <p className="text-xs text-gray-500 mt-1">Admin credentials are configured securely on the server.</p>
+                    <p className="text-xs text-gray-500 mt-1">Admin credentials are stored in the academy database.</p>
                   </div>
                   <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
                     Super Admin Only
@@ -4806,7 +4869,7 @@ const AdminPanelScreen = ({
                     onChange={(e) => setAdminAccountForm((current) => ({ ...current, password: e.target.value }))}
                   />
                   <button type="button" onClick={handleCreateAdminAccount} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                    Clear Form
+                    Save Admin
                   </button>
                 </div>
               </div>
@@ -4815,7 +4878,7 @@ const AdminPanelScreen = ({
                 <div className="admin-section-head">
                   <div>
                     <h3 className="font-bold text-gray-800">Manage Admin Accounts</h3>
-                    <p className="text-xs text-gray-500 mt-1">Legacy browser-only admin accounts are no longer trusted for login.</p>
+                    <p className="text-xs text-gray-500 mt-1">These accounts are fetched from the database for login.</p>
                   </div>
                   <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
                     {adminAccounts.length} admins
@@ -4827,7 +4890,7 @@ const AdminPanelScreen = ({
                       <div>
                         <div className="font-bold text-slate-900">{account.username}</div>
                         <div className="text-xs text-slate-500 mt-1">
-                          Legacy local account
+                          {account.role === 'superadmin' ? 'Super admin' : 'Admin'}
                         </div>
                       </div>
                       <button

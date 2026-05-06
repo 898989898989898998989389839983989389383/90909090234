@@ -849,7 +849,7 @@ export const getPool = () => {
   if (!pool) {
     pool = new Pool({
       ...getConnectionConfig(),
-      max: 10,
+      max: Number(process.env.POSTGRES_POOL_MAX || 1),
     });
   }
 
@@ -1015,6 +1015,18 @@ const createSchema = async (client: Pool | PoolClient) => {
   `);
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS admin_credentials (
+      id TEXT PRIMARY KEY,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'superadmin')),
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(role, username)
+    )
+  `);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS quizzes (
