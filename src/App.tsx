@@ -697,10 +697,11 @@ const readJsonResponse = async (response: Response) => {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
     const bodyText = await response.text();
+    const shortBody = bodyText.trim().slice(0, 180);
     throw new Error(
       bodyText.trim().startsWith('<')
         ? 'Server returned HTML instead of JSON. Refresh the app and make sure the API/server is running.'
-        : 'Server returned an unexpected response.'
+        : shortBody || 'Server returned an unexpected response.'
     );
   }
 
