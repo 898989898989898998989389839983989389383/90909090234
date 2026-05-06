@@ -4058,9 +4058,9 @@ const AdminPanelScreen = ({
     title: '',
     lessons: '0',
     image: '',
-    price: '999',
-    oldPrice: '2999',
-    type: 'premium',
+    price: '0',
+    oldPrice: '0',
+    type: 'free' as 'free' | 'premium',
     category: 'Chemistry',
   });
   const [lessonForm, setLessonForm] = useState({
@@ -4242,8 +4242,8 @@ const AdminPanelScreen = ({
     tone: string;
     icon: React.ReactNode;
   }> = [
-    { id: 'course', title: 'Courses', description: 'Create, price, edit, and remove premium chemistry courses.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
-    { id: 'lesson', title: 'Videos', description: 'Attach video lessons, durations, notes, and resources to any course.', count: `${lessons.length} lessons`, tone: 'green', icon: <Play size={22} /> },
+    { id: 'course', title: 'Courses', description: 'Create free classes or premium chemistry batches with pricing.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
+    { id: 'lesson', title: 'YouTube Videos', description: 'Attach YouTube lessons, durations, notes, and resources to any course.', count: `${lessons.length} lessons`, tone: 'green', icon: <Play size={22} /> },
     { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
     { id: 'note', title: 'Notes', description: 'Publish downloadable notes and organize study material categories.', count: `${notes.length} notes`, tone: 'slate', icon: <FileText size={22} /> },
@@ -4620,7 +4620,7 @@ const AdminPanelScreen = ({
   };
 
   const resetCourseForm = () => {
-    setCourseForm({ title: '', lessons: '0', image: '', price: '999', oldPrice: '2999', type: 'premium', category: 'Chemistry' });
+    setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'Chemistry' });
     setEditingCourseId('');
   };
 
@@ -4628,9 +4628,10 @@ const AdminPanelScreen = ({
     const title = courseForm.title.trim();
     const image = courseForm.image.trim();
     const category = courseForm.category.trim() || 'Chemistry';
+    const courseType = courseForm.type === 'premium' ? 'premium' : 'free';
     const lessonsCount = Number(courseForm.lessons || 0);
-    const price = Number(courseForm.price || 0);
-    const oldPrice = Number(courseForm.oldPrice || 0);
+    const price = courseType === 'premium' ? Number(courseForm.price || 0) : 0;
+    const oldPrice = courseType === 'premium' ? Number(courseForm.oldPrice || 0) : 0;
 
     if (!title) {
       setMessage('Course title is required');
@@ -4647,12 +4648,12 @@ const AdminPanelScreen = ({
       return;
     }
 
-    if (!Number.isFinite(price) || price <= 0) {
+    if (courseType === 'premium' && (!Number.isFinite(price) || price <= 0)) {
       setMessage('Premium course price must be greater than 0');
       return;
     }
 
-    if (!Number.isFinite(oldPrice) || oldPrice < price) {
+    if (courseType === 'premium' && (!Number.isFinite(oldPrice) || oldPrice < price)) {
       setMessage('Old price should be equal to or higher than the current price');
       return;
     }
@@ -4662,11 +4663,38 @@ const AdminPanelScreen = ({
       title,
       image,
       category,
-      type: 'premium',
+      type: courseType,
       lessons: lessonsCount,
       price,
       oldPrice,
     }, resetCourseForm);
+  };
+
+  const submitLessonForm = () => {
+    const videoUrl = lessonForm.video_url.trim();
+
+    if (!lessonForm.course_id || !lessonForm.title.trim()) {
+      setMessage('Course and lesson title are required');
+      return;
+    }
+
+    if (!videoUrl || !/(youtube\.com\/watch\?v=|youtu\.be\/|youtube(-nocookie)?\.com\/embed\/)/i.test(videoUrl)) {
+      setMessage('Add a valid YouTube video link for this lesson');
+      return;
+    }
+
+    submitAction(editingLessonId ? 'updateLesson' : 'createLesson', {
+      ...(editingLessonId ? { id: editingLessonId } : {}),
+      ...lessonForm,
+      title: lessonForm.title.trim(),
+      duration: lessonForm.duration.trim(),
+      note_url: lessonForm.note_url.trim(),
+      note_content: lessonForm.note_content.trim(),
+      video_url: normalizeVideoUrl(videoUrl),
+    }, () => {
+      setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '' });
+      setEditingLessonId('');
+    });
   };
 
   return (
@@ -5206,17 +5234,39 @@ const AdminPanelScreen = ({
             <div className="admin-course-form-panel">
               <div className="admin-section-head">
                 <div>
-                  <p className="admin-control-eyebrow">Premium Course Builder</p>
-                  <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Premium Course' : 'Add Premium Course'}</h3>
-                  <p className="text-xs text-slate-500 mt-1">Add accurate course details. Students need an access code before they can watch lessons.</p>
+                  <p className="admin-control-eyebrow">Course Builder</p>
+                  <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Course' : 'Add Free or Premium Course'}</h3>
+                  <p className="text-xs text-slate-500 mt-1">Free courses open instantly. Premium courses stay locked until access is granted.</p>
                 </div>
                 <div className="admin-course-status-pill">
-                  <ShieldCheck size={15} />
-                  Premium Locked
+                  {courseForm.type === 'premium' ? <ShieldCheck size={15} /> : <BookOpen size={15} />}
+                  {courseForm.type === 'premium' ? 'Premium Locked' : 'Free Open'}
                 </div>
               </div>
 
               <div className="admin-course-field-grid">
+                <label className="admin-course-field">
+                  <span>Course type</span>
+                  <select
+                    value={courseForm.type}
+                    onChange={(e) => {
+                      const nextType = e.target.value === 'premium' ? 'premium' : 'free';
+                      setCourseForm({
+                        ...courseForm,
+                        type: nextType,
+                        price: nextType === 'free' ? '0' : courseForm.price === '0' ? '999' : courseForm.price,
+                        oldPrice: nextType === 'free' ? '0' : courseForm.oldPrice === '0' ? '2999' : courseForm.oldPrice,
+                      });
+                    }}
+                  >
+                    <option value="free">Free Course</option>
+                    <option value="premium">Premium Course</option>
+                  </select>
+                </label>
+                <label className="admin-course-field">
+                  <span>Category</span>
+                  <input placeholder="Chemistry" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
+                </label>
                 <label className="admin-course-field admin-course-field--wide">
                   <span>Course title</span>
                   <input placeholder="Example: NEB Chemistry Complete Batch" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
@@ -5230,27 +5280,25 @@ const AdminPanelScreen = ({
                   <input inputMode="numeric" placeholder="0" value={courseForm.lessons} onChange={(e) => setCourseForm({ ...courseForm, lessons: e.target.value.replace(/[^\d]/g, '') })} />
                 </label>
                 <label className="admin-course-field">
-                  <span>Category</span>
-                  <input placeholder="Chemistry" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
-                </label>
-                <label className="admin-course-field">
                   <span>Current price</span>
-                  <input inputMode="numeric" placeholder="999" value={courseForm.price} onChange={(e) => setCourseForm({ ...courseForm, price: e.target.value.replace(/[^\d]/g, '') })} />
+                  <input inputMode="numeric" placeholder="0" value={courseForm.price} disabled={courseForm.type === 'free'} onChange={(e) => setCourseForm({ ...courseForm, price: e.target.value.replace(/[^\d]/g, '') })} />
                 </label>
                 <label className="admin-course-field">
                   <span>Old price</span>
-                  <input inputMode="numeric" placeholder="2999" value={courseForm.oldPrice} onChange={(e) => setCourseForm({ ...courseForm, oldPrice: e.target.value.replace(/[^\d]/g, '') })} />
+                  <input inputMode="numeric" placeholder="0" value={courseForm.oldPrice} disabled={courseForm.type === 'free'} onChange={(e) => setCourseForm({ ...courseForm, oldPrice: e.target.value.replace(/[^\d]/g, '') })} />
                 </label>
               </div>
 
               <div className="admin-course-note">
-                <Lock size={16} />
-                Premium access codes are generated per student from the Premium Access section.
+                {courseForm.type === 'premium' ? <Lock size={16} /> : <CheckCircle2 size={16} />}
+                {courseForm.type === 'premium'
+                  ? 'Premium access codes are generated per student from the Premium Access section.'
+                  : 'Free courses appear for students without any access code.'}
               </div>
 
               <div className="admin-course-actions">
                 <button disabled={loading} onClick={submitCourseForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                  {loading ? 'Saving...' : editingCourseId ? 'Update Premium Course' : 'Create Premium Course'}
+                  {loading ? 'Saving...' : editingCourseId ? 'Update Course' : 'Create Course'}
                 </button>
                 <button onClick={resetCourseForm} className="admin-secondary-button px-5 py-3 text-sm font-bold">
                   {editingCourseId ? 'Cancel Edit' : 'Clear'}
@@ -5268,19 +5316,25 @@ const AdminPanelScreen = ({
                     <span>Image preview</span>
                   </div>
                 )}
-                <div className="admin-course-preview-badge">Premium</div>
+                <div className="admin-course-preview-badge">{courseForm.type === 'premium' ? 'Premium' : 'Free'}</div>
               </div>
               <div className="admin-course-preview-body">
                 <h3>{courseForm.title.trim() || 'Course title preview'}</h3>
                 <p>{courseForm.category.trim() || 'Chemistry'} - {Number(courseForm.lessons || 0)} lessons</p>
                 <div className="admin-course-preview-price">
-                  <strong>Rs {Number(courseForm.price || 0).toLocaleString()}</strong>
-                  <span>Rs {Number(courseForm.oldPrice || 0).toLocaleString()}</span>
+                  {courseForm.type === 'premium' ? (
+                    <>
+                      <strong>Rs {Number(courseForm.price || 0).toLocaleString()}</strong>
+                      <span>Rs {Number(courseForm.oldPrice || 0).toLocaleString()}</span>
+                    </>
+                  ) : (
+                    <strong>Free</strong>
+                  )}
                 </div>
                 <div className="admin-course-preview-checks">
                   <span className={courseForm.title.trim() ? 'is-ready' : ''}>Title</span>
                   <span className={/^https?:\/\//i.test(courseForm.image.trim()) ? 'is-ready' : ''}>Image</span>
-                  <span className={Number(courseForm.price || 0) > 0 ? 'is-ready' : ''}>Price</span>
+                  <span className={courseForm.type === 'free' || Number(courseForm.price || 0) > 0 ? 'is-ready' : ''}>{courseForm.type === 'premium' ? 'Price' : 'Free Access'}</span>
                   <span className={courseForm.category.trim() ? 'is-ready' : ''}>Category</span>
                 </div>
               </div>
@@ -5290,8 +5344,8 @@ const AdminPanelScreen = ({
           <div className={cardClass}>
             <div className="admin-section-head">
               <div>
-                <h3 className="font-bold text-gray-800">Manage Premium Courses</h3>
-                <p className="text-xs text-gray-500 mt-1">Edit pricing, thumbnails, lesson counts, and course metadata.</p>
+                <h3 className="font-bold text-gray-800">Manage Courses</h3>
+                <p className="text-xs text-gray-500 mt-1">Edit free and premium courses, thumbnails, lesson counts, and pricing.</p>
               </div>
               <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
                 {courses.length} courses
@@ -5314,7 +5368,7 @@ const AdminPanelScreen = ({
                           image: course.image,
                           price: String(course.price || 0),
                           oldPrice: String(course.oldPrice || 0),
-                          type: 'premium',
+                          type: course.type,
                           category: course.category,
                         });
                         setActiveTab('course');
@@ -5332,7 +5386,16 @@ const AdminPanelScreen = ({
       {activeTab === 'lesson' && (
         <div className="space-y-4">
         <div className={cardClass}>
-          <h3 className="font-bold text-gray-800 mb-4">{editingLessonId ? 'Edit Lesson' : 'Add Lesson'}</h3>
+          <div className="admin-section-head">
+            <div>
+              <p className="admin-control-eyebrow">YouTube Lessons</p>
+              <h3 className="font-bold text-gray-800">{editingLessonId ? 'Edit Lesson' : 'Add Lesson'}</h3>
+              <p className="text-xs text-gray-500 mt-1">Paste YouTube watch, short, or embed links. The app saves them in embedded format automatically.</p>
+            </div>
+            <div className="rounded-full bg-red-50 px-3 py-1 text-[11px] font-bold text-red-700">
+              YouTube Video
+            </div>
+          </div>
           <div className="space-y-3">
             <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={lessonForm.course_id} onChange={(e) => setLessonForm({ ...lessonForm, course_id: e.target.value })}>
               <option value="">Select course</option>
@@ -5340,18 +5403,12 @@ const AdminPanelScreen = ({
             </select>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson title" value={lessonForm.title} onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })} />
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Duration e.g. 20:15" value={lessonForm.duration} onChange={(e) => setLessonForm({ ...lessonForm, duration: e.target.value })} />
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Direct video URL or embed URL" value={lessonForm.video_url} onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="YouTube URL e.g. https://youtu.be/video-id" value={lessonForm.video_url} onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })} />
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson note URL (optional)" value={lessonForm.note_url} onChange={(e) => setLessonForm({ ...lessonForm, note_url: e.target.value })} />
             <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Lesson note content (optional)" value={lessonForm.note_content} onChange={(e) => setLessonForm({ ...lessonForm, note_content: e.target.value })} />
             <button
               disabled={loading}
-              onClick={() => submitAction(editingLessonId ? 'updateLesson' : 'createLesson', {
-                ...(editingLessonId ? { id: editingLessonId } : {}),
-                ...lessonForm
-              }, () => {
-                setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '' });
-                setEditingLessonId('');
-              })}
+              onClick={submitLessonForm}
               className="w-full bg-primary text-white py-3 rounded-xl font-bold"
             >
               {loading ? 'Saving...' : editingLessonId ? 'Update Lesson' : 'Save Lesson'}

@@ -1532,7 +1532,8 @@ body {
   font-weight: 900;
 }
 
-.admin-course-field input {
+.admin-course-field input,
+.admin-course-field select {
   width: 100%;
   min-height: 48px;
   border-radius: 14px;
@@ -1542,6 +1543,12 @@ body {
   color: #0f172a;
   font-size: 0.92rem;
   font-weight: 650;
+}
+
+.admin-course-field input:disabled {
+  color: #64748b;
+  background: #eef2f7;
+  cursor: not-allowed;
 }
 
 .admin-course-note {
