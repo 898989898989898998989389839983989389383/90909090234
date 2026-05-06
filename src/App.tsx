@@ -1943,14 +1943,14 @@ const CoursesScreen = ({
   onBuyClick: (course: Course) => void,
   onCourseSelect: (course: Course) => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('premium');
+  const [activeTab, setActiveTab] = useState<'free' | 'premium'>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const freeCount = courses.filter(c => c.type === 'free').length;
   const premiumCount = courses.filter(c => c.type === 'premium').length;
 
   useEffect(() => {
-    setActiveTab(initialTab === 'free' && freeCount === 0 ? 'premium' : initialTab);
-  }, [initialTab, freeCount]);
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const filteredCourses = courses.filter(c => 
     c.type === activeTab && 
@@ -1992,28 +1992,15 @@ const CoursesScreen = ({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-gray-100 p-1 rounded-lg">
-          {freeCount > 0 && (
-            <button 
-              onClick={() => setActiveTab('free')}
-              className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'free' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
-            >
-              Free ({freeCount})
-            </button>
-          )}
-          <button 
-            onClick={() => setActiveTab('premium')}
-            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'premium' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500'}`}
-          >
-            Premium ({premiumCount})
-          </button>
+        <div className={`rounded-lg px-4 py-3 text-sm font-black ${activeTab === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+          {activeTab === 'premium' ? `Premium Courses (${premiumCount})` : `Free Courses (${freeCount})`}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         {filteredCourses.map(course => {
           const isUnlocked = unlockedCourseIds.includes(course.id);
+          const isAccessible = course.type === 'free' || isUnlocked;
           
           return (
             <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${course.type === 'premium' ? 'border-amber-100' : 'border-gray-100'}`}>
@@ -2024,9 +2011,9 @@ const CoursesScreen = ({
                     Premium
                   </div>
                 )}
-                <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isUnlocked ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
-                  {isUnlocked ? <CheckCircle2 size={12} /> : <Lock size={12} />}
-                  {isUnlocked ? 'Unlocked' : 'Locked'}
+                <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isAccessible ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
+                  {isAccessible ? <CheckCircle2 size={12} /> : <Lock size={12} />}
+                  {course.type === 'free' ? 'Free Access' : isUnlocked ? 'Unlocked' : 'Locked'}
                 </div>
                 <button 
                   onClick={() => {
@@ -2036,7 +2023,7 @@ const CoursesScreen = ({
                   className="absolute inset-0 flex items-center justify-center bg-black/20 group hover:bg-black/40 transition-all"
                 >
                   <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center text-primary shadow-lg group-hover:scale-110 transition-transform">
-                    {isUnlocked ? <Play size={24} fill="currentColor" /> : <ShieldCheck size={24} />}
+                    {isAccessible ? <Play size={24} fill="currentColor" /> : <ShieldCheck size={24} />}
                   </div>
                 </button>
               </div>
@@ -2053,16 +2040,16 @@ const CoursesScreen = ({
                 </div>
                 <button 
                   onClick={() => {
-                    if (isUnlocked) {
+                    if (isAccessible) {
                       onCourseSelect(course);
                       setScreen('course-details');
                       return;
                     }
                     onBuyClick(course);
                   }}
-                  className={`${isUnlocked ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
+                  className={`${isAccessible ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
                 >
-                  {isUnlocked ? 'View Details' : 'Buy Now'}
+                  {course.type === 'free' ? 'Open Course' : isUnlocked ? 'View Details' : 'Buy Now'}
                 </button>
               </div>
             </div>
