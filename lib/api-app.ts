@@ -1011,8 +1011,8 @@ export const createApiApp = async () => {
 
   app.post("/api/verifyCourseAccess", asyncHandler(async (req, res) => {
     const { courseId, accessCode, userId } = req.body || {};
-    if (!courseId || !accessCode || !userId) {
-      res.status(400).json({ success: false, message: "Course id, user id and access code are required" });
+    if (!courseId || !userId) {
+      res.status(400).json({ success: false, message: "Course id and user id are required" });
       return;
     }
 
@@ -1023,6 +1023,11 @@ export const createApiApp = async () => {
     }
     if (course.type !== "premium") {
       res.json({ success: true, message: "Course unlocked" });
+      return;
+    }
+
+    if (!accessCode) {
+      res.status(400).json({ success: false, message: "Access code is required for premium courses" });
       return;
     }
 

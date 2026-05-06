@@ -1100,7 +1100,6 @@ const seedDatabase = async (client: Pool | PoolClient) => {
       [fullChemistryCourse.lessons, fullChemistryCourse.price, fullChemistryCourse.oldPrice, fullChemistryCourse.type, fullChemistryCourse.id],
     );
   }
-  await client.query(`UPDATE "courses" SET "type" = 'premium', "price" = CASE WHEN COALESCE("price", 0) <= 0 THEN 999 ELSE "price" END, "oldPrice" = CASE WHEN COALESCE("oldPrice", 0) <= COALESCE("price", 0) THEN GREATEST(COALESCE("price", 999) * 2, 2999) ELSE "oldPrice" END`);
   await seedRowsIfEmpty(client, "lessons", seedLessons);
   await client.query(`DELETE FROM "lessons" WHERE "id" IN ('l6', 'l7', 'l8') AND "course_id" = '7'`);
   await upsertRows(client, "lessons", fullChemistryCoursePlaylistLessons);

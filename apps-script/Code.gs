@@ -484,7 +484,7 @@ function deleteQuiz_(body) {
 }
 
 function verifyCourseAccess_(body) {
-  validateRequired_(body, ['courseId', 'accessCode', 'userId']);
+  validateRequired_(body, ['courseId', 'userId']);
 
   const courses = readSheetObjects_(SHEET_NAMES.courses);
   const course = courses.find(function(item) {
@@ -498,6 +498,8 @@ function verifyCourseAccess_(body) {
   if (String(course.type).toLowerCase() === 'free') {
     return { success: true };
   }
+
+  validateRequired_(body, ['accessCode']);
 
   var enrollment = readSheetObjects_(SHEET_NAMES.enrollments).find(function(item) {
     return String(item.user_id) === String(body.userId) && String(item.course_id) === String(body.courseId);

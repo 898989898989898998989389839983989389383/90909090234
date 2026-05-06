@@ -461,6 +461,10 @@ const fetchAdminUsers = async (): Promise<AdminUser[]> => {
 const isChemistryCourse = (course: Course) => String(course.category || '').toLowerCase().includes('chem');
 const isChemistryNote = (note: Note) => String(note.category || '').toLowerCase().includes('chem');
 const isChemistryQuiz = (quiz: Quiz) => String(quiz.topic || '').toLowerCase().includes('chem');
+const isCourseFree = (course?: Course | null) => String(course?.type || '').toLowerCase() === 'free';
+const isCourseAccessible = (course: Course | null | undefined, unlockedCourseIds: string[]) => (
+  !!course && (isCourseFree(course) || unlockedCourseIds.includes(course.id))
+);
 
 const makeCoursePremium = (course: Course): Course => {
   const price = Number(course.price || 0);
@@ -1812,7 +1816,7 @@ const HomeScreen = ({
     notes[0] ? `New note: ${notes[0].title}` : '',
     quizzes[0] ? `Quiz ready: ${quizzes[0].topic}` : '',
   ].filter(Boolean).slice(0, 4);
-  const premiumCourses = courses.filter(course => course.type === 'premium');
+  const premiumCourses = courses.filter(course => !isCourseFree(course));
 
   return (
     <motion.div 
@@ -1945,15 +1949,15 @@ const CoursesScreen = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'free' | 'premium'>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
-  const freeCount = courses.filter(c => c.type === 'free').length;
-  const premiumCount = courses.filter(c => c.type === 'premium').length;
+  const freeCount = courses.filter(isCourseFree).length;
+  const premiumCount = courses.filter(c => !isCourseFree(c)).length;
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  const filteredCourses = courses.filter(c => 
-    c.type === activeTab && 
+  const filteredCourses = courses.filter(c =>
+    (activeTab === 'free' ? isCourseFree(c) : !isCourseFree(c)) &&
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -2000,20 +2004,21 @@ const CoursesScreen = ({
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         {filteredCourses.map(course => {
           const isUnlocked = unlockedCourseIds.includes(course.id);
-          const isAccessible = course.type === 'free' || isUnlocked;
+          const isFree = isCourseFree(course);
+          const isAccessible = isCourseAccessible(course, unlockedCourseIds);
           
           return (
-            <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${course.type === 'premium' ? 'border-amber-100' : 'border-gray-100'}`}>
+            <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${isFree ? 'border-gray-100' : 'border-amber-100'}`}>
               <div className="relative h-40">
                 <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                {course.type === 'premium' && (
+                {!isFree && (
                   <div className="absolute left-3 top-3 rounded-full bg-white/92 px-3 py-1 text-[10px] font-black uppercase text-amber-700 shadow-sm">
                     Premium
                   </div>
                 )}
                 <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isAccessible ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
                   {isAccessible ? <CheckCircle2 size={12} /> : <Lock size={12} />}
-                  {course.type === 'free' ? 'Free Access' : isUnlocked ? 'Unlocked' : 'Locked'}
+                  {isFree ? 'Free Access' : isUnlocked ? 'Unlocked' : 'Locked'}
                 </div>
                 <button 
                   onClick={() => {
@@ -2031,7 +2036,7 @@ const CoursesScreen = ({
                 <div className="min-w-0">
                   <h3 className="font-bold text-gray-800">{course.title}</h3>
                   <p className="text-xs text-gray-500">{course.lessons}+ Video Lessons & Notes</p>
-                  {course.type === 'premium' && (
+                  {!isFree && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700">Rs {course.price} Only</span>
                       {!!course.oldPrice && <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>}
@@ -2049,7 +2054,7 @@ const CoursesScreen = ({
                   }}
                   className={`${isAccessible ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
                 >
-                  {course.type === 'free' ? 'Open Course' : isUnlocked ? 'View Details' : 'Buy Now'}
+                  {isFree ? 'Open Course' : isUnlocked ? 'View Details' : 'Buy Now'}
                 </button>
               </div>
             </div>
@@ -3557,7 +3562,7 @@ const MyCoursesScreen = ({
   unlockedCourseIds: string[],
   onCourseSelect: (course: Course) => void
 }) => {
-  const visibleCourses = courses.filter((course) => unlockedCourseIds.includes(course.id));
+  const visibleCourses = courses.filter((course) => isCourseAccessible(course, unlockedCourseIds));
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
@@ -3578,8 +3583,8 @@ const MyCoursesScreen = ({
             <div className="flex-1">
               <div className="text-base font-bold text-gray-800">{course.title}</div>
               <div className="text-sm text-gray-500 mt-1">{course.category}</div>
-              <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${course.type === 'premium' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'}`}>
-                {course.type === 'premium' ? 'Premium Unlocked' : 'Available Now'}
+              <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${isCourseFree(course) ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}>
+                {isCourseFree(course) ? 'Available Now' : 'Premium Unlocked'}
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-300" />
@@ -4139,8 +4144,8 @@ const AdminPanelScreen = ({
     ].some((value) => String(value || '').toLowerCase().includes(normalizedAccessStudentSearch));
   });
   const normalizedAccessCourseSearch = accessCourseSearchQuery.trim().toLowerCase();
-  const freeCourses = courses.filter((course) => course.type === 'free');
-  const premiumCourses = courses.filter((course) => course.type === 'premium');
+  const freeCourses = courses.filter(isCourseFree);
+  const premiumCourses = courses.filter((course) => !isCourseFree(course));
   const filteredPremiumCourses = premiumCourses.filter((course) => {
     if (!normalizedAccessCourseSearch) {
       return true;
@@ -5060,7 +5065,7 @@ const AdminPanelScreen = ({
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Premium courses</span>
-                    <span className="font-black text-slate-900">{courses.filter((course) => course.type === 'premium').length}</span>
+                    <span className="font-black text-slate-900">{courses.filter((course) => !isCourseFree(course)).length}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Video lessons</span>
@@ -6409,6 +6414,15 @@ export default function App() {
     setScreen('courses');
   };
 
+  const handleRequestCourseUnlock = (course: Course) => {
+    setSelectedCourse(course);
+    if (isCourseFree(course)) {
+      setScreen('course-details');
+      return;
+    }
+    setSelectedCourseForUnlock(course);
+  };
+
   const renderScreen = () => {
     if (isManagementRoute) {
       const requiredRole: AdminRole = isSuperAdminRoute ? 'superadmin' : 'admin';
@@ -6431,7 +6445,7 @@ export default function App() {
           quizzes={quizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
-          onBuyClick={(course) => setSelectedCourseForUnlock(course)}
+          onBuyClick={handleRequestCourseUnlock}
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
@@ -6441,7 +6455,7 @@ export default function App() {
           courses={courses} 
           unlockedCourseIds={unlockedCourseIds}
           initialTab={coursesInitialTab}
-          onBuyClick={(course) => setSelectedCourseForUnlock(course)}
+          onBuyClick={handleRequestCourseUnlock}
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
@@ -6510,7 +6524,7 @@ export default function App() {
         quizzes={quizzes}
         unlockedCourseIds={unlockedCourseIds}
         onOpenCoursesTab={handleOpenCoursesTab}
-        onBuyClick={(course) => setSelectedCourseForUnlock(course)}
+        onBuyClick={handleRequestCourseUnlock}
         onCourseSelect={(course) => setSelectedCourse(course)}
       />;
       case 'video-player': return (
@@ -6540,8 +6554,7 @@ export default function App() {
           onBack={() => setScreen('courses')}
           onStartLearning={() => {
             if (selectedCourse) {
-              const isUnlocked = unlockedCourseIds.includes(selectedCourse.id);
-              if (isUnlocked) {
+              if (isCourseAccessible(selectedCourse, unlockedCourseIds)) {
                 setScreen('video-player');
               } else {
                 setSelectedCourseForUnlock(selectedCourse);
@@ -6561,7 +6574,7 @@ export default function App() {
             setSelectedQuizTopic(quiz || null);
             setScreen('quiz');
           }}
-          isUnlocked={!!selectedCourse && unlockedCourseIds.includes(selectedCourse.id)}
+          isUnlocked={isCourseAccessible(selectedCourse, unlockedCourseIds)}
         />
       );
       default: return (
@@ -6573,7 +6586,7 @@ export default function App() {
           quizzes={quizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
-          onBuyClick={(course) => setSelectedCourseForUnlock(course)}
+        onBuyClick={handleRequestCourseUnlock}
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
@@ -6649,7 +6662,7 @@ export default function App() {
       )}
 
       <AccessCodeModal 
-        isOpen={!!selectedCourseForUnlock}
+        isOpen={!!selectedCourseForUnlock && !isCourseFree(selectedCourseForUnlock)}
         onClose={() => setSelectedCourseForUnlock(null)}
         onUnlock={handleUnlockCourse}
         courseTitle={selectedCourseForUnlock?.title || ''}
