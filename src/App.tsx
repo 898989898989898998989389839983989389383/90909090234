@@ -599,9 +599,9 @@ const filterChemistryAppData = (payload: {
   notes: Note[];
   quizzes: Quiz[];
 }) => ({
-  courses: withFullChemistryPlaylistLessons((payload.courses || []).filter(isChemistryCourse)).map(makeCoursePremium),
-  notes: (payload.notes || []).filter(isChemistryNote),
-  quizzes: (payload.quizzes || []).filter(isChemistryQuiz),
+  courses: withFullChemistryPlaylistLessons(payload.courses || []),
+  notes: payload.notes || [],
+  quizzes: payload.quizzes || [],
 });
 
 const legacyPlaceholderSliderUrls = [
@@ -1827,8 +1827,8 @@ const HomeScreen = ({
         className="mb-6 flex w-full items-center justify-between rounded-2xl bg-[linear-gradient(135deg,#17304f_0%,#24527d_100%)] px-5 py-4 text-left text-white shadow-lg shadow-blue-900/15"
       >
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">Chemistry Quick Access</div>
-          <div className="mt-1 text-base font-black">Chemistry One Short</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">Free Course Access</div>
+          <div className="mt-1 text-base font-black">Start Free Learning</div>
         </div>
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/12">
           <ArrowRight size={20} />
@@ -1837,11 +1837,11 @@ const HomeScreen = ({
 
       {/* Main Actions */}
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <button onClick={() => onOpenCoursesTab('premium')} className="card-gradient-green p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-green-100">
+        <button onClick={() => onOpenCoursesTab('free')} className="card-gradient-green p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-green-100">
           <BookOpen size={24} className="mb-2" />
           <div>
-            <p className="font-bold">Chemistry Courses</p>
-            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Premium Catalog</span>
+            <p className="font-bold">Free Courses</p>
+            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Direct Access</span>
           </div>
         </button>
         <button onClick={() => onOpenCoursesTab('premium')} className="premium-action-card p-4 rounded-xl text-white text-left flex flex-col justify-between h-32 shadow-lg shadow-amber-100">
@@ -1850,7 +1850,7 @@ const HomeScreen = ({
             <span className="rounded-full bg-white/18 px-2 py-0.5 text-[10px] font-black uppercase">Pro</span>
           </div>
           <div>
-            <p className="font-bold">Premium Chemistry</p>
+            <p className="font-bold">Premium Courses</p>
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{premiumCourses.length || 0} Courses</span>
           </div>
         </button>
@@ -1872,7 +1872,7 @@ const HomeScreen = ({
 
       {!!premiumCourses.length && (
         <div>
-          <SectionHeader title="Premium Chemistry Courses" onSeeAll={() => onOpenCoursesTab('premium')} />
+          <SectionHeader title="Premium Courses" onSeeAll={() => onOpenCoursesTab('premium')} />
           <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
             {premiumCourses.slice(0, 4).map(course => {
               const isUnlocked = unlockedCourseIds.includes(course.id);
@@ -1919,7 +1919,7 @@ const HomeScreen = ({
           {!recentUpdates.length && (
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-primary"></div>
-              <p className="text-sm text-gray-700">Chemistry content updates will appear here.</p>
+              <p className="text-sm text-gray-700">Course content updates will appear here.</p>
             </div>
           )}
         </div>
@@ -1967,7 +1967,7 @@ const CoursesScreen = ({
         <div className={`mb-4 rounded-2xl p-4 text-white shadow-lg ${activeTab === 'premium' ? 'premium-course-hero shadow-amber-100' : 'bg-[linear-gradient(135deg,#0f8a45_0%,#075a35_100%)] shadow-green-100'}`}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Chemistry' : 'Chemistry Courses'}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Courses' : 'Free Courses'}</p>
               <h2 className="mt-1 text-xl font-black">{activeTab === 'premium' ? 'Unlock focused batches' : 'Start learning today'}</h2>
               <p className="mt-1 text-xs text-white/75">{activeTab === 'premium' ? `${premiumCount} premium courses with admin access code` : `${freeCount} free courses available now`}</p>
             </div>
@@ -2074,7 +2074,7 @@ const CoursesScreen = ({
               <BookOpen size={22} />
             </div>
             <h3 className="font-bold text-gray-800">No {activeTab} courses found</h3>
-            <p className="mt-1 text-sm text-gray-500">Try another search or check back after new chemistry courses are added.</p>
+            <p className="mt-1 text-sm text-gray-500">Try another search or check back after new courses are added.</p>
           </div>
         )}
       </div>
@@ -3577,7 +3577,7 @@ const MyCoursesScreen = ({
       <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] rounded-[28px] p-5 text-white shadow-xl shadow-blue-100">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Chemistry Learning</p>
         <h2 className="text-2xl font-bold">My Courses</h2>
-        <p className="text-sm text-white/75 mt-2">Continue learning with the currently available chemistry courses.</p>
+        <p className="text-sm text-white/75 mt-2">Continue learning with the currently available courses.</p>
       </div>
 
       <div className="mt-5 space-y-4">
@@ -4061,7 +4061,7 @@ const AdminPanelScreen = ({
     price: '0',
     oldPrice: '0',
     type: 'free' as 'free' | 'premium',
-    category: 'Chemistry',
+    category: 'General',
   });
   const [lessonForm, setLessonForm] = useState({
     course_id: '',
@@ -4074,7 +4074,7 @@ const AdminPanelScreen = ({
   const [noteForm, setNoteForm] = useState({
     title: '',
     lessons: '1',
-    category: 'Chemistry',
+    category: 'General',
     type: 'free',
     url: '',
     content: '',
@@ -4245,8 +4245,8 @@ const AdminPanelScreen = ({
     tone: string;
     icon: React.ReactNode;
   }> = [
-    { id: 'course', title: 'Courses', description: 'Create free classes or premium chemistry batches with pricing.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
-    { id: 'free-course', title: 'Free Courses', description: 'Create open YouTube courses students can watch without access codes.', count: `${freeCourseCount} free`, tone: 'emerald', icon: <CheckCircle2 size={22} /> },
+    { id: 'course', title: 'Courses', description: 'Create free courses or premium courses with pricing.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
+    { id: 'free-course', title: 'Free Courses', description: 'Create open courses students can access directly without codes.', count: `${freeCourseCount} free`, tone: 'emerald', icon: <CheckCircle2 size={22} /> },
     { id: 'lesson', title: 'YouTube Videos', description: 'Attach YouTube lessons, durations, notes, and resources to any course.', count: `${lessons.length} lessons`, tone: 'green', icon: <Play size={22} /> },
     { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
@@ -4276,7 +4276,7 @@ const AdminPanelScreen = ({
         type: 'free',
         price: '0',
         oldPrice: '0',
-        category: 'Chemistry',
+        category: 'General',
       });
     }
     setActiveTab(tabId);
@@ -4642,14 +4642,14 @@ const AdminPanelScreen = ({
   };
 
   const resetCourseForm = () => {
-    setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'Chemistry' });
+    setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'General' });
     setEditingCourseId('');
   };
 
   const submitCourseForm = () => {
     const title = courseForm.title.trim();
     const image = courseForm.image.trim();
-    const category = courseForm.category.trim() || 'Chemistry';
+    const category = courseForm.category.trim() || 'General';
     const courseType = isFreeCourseSection ? 'free' : courseForm.type === 'premium' ? 'premium' : 'free';
     const lessonsCount = Number(courseForm.lessons || 0);
     const price = courseType === 'premium' ? Number(courseForm.price || 0) : 0;
@@ -5260,7 +5260,7 @@ const AdminPanelScreen = ({
                   <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Course' : isFreeCourseSection ? 'Add Free Course' : 'Add Free or Premium Course'}</h3>
                   <p className="text-xs text-slate-500 mt-1">
                     {isFreeCourseSection
-                      ? 'Create free YouTube courses that students can open instantly without any access code.'
+                      ? 'Create free courses that students can open instantly without any access code.'
                       : 'Free courses open instantly. Premium courses stay locked until access is granted.'}
                   </p>
                 </div>
@@ -5292,11 +5292,11 @@ const AdminPanelScreen = ({
                 </label>
                 <label className="admin-course-field">
                   <span>Category</span>
-                  <input placeholder="Chemistry" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
+                  <input placeholder="General" value={courseForm.category} onChange={(e) => setCourseForm({ ...courseForm, category: e.target.value })} />
                 </label>
                 <label className="admin-course-field admin-course-field--wide">
                   <span>Course title</span>
-                  <input placeholder="Example: NEB Chemistry Complete Batch" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
+                  <input placeholder="Example: Complete Course Batch" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
                 </label>
                 <label className="admin-course-field admin-course-field--wide">
                   <span>Thumbnail image URL</span>
@@ -5347,7 +5347,7 @@ const AdminPanelScreen = ({
               </div>
               <div className="admin-course-preview-body">
                 <h3>{courseForm.title.trim() || 'Course title preview'}</h3>
-                <p>{courseForm.category.trim() || 'Chemistry'} - {Number(courseForm.lessons || 0)} lessons</p>
+                <p>{courseForm.category.trim() || 'General'} - {Number(courseForm.lessons || 0)} lessons</p>
                 <div className="admin-course-preview-price">
                   {courseForm.type === 'premium' ? (
                     <>
@@ -5374,7 +5374,7 @@ const AdminPanelScreen = ({
                 <h3 className="font-bold text-gray-800">{isFreeCourseSection ? 'Manage Free Courses' : 'Manage Courses'}</h3>
                 <p className="text-xs text-gray-500 mt-1">
                   {isFreeCourseSection
-                    ? 'Only free courses are shown here. Edit thumbnails, lesson counts, and YouTube-ready metadata.'
+                    ? 'Only free courses are shown here. Edit thumbnails, lesson counts, and direct-access metadata.'
                     : 'Edit free and premium courses, thumbnails, lesson counts, and pricing.'}
                 </p>
               </div>
@@ -5411,7 +5411,7 @@ const AdminPanelScreen = ({
               ))}
               {!displayedCourses.length && (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-500">
-                  {isFreeCourseSection ? 'No free courses yet. Create your first free YouTube course above.' : 'No courses found yet. Add your first course above.'}
+                  {isFreeCourseSection ? 'No free courses yet. Create your first directly accessible free course above.' : 'No courses found yet. Add your first course above.'}
                 </div>
               )}
             </div>
