@@ -493,6 +493,12 @@ body {
   font-family: "Segoe UI", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
 }
 
+.admin-panel {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.06) 0 1px, transparent 1px 28px),
+    linear-gradient(180deg, #f4f8fb 0%, #eef5f0 44%, #fff8ed 100%);
+}
+
 .admin-login-hero,
 .admin-login-card,
 .admin-card,
@@ -886,6 +892,8 @@ body {
   width: 100%;
   min-height: 100vh;
   padding: 0;
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.38) 48%, rgba(255, 250, 239, 0.7) 100%);
 }
 
 .admin-panel-layout {
@@ -1304,6 +1312,76 @@ body {
 .admin-control-card--slate .admin-control-icon { background: #475569; }
 .admin-control-card--rose .admin-control-icon { background: #e11d48; }
 .admin-control-card--cyan .admin-control-icon { background: #0891b2; }
+.admin-control-card--indigo .admin-control-icon { background: #4f46e5; }
+
+.admin-push-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-push-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.4rem;
+  border: 1px solid rgba(219, 228, 238, 0.95);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.88), rgba(22, 101, 52, 0.74)),
+    linear-gradient(135deg, #0f172a, #166534);
+  color: #ffffff;
+  box-shadow: 0 22px 42px rgba(15, 23, 42, 0.16);
+}
+
+.admin-push-head h2 {
+  margin-top: 0.35rem;
+  font-size: clamp(1.55rem, 2.4vw, 2.35rem);
+  line-height: 1.08;
+  font-weight: 950;
+}
+
+.admin-push-head span {
+  display: block;
+  max-width: 760px;
+  margin-top: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.admin-push-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3rem;
+  padding: 0 1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.admin-push-frame-shell {
+  min-height: 72vh;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid #dbe4ee;
+  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.12);
+}
+
+.admin-push-frame {
+  display: block;
+  width: 100%;
+  height: min(82vh, 920px);
+  min-height: 720px;
+  border: 0;
+  background: #ffffff;
+}
 
 .admin-empty-control {
   grid-column: 1 / -1;
@@ -2080,8 +2158,10 @@ body {
   }
 
   .admin-command-hero,
-  .admin-control-center-head {
+  .admin-control-center-head,
+  .admin-push-head {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .admin-command-actions {
@@ -2096,6 +2176,15 @@ body {
   .admin-control-refresh {
     width: 100%;
     justify-content: center;
+  }
+
+  .admin-push-frame-shell {
+    border-radius: 18px;
+    min-height: 68vh;
+  }
+
+  .admin-push-frame {
+    min-height: 680px;
   }
 
   .admin-access-snapshot {

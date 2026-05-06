@@ -4039,7 +4039,7 @@ const AdminPanelScreen = ({
   onRefresh: () => Promise<void>,
   onLogout: () => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'lesson' | 'note' | 'quiz' | 'question' | 'user' | 'access'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'lesson' | 'note' | 'quiz' | 'question' | 'user' | 'access' | 'push-notification'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [uploadingSlider, setUploadingSlider] = useState(false);
@@ -4122,6 +4122,7 @@ const AdminPanelScreen = ({
     { id: 'question', label: 'Questions', icon: <MessageSquare size={18} /> },
     { id: 'user', label: 'Users', icon: <User size={18} /> },
     { id: 'access', label: 'Premium Access', icon: <Lock size={18} /> },
+    { id: 'push-notification', label: 'Push Notification', icon: <Bell size={18} /> },
   ] as const;
 
   const cardClass = 'admin-card admin-surface-card p-5 sm:p-6';
@@ -4249,6 +4250,7 @@ const AdminPanelScreen = ({
     { id: 'quiz', title: 'Quizzes', description: 'Create quiz sets and manage quiz visibility by topic.', count: `${quizzes.length} quizzes`, tone: 'rose', icon: <HelpCircle size={22} /> },
     { id: 'question', title: 'Questions', description: 'Add MCQs, import JSON question banks, and review answers.', count: `${questions.length} questions`, tone: 'cyan', icon: <MessageSquare size={22} /> },
     { id: 'user', title: 'Students', description: 'Search student records and check unlocked course access.', count: `${users.length} students`, tone: 'emerald', icon: <User size={22} /> },
+    { id: 'push-notification', title: 'Push Notifications', description: 'Open the notification console inside the admin panel.', count: 'E-Droid', tone: 'indigo', icon: <Bell size={22} /> },
   ];
   const normalizedAdminSearch = adminSearchQuery.trim().toLowerCase();
   const filteredAdminControlCards = adminControlCards.filter((item) => {
@@ -4813,7 +4815,7 @@ const AdminPanelScreen = ({
               ))}
               {!filteredAdminControlCards.length && (
                 <div className="admin-empty-control">
-                  No admin tool matched "{adminSearchQuery}". Try course, access, quiz, notes, or students.
+                  No admin tool matched "{adminSearchQuery}". Try course, access, quiz, notes, push, or students.
                 </div>
               )}
             </div>
@@ -5030,6 +5032,33 @@ const AdminPanelScreen = ({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'push-notification' && (
+        <div className="admin-push-workspace">
+          <div className="admin-push-head">
+            <div>
+              <p className="admin-control-eyebrow">Push Notification</p>
+              <h2>Send app notifications from the admin panel</h2>
+              <span>E-Droid opens below in a protected dashboard frame, so your notification workflow stays inside RBS Academy admin.</span>
+            </div>
+            <div className="admin-push-badge">
+              <Bell size={18} />
+              Live Console
+            </div>
+          </div>
+
+          <div className="admin-push-frame-shell">
+            <iframe
+              src="https://www.e-droid.net/"
+              title="E-Droid push notification console"
+              className="admin-push-frame"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              allow="clipboard-read; clipboard-write; fullscreen"
+            />
           </div>
         </div>
       )}
