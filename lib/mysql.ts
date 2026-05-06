@@ -811,6 +811,18 @@ const normalizeRow = <T extends RowDataPacket>(row: RowDataPacket): T => {
 
 const normalizeRows = <T extends RowDataPacket>(rows: RowDataPacket[]) => rows.map((row) => normalizeRow<T>(row));
 
+const normalizeSupabasePoolerUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("pooler.supabase.com") && url.port === "5432") {
+      url.port = "6543";
+      return url.toString();
+    }
+  } catch {}
+
+  return value;
+};
+
 const getConnectionConfig = () => {
   const ssl =
     String(process.env.SUPABASE_SSL ?? "true").toLowerCase() === "false"
@@ -820,7 +832,7 @@ const getConnectionConfig = () => {
   const url = process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
   if (url) {
     return {
-      connectionString: url,
+      connectionString: normalizeSupabasePoolerUrl(url),
       ssl,
     };
   }
