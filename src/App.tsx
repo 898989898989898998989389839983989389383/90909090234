@@ -1513,8 +1513,8 @@ const AccessCodeModal = ({
   };
 
   const handleWhatsApp = () => {
-    const message = encodeURIComponent(`Hello Admin, I want to buy the course: ${courseTitle}. Please provide the access code.`);
-    window.open(`https://wa.me/919876543210?text=${message}`, '_blank');
+    const message = encodeURIComponent(`Hello, I want to buy "${courseTitle}". Please share the details and access code.`);
+    window.open(`https://wa.me/9779819239480?text=${message}`, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -3857,7 +3857,7 @@ const AboutDeveloperScreen = () => (
           <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/60">Contact</div>
           <div className="mt-3 space-y-2 text-sm text-white/80">
             <div>Email: contact.pranamsoftware@gmail.com</div>
-            <div>Phone: +977-9823415625</div>
+            <div>Phone: +977-9819239480</div>
             <div>Location: Maitidevi, Kathmandu</div>
           </div>
         </div>
