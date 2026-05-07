@@ -4520,8 +4520,7 @@ const AdminPanelScreen = ({
     { id: 'free-course', label: 'Free Courses', icon: <CheckCircle2 size={18} /> },
     { id: 'lesson', label: 'Videos', icon: <Play size={18} /> },
     { id: 'note', label: 'Notes', icon: <FileText size={18} /> },
-    { id: 'quiz', label: 'Quizzes', icon: <HelpCircle size={18} /> },
-    { id: 'question', label: 'Questions', icon: <MessageSquare size={18} /> },
+    { id: 'quiz', label: 'Quiz Builder', icon: <HelpCircle size={18} /> },
     { id: 'user', label: 'Users', icon: <User size={18} /> },
     { id: 'access', label: 'Premium Access', icon: <Lock size={18} /> },
     { id: 'push-notification', label: 'Push Notification', icon: <Bell size={18} /> },
@@ -4627,7 +4626,7 @@ const AdminPanelScreen = ({
       detail: `${questions.length} questions across ${quizzes.length} quizzes`,
       tone: 'blue',
       action: 'Review MCQs',
-      tab: 'question' as typeof activeTab,
+      tab: 'quiz' as typeof activeTab,
     },
     {
       title: 'Homepage Readiness',
@@ -4732,8 +4731,7 @@ const AdminPanelScreen = ({
     { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
     { id: 'note', title: 'Notes', description: 'Publish downloadable notes and organize study material categories.', count: `${notes.length} notes`, tone: 'slate', icon: <FileText size={22} /> },
-    { id: 'quiz', title: 'Quizzes', description: 'Create quiz sets and manage quiz visibility by topic.', count: `${quizzes.length} quizzes`, tone: 'rose', icon: <HelpCircle size={22} /> },
-    { id: 'question', title: 'Questions', description: 'Add MCQs, import JSON question banks, and review answers.', count: `${questions.length} questions`, tone: 'cyan', icon: <MessageSquare size={22} /> },
+    { id: 'quiz', title: 'Quiz Builder', description: 'Create quiz sets, add MCQs, import JSON, and review answers in one place.', count: `${quizzes.length} quizzes, ${questions.length} MCQs`, tone: 'rose', icon: <HelpCircle size={22} /> },
     { id: 'user', title: 'Students', description: 'Search student records and check unlocked course access.', count: `${users.length} students`, tone: 'emerald', icon: <User size={22} /> },
     { id: 'push-notification', title: 'Push Notifications', description: 'Open the notification console inside the admin panel.', count: 'E-Droid', tone: 'indigo', icon: <Bell size={22} /> },
   ];
@@ -4754,6 +4752,9 @@ const AdminPanelScreen = ({
     || quizzes.find((quiz) => managedCourse && String(quiz.topic || '').toLowerCase().includes(String(managedCourse.title || '').toLowerCase()))
     || null;
   const managedCourseQuestions = managedCourseQuiz?.questions || [];
+  const activeQuizBuilderId = questionForm.quiz_id || questionImportQuizId || quizzes[0]?.id || '';
+  const activeQuizBuilder = quizzes.find((quiz) => String(quiz.id) === String(activeQuizBuilderId)) || quizzes[0] || null;
+  const activeQuizBuilderQuestions = activeQuizBuilder?.questions || [];
   const showNotice = (nextMessage: string, tone: 'success' | 'error' | 'info' = 'info') => {
     setMessage(nextMessage);
     setToast({ message: nextMessage, tone });
@@ -4793,7 +4794,7 @@ const AdminPanelScreen = ({
         category: 'General',
       });
     }
-    setActiveTab(tabId);
+    setActiveTab(tabId === 'question' ? 'quiz' : tabId);
   };
 
   useEffect(() => {
@@ -5016,7 +5017,8 @@ const AdminPanelScreen = ({
   };
 
   const submitQuestionImport = async () => {
-    if (!questionImportQuizId) {
+    const quizId = questionImportQuizId || activeQuizBuilderId;
+    if (!quizId) {
       setMessage('Select a quiz before importing questions');
       return;
     }
@@ -5033,7 +5035,7 @@ const AdminPanelScreen = ({
       const parsedJson = JSON.parse(rawText);
       const importedQuestions = normalizeImportedQuestions(parsedJson);
       const response = await apiPost('importQuestions', {
-        quiz_id: questionImportQuizId,
+        quiz_id: quizId,
         questions: importedQuestions,
       });
       const data = await readJsonResponse(response);
@@ -5053,7 +5055,7 @@ const AdminPanelScreen = ({
 
         for (const question of importedQuestions) {
           const response = await apiPost('createQuestion', {
-            quiz_id: questionImportQuizId,
+            quiz_id: quizId,
             text: question.text,
             options: question.options,
             option_images: question.option_images || [],
@@ -5082,8 +5084,9 @@ const AdminPanelScreen = ({
   const submitQuestion = async () => {
     const options = questionForm.optionsText.split('\n').map((item) => item.trim()).filter(Boolean);
     const correctAnswer = Number(questionForm.correctAnswer || 0);
+    const quizId = questionForm.quiz_id || activeQuizBuilderId;
 
-    if (!questionForm.quiz_id || !questionForm.text.trim() || options.length < 2) {
+    if (!quizId || !questionForm.text.trim() || options.length < 2) {
       setMessage('Quiz, question text, and at least 2 options are required');
       return;
     }
@@ -5098,7 +5101,7 @@ const AdminPanelScreen = ({
     try {
       const payload: Record<string, unknown> = {
         ...(editingQuestionId ? { id: editingQuestionId } : {}),
-        quiz_id: questionForm.quiz_id,
+        quiz_id: quizId,
         text: questionForm.text.trim(),
         options,
         option_images: [],
@@ -5938,7 +5941,11 @@ const AdminPanelScreen = ({
                         <div className="font-bold text-slate-900">{quiz.topic}</div>
                         <div className="text-sm text-slate-500 mt-1">{quiz.questions.length} questions</div>
                       </div>
-                      <button onClick={() => setActiveTab('question')} className="text-sm font-bold text-primary">
+                      <button onClick={() => {
+                        setQuestionForm((current) => ({ ...current, quiz_id: quiz.id }));
+                        setQuestionImportQuizId(quiz.id);
+                        setActiveTab('quiz');
+                      }} className="text-sm font-bold text-primary">
                         Manage
                       </button>
                     </div>
@@ -6871,8 +6878,40 @@ const AdminPanelScreen = ({
 
       {activeTab === 'quiz' && (
         <div className="space-y-4">
+        <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#172554_0%,#0f766e_55%,#7c2d12_100%)] p-5 text-white shadow-xl shadow-slate-300/50">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Quiz Builder</p>
+              <h3 className="mt-2 text-2xl font-black">Create quiz, add MCQ, import JSON</h3>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/72">Everything for quiz publishing is now in one place. Select a quiz once, then add questions or import a full question bank below.</p>
+            </div>
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/14">
+              <HelpCircle size={28} />
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-white/12 p-4">
+              <div className="text-2xl font-black">{quizzes.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Quizzes</div>
+            </div>
+            <div className="rounded-2xl bg-white/12 p-4">
+              <div className="text-2xl font-black">{questions.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Questions</div>
+            </div>
+            <div className="rounded-2xl bg-white/12 p-4">
+              <div className="text-2xl font-black">{activeQuizBuilderQuestions.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Selected Quiz MCQs</div>
+            </div>
+          </div>
+        </div>
+
         <div className={cardClass}>
-          <h3 className="font-bold text-gray-800 mb-4">{editingQuizId ? 'Edit Quiz' : 'Add Quiz'}</h3>
+          <div className="admin-section-head">
+            <div>
+              <h3 className="font-bold text-gray-800">{editingQuizId ? 'Edit Quiz' : 'Add Quiz'}</h3>
+              <p className="text-xs text-gray-500 mt-1">Create the quiz set first, then keep adding questions in the same builder.</p>
+            </div>
+          </div>
           <div className="space-y-3">
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Quiz topic" value={quizForm.topic} onChange={(e) => setQuizForm({ ...quizForm, topic: e.target.value })} />
             <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={quizForm.type} onChange={(e) => setQuizForm({ ...quizForm, type: e.target.value })}>
@@ -6899,7 +6938,133 @@ const AdminPanelScreen = ({
             )}
           </div>
         </div>
+
+        <div className={cardClass}>
+          <div className="admin-section-head">
+            <div>
+              <h3 className="font-bold text-gray-800">Select Quiz</h3>
+              <p className="text-xs text-gray-500 mt-1">This selection controls both manual MCQ adding and JSON imports.</p>
+            </div>
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
+              {activeQuizBuilder?.topic || 'No quiz selected'}
+            </div>
+          </div>
+          <select
+            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
+            value={activeQuizBuilderId}
+            onChange={(e) => {
+              setQuestionForm({ ...questionForm, quiz_id: e.target.value });
+              setQuestionImportQuizId(e.target.value);
+            }}
+          >
+            <option value="">Select quiz</option>
+            {quizzes.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.topic}</option>)}
+          </select>
+        </div>
+
+        <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
           <div className={cardClass}>
+            <h3 className="font-bold text-gray-800 mb-4">{editingQuestionId ? 'Edit MCQ' : 'Add MCQ'}</h3>
+            <div className="space-y-3">
+              <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-24" placeholder="Question text" value={questionForm.text} onChange={(e) => setQuestionForm({ ...questionForm, text: e.target.value, quiz_id: questionForm.quiz_id || activeQuizBuilderId })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Question image URL (optional)" value={questionForm.image_url} onChange={(e) => setQuestionForm({ ...questionForm, image_url: e.target.value })} />
+              <label className="block rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500">
+                <span className="block font-bold text-gray-700 mb-2">Upload question image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (!file) {
+                      setQuestionImageFile(null);
+                      return;
+                    }
+                    if (!file.type.startsWith('image/')) {
+                      setMessage('Please choose a valid question image');
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      setMessage('Question image must be 5 MB or smaller');
+                      return;
+                    }
+                    setQuestionImageFile(file);
+                    setQuestionForm((current) => ({ ...current, quiz_id: current.quiz_id || activeQuizBuilderId }));
+                    setMessage('');
+                  }}
+                  className="block w-full text-sm"
+                />
+                <span className="block mt-2 text-xs">
+                  {questionImageFile ? questionImageFile.name : 'Choose an image if this question needs a diagram or visual'}
+                </span>
+              </label>
+              {questionImagePreviewUrl && (
+                <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+                  <img src={questionImagePreviewUrl} alt="Question preview" className="w-full max-h-56 object-contain bg-slate-50" referrerPolicy="no-referrer" />
+                </div>
+              )}
+              <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder={'Options, one per line\nOption 1\nOption 2\nOption 3\nOption 4'} value={questionForm.optionsText} onChange={(e) => setQuestionForm({ ...questionForm, optionsText: e.target.value, quiz_id: questionForm.quiz_id || activeQuizBuilderId })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Correct answer index (0-3)" value={questionForm.correctAnswer} onChange={(e) => setQuestionForm({ ...questionForm, correctAnswer: e.target.value.replace(/[^\d]/g, ''), quiz_id: questionForm.quiz_id || activeQuizBuilderId })} />
+              <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-24" placeholder="Explanation" value={questionForm.explanation} onChange={(e) => setQuestionForm({ ...questionForm, explanation: e.target.value, quiz_id: questionForm.quiz_id || activeQuizBuilderId })} />
+              <button
+                disabled={loading}
+                onClick={submitQuestion}
+                className="w-full bg-primary text-white py-3 rounded-xl font-bold"
+              >
+                {loading ? 'Saving...' : editingQuestionId ? 'Update MCQ' : 'Save MCQ'}
+              </button>
+              {editingQuestionId && (
+                <button onClick={() => {
+                  setEditingQuestionId('');
+                  setQuestionForm({ id: '', quiz_id: activeQuizBuilderId, text: '', optionsText: '', correctAnswer: '0', explanation: '', image_url: '' });
+                  setQuestionImageFile(null);
+                  setQuestionImagePreviewUrl('');
+                }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={cardClass}>
+            <h3 className="font-bold text-gray-800 mb-4">Import MCQs From JSON</h3>
+            <div className="space-y-3">
+              <label className="block rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500">
+                <span className="block font-bold text-gray-700 mb-2">Upload JSON file</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(e) => {
+                    setQuestionImportQuizId(questionImportQuizId || activeQuizBuilderId);
+                    setQuestionImportFile(e.target.files?.[0] || null);
+                  }}
+                  className="block w-full text-sm"
+                />
+                <span className="block mt-2 text-xs">
+                  {questionImportFile ? questionImportFile.name : 'Upload a JSON file with an array of questions'}
+                </span>
+              </label>
+              <div className="admin-soft-panel px-4 py-3 text-xs text-gray-600 whitespace-pre-wrap">
+{`[
+  {
+    "text": "Question text",
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "correctAnswer": 1,
+    "explanation": "Why this answer is correct"
+  }
+]`}
+              </div>
+              <button
+                disabled={loading}
+                onClick={submitQuestionImport}
+                className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold"
+              >
+                {loading ? 'Importing...' : 'Import MCQs'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClass}>
           <h3 className="font-bold text-gray-800 mb-4">Manage Quizzes</h3>
           <div className="space-y-3">
             {quizzes.map((quiz) => (
@@ -6913,6 +7078,8 @@ const AdminPanelScreen = ({
                     <button onClick={() => {
                       setEditingQuizId(quiz.id);
                       setQuizForm({ topic: quiz.topic, type: (quiz as any).type || 'free' });
+                      setQuestionForm((current) => ({ ...current, quiz_id: quiz.id }));
+                      setQuestionImportQuizId(quiz.id);
                       setActiveTab('quiz');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                     <button onClick={() => confirmDelete(
@@ -6924,6 +7091,66 @@ const AdminPanelScreen = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className={cardClass}>
+          <div className="admin-section-head">
+            <div>
+              <h3 className="font-bold text-gray-800">Manage MCQs</h3>
+              <p className="text-xs text-gray-500 mt-1">{activeQuizBuilder ? `Showing questions for ${activeQuizBuilder.topic}` : 'Select a quiz to review questions.'}</p>
+            </div>
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
+              {activeQuizBuilderQuestions.length} total
+            </div>
+          </div>
+          <div className="space-y-3">
+            {activeQuizBuilderQuestions.map((question) => (
+              <div key={question.id} className="admin-list-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-sm text-gray-800">{question.text}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {question.options.map((option, index) => (
+                        <div
+                          key={`${question.id}-${index}`}
+                          className={`rounded-2xl px-3 py-2 text-[11px] font-bold ${index === question.correctAnswer ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-600'}`}
+                        >
+                          {String.fromCharCode(65 + index)}. {option}
+                        </div>
+                      ))}
+                    </div>
+                    {question.image_url && (
+                      <img src={question.image_url} alt={question.text} className="mt-3 w-full max-w-xs rounded-2xl border border-gray-100 object-contain bg-slate-50" referrerPolicy="no-referrer" />
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      setEditingQuestionId(question.id);
+                      setQuestionForm({
+                        id: question.id,
+                        quiz_id: activeQuizBuilder?.id || question.quiz_id || '',
+                        text: question.text,
+                        optionsText: question.options.join('\n'),
+                        correctAnswer: String(question.correctAnswer),
+                        explanation: question.explanation || '',
+                        image_url: question.image_url || '',
+                      });
+                      setQuestionImportQuizId(activeQuizBuilder?.id || question.quiz_id || '');
+                      setQuestionImageFile(null);
+                    }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
+                    <button onClick={() => confirmDelete(
+                      'Delete question?',
+                      'This MCQ will be permanently removed from the quiz.',
+                      () => submitAction('deleteQuestion', { id: question.id }, () => {})
+                    )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!activeQuizBuilderQuestions.length && (
+              <div className="admin-empty-control">No MCQs in this quiz yet. Add one above or import a JSON question bank.</div>
+            )}
           </div>
         </div>
         </div>
