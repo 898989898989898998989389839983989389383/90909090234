@@ -116,6 +116,7 @@ interface AuthUser {
   email: string;
   phone: string;
   status?: string;
+  userCategory?: 'free' | 'premium';
   grantedCourseIds?: string[];
 }
 
@@ -209,6 +210,7 @@ const normalizeAdminUser = (value: unknown): AdminUser | null => {
     email,
     phone,
     password: password || undefined,
+    userCategory: String(record.userCategory || record.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
     grantedCourseIds: Array.isArray(record.grantedCourseIds)
       ? record.grantedCourseIds.map((item) => String(item))
       : [],
@@ -751,6 +753,7 @@ const normalizeAuthUser = (
   name: String(user?.name || fallback.name || 'Student'),
   email: String(user?.email || fallback.email || ''),
   phone: String(user?.phone || fallback.phone || ''),
+  userCategory: String(user?.userCategory || user?.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
   grantedCourseIds: Array.isArray(user?.grantedCourseIds)
     ? user.grantedCourseIds.map((item: unknown) => String(item))
     : [],
@@ -5290,11 +5293,13 @@ const AdminPanelScreen = ({
         if (!current) return current;
         const currentIds = current.grantedCourseIds || [];
         if (action === 'grantCourseAccess') {
-          return currentIds.includes(studentAccessForm.courseId)
-            ? current
-            : { ...current, grantedCourseIds: [...currentIds, studentAccessForm.courseId] };
+          const nextIds = currentIds.includes(studentAccessForm.courseId)
+            ? currentIds
+            : [...currentIds, studentAccessForm.courseId];
+          return { ...current, grantedCourseIds: nextIds, userCategory: nextIds.length ? 'premium' : 'free' };
         }
-        return { ...current, grantedCourseIds: currentIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId)) };
+        const nextIds = currentIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId));
+        return { ...current, grantedCourseIds: nextIds, userCategory: nextIds.length ? 'premium' : 'free' };
       });
       await onRefresh();
       setMessage(data.message || 'Student access updated');
@@ -7387,6 +7392,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                       <b>Manage</b>
                     </div>
                     <div className="admin-user-card-tags">
+                      <span>{userItem.userCategory === 'premium' ? 'Premium User' : 'Free User'}</span>
                         {userItem.password && (
                           <span>Password saved</span>
                         )}
@@ -7582,6 +7588,9 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                   <p className="admin-control-eyebrow">Student Profile</p>
                   <h3>{selectedStudent.name || 'Student'}</h3>
                   <span>{selectedStudent.email || 'No email'} • ID {selectedStudent.id}</span>
+                  <div className={`admin-platform-status ${selectedStudent.userCategory === 'premium' ? 'is-active' : ''}`}>
+                    {selectedStudent.userCategory === 'premium' ? 'Premium User' : 'Free User'}
+                  </div>
                   <div className={`admin-platform-status ${selectedStudent.status === 'blocked' ? 'is-blocked' : 'is-active'}`}>
                     {selectedStudent.status === 'blocked' ? 'Platform blocked' : 'Platform active'}
                   </div>

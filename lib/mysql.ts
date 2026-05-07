@@ -1029,12 +1029,14 @@ const createSchema = async (client: Pool | PoolClient) => {
       email TEXT NOT NULL UNIQUE,
       phone TEXT NOT NULL DEFAULT '',
       password TEXT NOT NULL,
-      status TEXT DEFAULT 'active'
+      status TEXT DEFAULT 'active',
+      user_category TEXT DEFAULT 'free'
     )
   `);
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_category TEXT DEFAULT 'free'`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS admin_credentials (
@@ -1096,6 +1098,22 @@ const createSchema = async (client: Pool | PoolClient) => {
   `);
   await client.query(`ALTER TABLE "enrollments" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMPTZ`);
   await client.query(`ALTER TABLE "enrollments" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'active'`);
+
+  await client.query(`
+    UPDATE users
+    SET user_category = CASE
+      WHEN EXISTS (
+        SELECT 1
+        FROM enrollments e
+        INNER JOIN courses c ON c.id = e.course_id
+        WHERE e.user_id = users.id
+          AND COALESCE(e.status, 'active') = 'active'
+          AND (e.expires_at IS NULL OR e.expires_at > CURRENT_TIMESTAMP)
+          AND LOWER(COALESCE(c.type, 'free')) = 'premium'
+      ) THEN 'premium'
+      ELSE 'free'
+    END
+  `);
 };
 
 const seedDatabase = async (client: Pool | PoolClient) => {

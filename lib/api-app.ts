@@ -28,7 +28,7 @@ const questionUploadDir = path.join(uploadRoot, "questions");
 fs.mkdirSync(sliderUploadDir, { recursive: true });
 fs.mkdirSync(questionUploadDir, { recursive: true });
 
-type DbUser = RowDataPacket & { id: string; name: string; email: string; phone: string; password: string; status?: string };
+type DbUser = RowDataPacket & { id: string; name: string; email: string; phone: string; password: string; status?: string; user_category?: string };
 type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
 type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; sort_order?: number };
 type DbNote = RowDataPacket & { id: string; title: string; lessons: number; category: string; type: string; url?: string; content?: string };
@@ -318,16 +318,40 @@ const getGrantedCourseIds = async (userId: string) => {
   return rows.map((item) => String(item.course_id || "").trim()).filter(Boolean);
 };
 
-const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone">) => ({
-  id: String(user.id),
-  name: String(user.name || ""),
-  email: String(user.email || ""),
-  phone: String(user.phone || ""),
-  status: String((user as Partial<DbUser>).status || "active"),
-  grantedCourseIds: await getGrantedCourseIds(String(user.id)),
-});
+const getComputedUserCategory = (user: Partial<DbUser>, grantedCourseIds: string[]) =>
+  grantedCourseIds.length > 0 ? "premium" : String(user.user_category || "free").toLowerCase() === "premium" ? "premium" : "free";
 
-const normalizeUsers = async (users: Pick<DbUser, "id" | "name" | "email" | "phone">[]) => {
+const syncUserCategory = async (userId: string) => {
+  const premiumEnrollment = await queryOne<RowDataPacket & { course_id: string }>(
+    `SELECT e.course_id
+     FROM enrollments e
+     INNER JOIN courses c ON c.id = e.course_id
+     WHERE e.user_id = ?
+       AND COALESCE(e.status, 'active') = 'active'
+       AND (e.expires_at IS NULL OR e.expires_at > CURRENT_TIMESTAMP)
+       AND LOWER(COALESCE(c.type, 'free')) = 'premium'
+     LIMIT 1`,
+    [userId],
+  );
+  const nextCategory = premiumEnrollment ? "premium" : "free";
+  await execute("UPDATE users SET user_category = ? WHERE id = ?", [nextCategory, userId]);
+  return nextCategory;
+};
+
+const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone"> & Partial<DbUser>) => {
+  const grantedCourseIds = await getGrantedCourseIds(String(user.id));
+  return {
+    id: String(user.id),
+    name: String(user.name || ""),
+    email: String(user.email || ""),
+    phone: String(user.phone || ""),
+    status: String((user as Partial<DbUser>).status || "active"),
+    userCategory: getComputedUserCategory(user, grantedCourseIds),
+    grantedCourseIds,
+  };
+};
+
+const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "phone"> & Partial<DbUser>)[]) => {
   const userIds = users.map((user) => String(user.id)).filter(Boolean);
   const enrollments = userIds.length
     ? await queryRows<RowDataPacket & { user_id: string; course_id: string }>(
@@ -356,6 +380,8 @@ const normalizeUsers = async (users: Pick<DbUser, "id" | "name" | "email" | "pho
     name: String(user.name || ""),
     email: String(user.email || ""),
     phone: String(user.phone || ""),
+    status: String(user.status || "active"),
+    userCategory: getComputedUserCategory(user, courseIdsByUser.get(String(user.id)) || []),
     grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
   }));
 };
@@ -743,8 +769,8 @@ export const createApiApp = async () => {
     }
 
     const id = `u${Date.now()}`;
-    await execute("INSERT INTO users (id, name, email, phone, password, status) VALUES (?, ?, ?, ?, ?, 'active')", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
-    res.status(201).json({ success: true, user: { id, name: trimmedName, email: normalizedEmail, phone: normalizedPhone } });
+    await execute("INSERT INTO users (id, name, email, phone, password, status, user_category) VALUES (?, ?, ?, ?, ?, 'active', 'free')", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
+    res.status(201).json({ success: true, user: { id, name: trimmedName, email: normalizedEmail, phone: normalizedPhone, userCategory: "free" } });
   }));
 
   app.post("/api/login", asyncHandler(async (req, res) => {
@@ -770,6 +796,8 @@ export const createApiApp = async () => {
       await execute("UPDATE users SET password = ? WHERE id = ?", [hashPassword(String(password)), user.id]);
     }
 
+    const grantedCourseIds = await getGrantedCourseIds(String(user.id));
+
     res.json({
       success: true,
       user: {
@@ -777,7 +805,8 @@ export const createApiApp = async () => {
         name: user.name,
         email: user.email,
         phone: user.phone || "",
-        grantedCourseIds: await getGrantedCourseIds(String(user.id)),
+        userCategory: getComputedUserCategory(user, grantedCourseIds),
+        grantedCourseIds,
       },
     });
   }));
@@ -808,13 +837,13 @@ export const createApiApp = async () => {
   }));
 
   app.get("/api/users", asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status, user_category FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
 
   app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status, user_category FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
@@ -1031,6 +1060,7 @@ export const createApiApp = async () => {
 
     if (existing) {
       await execute("UPDATE enrollments SET access_code = ?, granted_at = ?, expires_at = ?, status = 'active' WHERE id = ?", [generatedCode, new Date(), expiryDate, existing.id]);
+      await syncUserCategory(String(userId));
       res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
       return;
     }
@@ -1039,6 +1069,7 @@ export const createApiApp = async () => {
       "INSERT INTO enrollments (id, user_id, course_id, access_code, granted_at, expires_at, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
       [createId("en"), userId, courseId, generatedCode, new Date(), expiryDate],
     );
+    await syncUserCategory(String(userId));
     res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
   }));
 
@@ -1049,6 +1080,7 @@ export const createApiApp = async () => {
       return;
     }
     await execute("DELETE FROM enrollments WHERE user_id = ? AND course_id = ?", [userId, courseId]);
+    await syncUserCategory(String(userId));
     res.json({ success: true, message: "Course access revoked" });
   }));
 
@@ -1059,6 +1091,7 @@ export const createApiApp = async () => {
       return;
     }
     await execute("UPDATE enrollments SET status = 'blocked' WHERE user_id = ? AND course_id = ?", [userId, courseId]);
+    await syncUserCategory(String(userId));
     res.json({ success: true, message: "Student blocked from this course" });
   }));
 
@@ -1374,8 +1407,8 @@ export const createApiApp = async () => {
 
     const nextPassword = password ? hashPassword(String(password)) : current.password;
     await execute("UPDATE users SET name = ?, password = ? WHERE id = ?", [trimmedName, nextPassword, id]);
-    const updatedUser = await queryOne<DbUser>("SELECT id, name, email, phone FROM users WHERE id = ?", [id]);
-    res.json({ success: true, message: "Profile updated", user: updatedUser });
+    const updatedUser = await queryOne<DbUser>("SELECT id, name, email, phone, status, user_category FROM users WHERE id = ?", [id]);
+    res.json({ success: true, message: "Profile updated", user: updatedUser ? await normalizeUser(updatedUser) : null });
   }));
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
