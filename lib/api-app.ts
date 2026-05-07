@@ -31,9 +31,9 @@ const questionUploadDir = path.join(uploadRoot, "questions");
 fs.mkdirSync(sliderUploadDir, { recursive: true });
 fs.mkdirSync(questionUploadDir, { recursive: true });
 
-type DbUser = RowDataPacket & { id: string; name: string; email: string; phone: string; password: string };
+type DbUser = RowDataPacket & { id: string; name: string; email: string; phone: string; password: string; status?: string };
 type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
-type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string };
+type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; sort_order?: number };
 type DbNote = RowDataPacket & { id: string; title: string; lessons: number; category: string; type: string; url?: string; content?: string };
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
 type DbQuestion = RowDataPacket & { id: string; quiz_id: string; text: string; options: string; correctAnswer: number; explanation: string; image_url?: string };
@@ -315,7 +315,7 @@ const deleteStoredImage = async (imageUrl?: string, localPrefix = "/uploads/") =
 
 const getGrantedCourseIds = async (userId: string) => {
   const rows = await queryRows<RowDataPacket & { course_id: string }>(
-    "SELECT course_id FROM enrollments WHERE user_id = ? ORDER BY granted_at DESC, id DESC",
+    "SELECT course_id FROM enrollments WHERE user_id = ? AND COALESCE(status, 'active') = 'active' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) ORDER BY granted_at DESC, id DESC",
     [userId],
   );
   return rows.map((item) => String(item.course_id || "").trim()).filter(Boolean);
@@ -326,6 +326,7 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
   name: String(user.name || ""),
   email: String(user.email || ""),
   phone: String(user.phone || ""),
+  status: String((user as Partial<DbUser>).status || "active"),
   grantedCourseIds: await getGrantedCourseIds(String(user.id)),
 });
 
@@ -333,7 +334,7 @@ const normalizeUsers = async (users: Pick<DbUser, "id" | "name" | "email" | "pho
   const userIds = users.map((user) => String(user.id)).filter(Boolean);
   const enrollments = userIds.length
     ? await queryRows<RowDataPacket & { user_id: string; course_id: string }>(
-        "SELECT user_id, course_id FROM enrollments WHERE user_id = ANY($1::text[]) ORDER BY granted_at DESC, id DESC",
+        "SELECT user_id, course_id FROM enrollments WHERE user_id = ANY($1::text[]) AND COALESCE(status, 'active') = 'active' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) ORDER BY granted_at DESC, id DESC",
         [userIds],
       )
     : [];
@@ -769,7 +770,7 @@ export const createApiApp = async () => {
     }
 
     const id = `u${Date.now()}`;
-    await execute("INSERT INTO users (id, name, email, phone, password) VALUES (?, ?, ?, ?, ?)", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
+    await execute("INSERT INTO users (id, name, email, phone, password, status) VALUES (?, ?, ?, ?, ?, 'active')", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
     res.status(201).json({ success: true, user: { id, name: trimmedName, email: normalizedEmail, phone: normalizedPhone } });
   }));
 
@@ -784,6 +785,11 @@ export const createApiApp = async () => {
     const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
     if (!user || !verifyPassword(String(password), String(user.password || ""))) {
       res.status(401).json({ success: false, message: "Invalid credentials" });
+      return;
+    }
+
+    if (String(user.status || "active") === "blocked") {
+      res.status(403).json({ success: false, message: "Your account is blocked. Contact academy admin." });
       return;
     }
 
@@ -805,7 +811,7 @@ export const createApiApp = async () => {
 
   app.get("/api/courses", asyncHandler(async (_req, res) => {
     const courses = await queryRows<DbCourse>("SELECT * FROM courses");
-    const lessons = await queryRows<DbLesson>("SELECT * FROM lessons");
+    const lessons = await queryRows<DbLesson>("SELECT * FROM lessons ORDER BY sort_order ASC, id ASC");
     const result = courses.map((course) => ({
       ...course,
       lessonList: lessons.filter((lesson) => String(lesson.course_id) === String(course.id)),
@@ -829,13 +835,13 @@ export const createApiApp = async () => {
   }));
 
   app.get("/api/users", asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
 
   app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     if (normalized.length > 0) {
       res.json(normalized);
@@ -1045,7 +1051,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/grantCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
-    const { userId, courseId, accessCode } = req.body || {};
+    const { userId, courseId, accessCode, durationDays, expiresAt } = req.body || {};
     if (!userId || !courseId) {
       res.status(400).json({ success: false, message: "User id and course id are required" });
       return;
@@ -1069,19 +1075,65 @@ export const createApiApp = async () => {
     }
 
     const generatedCode = String(accessCode || createAccessCode()).trim().toUpperCase();
+    const days = Number(durationDays || 0);
+    const expiryDate = expiresAt
+      ? new Date(String(expiresAt))
+      : Number.isFinite(days) && days > 0
+        ? new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+        : null;
     const existing = await queryOne<RowDataPacket & { id: string }>("SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?", [userId, courseId]);
 
     if (existing) {
-      await execute("UPDATE enrollments SET access_code = ?, granted_at = ? WHERE id = ?", [generatedCode, new Date(), existing.id]);
+      await execute("UPDATE enrollments SET access_code = ?, granted_at = ?, expires_at = ?, status = 'active' WHERE id = ?", [generatedCode, new Date(), expiryDate, existing.id]);
       res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
       return;
     }
 
     await execute(
-      "INSERT INTO enrollments (id, user_id, course_id, access_code, granted_at) VALUES (?, ?, ?, ?, ?)",
-      [createId("en"), userId, courseId, generatedCode, new Date()],
+      "INSERT INTO enrollments (id, user_id, course_id, access_code, granted_at, expires_at, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+      [createId("en"), userId, courseId, generatedCode, new Date(), expiryDate],
     );
     res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
+  }));
+
+  app.post("/api/revokeCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
+    const { userId, courseId } = req.body || {};
+    if (!userId || !courseId) {
+      res.status(400).json({ success: false, message: "User id and course id are required" });
+      return;
+    }
+    await execute("DELETE FROM enrollments WHERE user_id = ? AND course_id = ?", [userId, courseId]);
+    res.json({ success: true, message: "Course access revoked" });
+  }));
+
+  app.post("/api/blockCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
+    const { userId, courseId } = req.body || {};
+    if (!userId || !courseId) {
+      res.status(400).json({ success: false, message: "User id and course id are required" });
+      return;
+    }
+    await execute("UPDATE enrollments SET status = 'blocked' WHERE user_id = ? AND course_id = ?", [userId, courseId]);
+    res.json({ success: true, message: "Student blocked from this course" });
+  }));
+
+  app.post("/api/blockUser", requireAdmin(), asyncHandler(async (req, res) => {
+    const { userId } = req.body || {};
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User id is required" });
+      return;
+    }
+    await execute("UPDATE users SET status = 'blocked' WHERE id = ?", [userId]);
+    res.json({ success: true, message: "Student blocked from platform" });
+  }));
+
+  app.post("/api/unblockUser", requireAdmin(), asyncHandler(async (req, res) => {
+    const { userId } = req.body || {};
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User id is required" });
+      return;
+    }
+    await execute("UPDATE users SET status = 'active' WHERE id = ?", [userId]);
+    res.json({ success: true, message: "Student unblocked on platform" });
   }));
 
   app.post("/api/verifyCourseAccess", asyncHandler(async (req, res) => {
@@ -1106,10 +1158,18 @@ export const createApiApp = async () => {
       return;
     }
 
-    const enrollment = await queryOne<RowDataPacket & { access_code: string }>(
-      "SELECT access_code FROM enrollments WHERE user_id = ? AND course_id = ?",
+    const enrollment = await queryOne<RowDataPacket & { access_code: string; status?: string; expires_at?: Date }>(
+      "SELECT access_code, status, expires_at FROM enrollments WHERE user_id = ? AND course_id = ?",
       [userId, courseId],
     );
+    if (String(enrollment?.status || "active") === "blocked") {
+      res.status(403).json({ success: false, message: "This course access is blocked by admin" });
+      return;
+    }
+    if (enrollment?.expires_at && new Date(enrollment.expires_at).getTime() <= Date.now()) {
+      res.status(403).json({ success: false, message: "This course access has expired" });
+      return;
+    }
     const expectedCode = String(enrollment?.access_code || "").toUpperCase();
     if (!expectedCode || expectedCode !== String(accessCode).toUpperCase()) {
       res.status(401).json({ success: false, message: "Invalid access code" });
@@ -1120,7 +1180,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/createLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { course_id, title, duration, note_content, note_url, video_url } = req.body || {};
+    const { course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order } = req.body || {};
     if (!course_id || !title) {
       res.status(400).json({ success: false, message: "Course and lesson title are required" });
       return;
@@ -1128,14 +1188,14 @@ export const createApiApp = async () => {
 
     const id = createId("l");
     await execute(
-      "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, course_id, title, duration || "", note_content || "", note_url || "", video_url || ""],
+      "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", Number(sort_order || 0)],
     );
     res.status(201).json({ success: true, message: "Lesson created" });
   }));
 
   app.post("/api/updateLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, course_id, title, duration, note_content, note_url, video_url } = req.body || {};
+    const { id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order } = req.body || {};
     if (!id || !course_id || !title) {
       res.status(400).json({ success: false, message: "Id, course, and lesson title are required" });
       return;
@@ -1148,8 +1208,8 @@ export const createApiApp = async () => {
     }
 
     await execute(
-      "UPDATE lessons SET course_id = ?, title = ?, duration = ?, note_content = ?, note_url = ?, video_url = ? WHERE id = ?",
-      [course_id, title, duration || "", note_content || "", note_url || "", video_url || "", id],
+      "UPDATE lessons SET course_id = ?, title = ?, duration = ?, note_content = ?, note_url = ?, video_url = ?, thumbnail_url = ?, sort_order = ? WHERE id = ?",
+      [course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", Number(sort_order || 0), id],
     );
     res.json({ success: true, message: "Lesson updated" });
   }));

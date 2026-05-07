@@ -34,7 +34,8 @@ import {
   Lock,
   ChevronDown,
   ExternalLink
-  ,Phone,
+  ,Upload,
+  Phone,
   FlaskConical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -52,6 +53,8 @@ interface Lesson {
   note_content: string;
   note_url?: string;
   video_url?: string;
+  thumbnail_url?: string;
+  sort_order?: number;
 }
 
 interface Course {
@@ -108,6 +111,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone: string;
+  status?: string;
   grantedCourseIds?: string[];
 }
 
@@ -704,6 +708,22 @@ const apiPostToAppsScript = async (action: string, payload: Record<string, unkno
 };
 
 const apiSliderPost = async (action: 'createSlider' | 'updateSlider' | 'deleteSlider', payload: Record<string, unknown>) => {
+  if (payload.imageData) {
+    return apiPostToAppsScript(action, payload);
+  }
+
+  return apiPost(action, payload);
+};
+
+const apiNotePost = async (action: 'createNote' | 'updateNote', payload: Record<string, unknown>) => {
+  if (payload.fileData) {
+    return apiPostToAppsScript(action, payload);
+  }
+
+  return apiPost(action, payload);
+};
+
+const apiMediaPost = async (action: 'createCourse' | 'updateCourse' | 'createLesson' | 'updateLesson', payload: Record<string, unknown>) => {
   if (payload.imageData) {
     return apiPostToAppsScript(action, payload);
   }
@@ -4067,6 +4087,10 @@ const AdminLoginScreen = ({
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />
                 <span>Remember Me</span>
+                <span className="admin-slider-upload-button">
+                  <Upload size={18} />
+                  Upload slider image
+                </span>
               </label>
             </div>
 
@@ -4078,7 +4102,7 @@ const AdminLoginScreen = ({
             <button
               type="button"
               onClick={handleDemoAdminLogin}
-              className="w-full rounded-2xl border border-white/20 bg-white/12 px-4 py-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/18"
+              className="admin-login-demo-button w-full rounded-2xl px-4 py-3 text-sm font-bold transition"
             >
               Demo {mode === 'superadmin' ? 'Super Admin' : 'Admin'}
             </button>
@@ -4147,7 +4171,12 @@ const AdminPanelScreen = ({
     note_content: '',
     note_url: '',
     video_url: '',
+    thumbnail_url: '',
+    sort_order: '0',
   });
+  const [courseThumbnailFile, setCourseThumbnailFile] = useState<File | null>(null);
+  const [lessonThumbnailFile, setLessonThumbnailFile] = useState<File | null>(null);
+  const [courseThumbnailPreviewUrl, setCourseThumbnailPreviewUrl] = useState('');
   const [noteForm, setNoteForm] = useState({
     title: '',
     lessons: '1',
@@ -4156,6 +4185,7 @@ const AdminPanelScreen = ({
     url: '',
     content: '',
   });
+  const [noteFile, setNoteFile] = useState<File | null>(null);
   const [quizForm, setQuizForm] = useState({
     topic: '',
     type: 'free',
@@ -4168,6 +4198,14 @@ const AdminPanelScreen = ({
     correctAnswer: '0',
     explanation: '',
     image_url: '',
+  });
+  const [selectedManagedCourseId, setSelectedManagedCourseId] = useState('');
+  const [courseQuizForm, setCourseQuizForm] = useState({
+    quiz_id: '',
+    text: '',
+    optionsText: '',
+    correctAnswer: '0',
+    explanation: '',
   });
   const [questionImportQuizId, setQuestionImportQuizId] = useState('');
   const [questionImportFile, setQuestionImportFile] = useState<File | null>(null);
@@ -4182,8 +4220,11 @@ const AdminPanelScreen = ({
   const [adminAccountForm, setAdminAccountForm] = useState({ username: '', password: '' });
   const [noteCategories, setNoteCategories] = useState<string[]>(() => getStoredNoteCategories());
   const [newNoteCategory, setNewNoteCategory] = useState('');
-  const [customerAccessForm, setCustomerAccessForm] = useState({ userId: '', courseId: '' });
+  const [customerAccessForm, setCustomerAccessForm] = useState({ userId: '', courseId: '', durationDays: '30' });
+  const [selectedStudent, setSelectedStudent] = useState<AdminUser | null>(null);
+  const [studentAccessForm, setStudentAccessForm] = useState({ courseId: '', durationDays: '30' });
   const [generatedCustomerCode, setGeneratedCustomerCode] = useState('');
+  const [studentAccessCode, setStudentAccessCode] = useState('');
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [accessStudentSearchQuery, setAccessStudentSearchQuery] = useState('');
   const [accessCourseSearchQuery, setAccessCourseSearchQuery] = useState('');
@@ -4249,6 +4290,12 @@ const AdminPanelScreen = ({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || '')
     .join('') || 'AD';
+  const getStudentInitials = (value: string) => value
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'ST';
   const activeSliderCount = sliders.filter((slider) => slider.is_active).length;
   const freeCourseCount = freeCourses.length;
   const premiumCourseCount = premiumCourses.length;
@@ -4416,6 +4463,14 @@ const AdminPanelScreen = ({
   });
   const isFreeCourseSection = activeTab === 'free-course';
   const displayedCourses = isFreeCourseSection ? freeCourses : courses;
+  const managedCourse = premiumCourses.find((course) => String(course.id) === String(selectedManagedCourseId)) || premiumCourses[0] || null;
+  const managedCourseLessons = managedCourse
+    ? [...(managedCourse.lessonList || [])].sort((left, right) => (Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0)) || String(left.title).localeCompare(String(right.title)))
+    : [];
+  const managedCourseQuiz = quizzes.find((quiz) => String(quiz.id) === String(courseQuizForm.quiz_id))
+    || quizzes.find((quiz) => managedCourse && String(quiz.topic || '').toLowerCase().includes(String(managedCourse.title || '').toLowerCase()))
+    || null;
+  const managedCourseQuestions = managedCourseQuiz?.questions || [];
   const showNotice = (nextMessage: string, tone: 'success' | 'error' | 'info' = 'info') => {
     setMessage(nextMessage);
     setToast({ message: nextMessage, tone });
@@ -4432,11 +4487,11 @@ const AdminPanelScreen = ({
     return 'info';
   };
 
-  const confirmDelete = (title: string, description: string, onConfirm: () => Promise<void> | void) => {
+  const confirmDelete = (title: string, description: string, onConfirm: () => Promise<void> | void, confirmLabel = 'Delete') => {
     setConfirmDialog({
       title,
       description,
-      confirmLabel: 'Delete',
+      confirmLabel,
       tone: 'danger',
       onConfirm,
     });
@@ -4467,6 +4522,16 @@ const AdminPanelScreen = ({
 
     setSliderPreviewUrl(sliderForm.image_url || '');
   }, [sliderImageFile, sliderForm.image_url]);
+
+  useEffect(() => {
+    if (courseThumbnailFile) {
+      const objectUrl = URL.createObjectURL(courseThumbnailFile);
+      setCourseThumbnailPreviewUrl(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+
+    setCourseThumbnailPreviewUrl(courseForm.image || '');
+  }, [courseThumbnailFile, courseForm.image]);
 
   useEffect(() => {
     if (questionImageFile) {
@@ -4517,6 +4582,12 @@ const AdminPanelScreen = ({
       setToast({ message, tone: getNoticeTone(message) });
     }
   }, [message]);
+
+  useEffect(() => {
+    if (!selectedManagedCourseId && premiumCourses[0]) {
+      setSelectedManagedCourseId(premiumCourses[0].id);
+    }
+  }, [premiumCourses, selectedManagedCourseId]);
 
   useEffect(() => {
     const mergedCategories = Array.from(new Set([
@@ -4609,6 +4680,55 @@ const AdminPanelScreen = ({
     } finally {
       setLoading(false);
       setUploadingSlider(false);
+    }
+  };
+
+  const submitNote = async () => {
+    if (!noteForm.title.trim() || !noteForm.category.trim()) {
+      setMessage('Note title and category are required');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const payload: Record<string, unknown> = {
+        ...(editingNoteId ? { id: editingNoteId } : {}),
+        ...noteForm,
+        lessons: Number(noteForm.lessons || 0),
+      };
+
+      if (noteFile) {
+        payload.fileData = await fileToDataUrl(noteFile);
+        payload.fileName = noteFile.name;
+        payload.mimeType = noteFile.type || 'application/octet-stream';
+      }
+
+      const action = editingNoteId ? 'updateNote' : 'createNote';
+      const response = await apiNotePost(action, payload);
+      const data = await readLenientJsonResponse(response);
+
+      if (!data.success) {
+        setMessage(data.message || 'Unable to save note');
+        return;
+      }
+
+      setNoteForm({ title: '', lessons: '1', category: 'Chemistry', type: 'free', url: '', content: '' });
+      setNoteFile(null);
+      setEditingNoteId('');
+      await onRefresh();
+      setMessage(noteFile ? 'Note uploaded and saved successfully' : 'Note saved successfully');
+    } catch (error) {
+      setMessage(
+        noteFile
+          ? error instanceof Error
+            ? `Note upload failed: ${error.message}`
+            : 'Note upload failed. Check Apps Script deployment and Drive permission.'
+          : 'Unable to save note'
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -4813,6 +4933,7 @@ const AdminPanelScreen = ({
       const response = await apiPost('grantCourseAccess', {
         userId: customerAccessForm.userId,
         courseId: customerAccessForm.courseId,
+        durationDays: Number(customerAccessForm.durationDays || 0),
       });
       const data = await readJsonResponse(response);
       if (!data.success) {
@@ -4834,12 +4955,104 @@ const AdminPanelScreen = ({
     }
   };
 
+  const handleRevokeCustomerAccess = async () => {
+    if (!customerAccessForm.userId || !customerAccessForm.courseId) {
+      setMessage('Select a student and premium course first');
+      return;
+    }
+    await submitAction('revokeCourseAccess', {
+      userId: customerAccessForm.userId,
+      courseId: customerAccessForm.courseId,
+    }, () => setGeneratedCustomerCode(''));
+  };
+
+  const handleBlockCustomerAccess = async () => {
+    if (!customerAccessForm.userId || !customerAccessForm.courseId) {
+      setMessage('Select a student and premium course first');
+      return;
+    }
+    await submitAction('blockCourseAccess', {
+      userId: customerAccessForm.userId,
+      courseId: customerAccessForm.courseId,
+    }, () => setGeneratedCustomerCode(''));
+  };
+
+  const runStudentAccessAction = async (action: 'grantCourseAccess' | 'revokeCourseAccess' | 'blockCourseAccess') => {
+    if (!selectedStudent || !studentAccessForm.courseId) {
+      setMessage('Select a student and premium course first');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const response = await apiPost(action, {
+        userId: selectedStudent.id,
+        courseId: studentAccessForm.courseId,
+        durationDays: Number(studentAccessForm.durationDays || 0),
+      });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to update student access');
+        return;
+      }
+
+      setStudentAccessCode(String(data.accessCode || ''));
+      setSelectedStudent((current) => {
+        if (!current) return current;
+        const currentIds = current.grantedCourseIds || [];
+        if (action === 'grantCourseAccess') {
+          return currentIds.includes(studentAccessForm.courseId)
+            ? current
+            : { ...current, grantedCourseIds: [...currentIds, studentAccessForm.courseId] };
+        }
+        return { ...current, grantedCourseIds: currentIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId)) };
+      });
+      await onRefresh();
+      setMessage(data.message || 'Student access updated');
+    } catch {
+      setMessage('Unable to update student access');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runStudentPlatformAction = async (action: 'blockUser' | 'unblockUser') => {
+    if (!selectedStudent) {
+      setMessage('Select a student first');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const response = await apiPost(action, { userId: selectedStudent.id });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to update student status');
+        return;
+      }
+
+      const nextStatus = action === 'blockUser' ? 'blocked' : 'active';
+      setSelectedStudent((current) => current ? { ...current, status: nextStatus } : current);
+      await onRefresh();
+      setMessage(data.message || 'Student status updated');
+    } catch {
+      setMessage('Unable to update student status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetCourseForm = () => {
     setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'General' });
+    setCourseThumbnailFile(null);
     setEditingCourseId('');
   };
 
-  const submitCourseForm = () => {
+  const submitCourseForm = async () => {
     const title = courseForm.title.trim();
     const image = courseForm.image.trim();
     const category = courseForm.category.trim() || 'General';
@@ -4853,8 +5066,8 @@ const AdminPanelScreen = ({
       return;
     }
 
-    if (!image || !/^https?:\/\//i.test(image)) {
-      setMessage('Add a valid thumbnail image URL starting with http or https');
+    if (!courseThumbnailFile && (!image || !/^https?:\/\//i.test(image))) {
+      setMessage('Add a valid thumbnail image URL or upload a course thumbnail');
       return;
     }
 
@@ -4873,19 +5086,52 @@ const AdminPanelScreen = ({
       return;
     }
 
-    submitAction(editingCourseId ? 'updateCourse' : 'createCourse', {
-      ...(editingCourseId ? { id: editingCourseId } : {}),
-      title,
-      image,
-      category,
-      type: courseType,
-      lessons: lessonsCount,
-      price,
-      oldPrice,
-    }, resetCourseForm);
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const payload: Record<string, unknown> = {
+        ...(editingCourseId ? { id: editingCourseId } : {}),
+        title,
+        image,
+        category,
+        type: courseType,
+        lessons: lessonsCount,
+        price,
+        oldPrice,
+      };
+
+      if (courseThumbnailFile) {
+        payload.imageData = await fileToDataUrl(courseThumbnailFile);
+        payload.fileName = courseThumbnailFile.name;
+        payload.mimeType = courseThumbnailFile.type || 'image/jpeg';
+        payload.uploadKind = 'course';
+      }
+
+      const response = await apiMediaPost(editingCourseId ? 'updateCourse' : 'createCourse', payload);
+      const data = await readLenientJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to save course');
+        return;
+      }
+
+      resetCourseForm();
+      await onRefresh();
+      setMessage(courseThumbnailFile ? 'Course thumbnail uploaded and saved' : data.message || 'Course saved successfully');
+    } catch (error) {
+      setMessage(
+        courseThumbnailFile
+          ? error instanceof Error
+            ? `Course thumbnail upload failed: ${error.message}`
+            : 'Course thumbnail upload failed. Check Apps Script Drive permission.'
+          : 'Unable to save course'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const submitLessonForm = () => {
+  const submitLessonForm = async () => {
     const videoUrl = lessonForm.video_url.trim();
 
     if (!lessonForm.course_id || !lessonForm.title.trim()) {
@@ -4898,17 +5144,102 @@ const AdminPanelScreen = ({
       return;
     }
 
-    submitAction(editingLessonId ? 'updateLesson' : 'createLesson', {
-      ...(editingLessonId ? { id: editingLessonId } : {}),
-      ...lessonForm,
-      title: lessonForm.title.trim(),
-      duration: lessonForm.duration.trim(),
-      note_url: lessonForm.note_url.trim(),
-      note_content: lessonForm.note_content.trim(),
-      video_url: normalizeVideoUrl(videoUrl),
-    }, () => {
-      setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '' });
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const payload: Record<string, unknown> = {
+        ...(editingLessonId ? { id: editingLessonId } : {}),
+        ...lessonForm,
+        title: lessonForm.title.trim(),
+        duration: lessonForm.duration.trim(),
+        sort_order: Number(lessonForm.sort_order || 0),
+        note_url: lessonForm.note_url.trim(),
+        note_content: lessonForm.note_content.trim(),
+        thumbnail_url: lessonForm.thumbnail_url.trim(),
+        video_url: normalizeVideoUrl(videoUrl),
+      };
+
+      if (lessonThumbnailFile) {
+        payload.imageData = await fileToDataUrl(lessonThumbnailFile);
+        payload.fileName = lessonThumbnailFile.name;
+        payload.mimeType = lessonThumbnailFile.type || 'image/jpeg';
+        payload.uploadKind = 'video';
+      }
+
+      const response = await apiMediaPost(editingLessonId ? 'updateLesson' : 'createLesson', payload);
+      const data = await readLenientJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to save lesson');
+        return;
+      }
+
+      setLessonForm({ course_id: selectedManagedCourseId || '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', sort_order: String(managedCourseLessons.length + 1) });
+      setLessonThumbnailFile(null);
       setEditingLessonId('');
+      await onRefresh();
+      setMessage(lessonThumbnailFile ? 'Video thumbnail uploaded and lesson saved' : data.message || 'Lesson saved successfully');
+    } catch (error) {
+      setMessage(
+        lessonThumbnailFile
+          ? error instanceof Error
+            ? `Video thumbnail upload failed: ${error.message}`
+            : 'Video thumbnail upload failed. Check Apps Script Drive permission.'
+          : 'Unable to save lesson'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateManagedCourseQuiz = () => {
+    if (!managedCourse) {
+      showNotice('Select a paid course first', 'error');
+      return;
+    }
+
+    submitAction('createQuiz', {
+      topic: `${managedCourse.title} MCQ`,
+      type: 'premium',
+    }, () => {
+      setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
+    });
+  };
+
+  const submitManagedCourseQuestion = () => {
+    const options = courseQuizForm.optionsText.split('\n').map((item) => item.trim()).filter(Boolean);
+    const correctAnswer = Number(courseQuizForm.correctAnswer || 0);
+    const quizId = courseQuizForm.quiz_id || managedCourseQuiz?.id || '';
+
+    if (!managedCourse) {
+      showNotice('Select a paid course first', 'error');
+      return;
+    }
+
+    if (!quizId) {
+      showNotice('Create or choose an MCQ quiz for this course first', 'error');
+      return;
+    }
+
+    if (!courseQuizForm.text.trim() || options.length < 2) {
+      showNotice('Question text and at least 2 options are required', 'error');
+      return;
+    }
+
+    if (!Number.isInteger(correctAnswer) || correctAnswer < 0 || correctAnswer >= options.length) {
+      showNotice('Correct answer index must match one option', 'error');
+      return;
+    }
+
+    submitAction('createQuestion', {
+      quiz_id: quizId,
+      text: courseQuizForm.text.trim(),
+      options,
+      correctAnswer,
+      explanation: courseQuizForm.explanation.trim(),
+      image_url: '',
+    }, () => {
+      setCourseQuizForm((current) => ({ ...current, text: '', optionsText: '', correctAnswer: '0', explanation: '', quiz_id: quizId }));
     });
   };
 
@@ -5007,44 +5338,6 @@ const AdminPanelScreen = ({
 
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
-          <div className="admin-command-hero">
-            <div>
-              <p className="admin-control-eyebrow">{isSuperAdmin ? 'Superadmin Command Center' : 'Admin Command Center'}</p>
-              <h1>Operate the academy with clean insight and fast control.</h1>
-              <span>Track publishing health, manage free and premium learning, grant access, and keep student content fresh from one focused workspace.</span>
-              <div className="admin-hero-pills">
-                <button type="button" onClick={() => setActiveTab('slider')}>
-                  <Eye size={16} />
-                  {activeSliderCount} live slider{activeSliderCount === 1 ? '' : 's'}
-                </button>
-                <button type="button" onClick={() => setActiveTab('user')}>
-                  <User size={16} />
-                  {users.length} students
-                </button>
-                <button type="button" onClick={() => setActiveTab('question')}>
-                  <MessageSquare size={16} />
-                  {questions.length} MCQs
-                </button>
-              </div>
-            </div>
-            <div className="admin-hero-score-card">
-              <span>System Health</span>
-              <strong>{contentHealthScore}%</strong>
-              <em>{alertCount ? `${alertCount} item${alertCount === 1 ? '' : 's'} need attention` : 'Everything is ready'}</em>
-              <div className="admin-hero-score-track">
-                <i style={{ width: `${contentHealthScore}%` }} />
-              </div>
-              <div className="admin-command-actions">
-                <button type="button" onClick={() => setActiveTab('course')} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                  Add Course
-                </button>
-                <button type="button" onClick={() => setActiveTab('access')} className="admin-secondary-button px-5 py-3 text-sm font-bold">
-                  Generate Access
-                </button>
-              </div>
-            </div>
-          </div>
-
           <div className="admin-priority-strip">
             <div>
               <p className="admin-control-eyebrow">Today</p>
@@ -5328,6 +5621,7 @@ const AdminPanelScreen = ({
                         type: course.type,
                         category: course.category,
                       });
+                      setCourseThumbnailFile(null);
                     }} className="px-3 py-2 bg-gray-100 text-gray-700 text-sm font-bold">
                       Manage
                     </button>
@@ -5451,8 +5745,12 @@ const AdminPanelScreen = ({
                   <input type="checkbox" checked={sliderForm.is_active} onChange={(e) => setSliderForm({ ...sliderForm, is_active: e.target.checked })} />
                 </label>
               </div>
-              <label className="block rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500">
-                <span className="block font-bold text-gray-700 mb-2">Upload slider image</span>
+              <label className="admin-slider-upload-box">
+                <span className="admin-slider-upload-title">Slider image</span>
+                <span className="admin-slider-upload-button">
+                  <Upload size={18} />
+                  Upload slider image
+                </span>
                 <input
                   type="file"
                   accept="image/*"
@@ -5478,16 +5776,16 @@ const AdminPanelScreen = ({
                     setMessage('');
                     setSliderImageFile(file);
                   }}
-                  className="block w-full text-sm"
+                  className="sr-only"
                 />
                 <span className="block mt-2 text-xs">{sliderImageFile ? `${sliderImageFile.name} • ${(sliderImageFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose JPG, PNG, WEBP, or GIF up to 5 MB'}</span>
               </label>
               <button
                 disabled={loading || uploadingSlider}
                 onClick={submitSlider}
-                className="w-full bg-primary text-white py-3 rounded-xl font-bold"
+                className="admin-slider-save-button w-full py-3 font-bold"
               >
-                {loading || uploadingSlider ? 'Uploading...' : editingSliderId ? 'Update Slider' : 'Save Slider'}
+                {loading || uploadingSlider ? 'Uploading...' : editingSliderId ? 'Update Slider' : 'Upload & Save Slider'}
               </button>
               {editingSliderId && (
                 <button
@@ -5623,6 +5921,40 @@ const AdminPanelScreen = ({
                   <span>Thumbnail image URL</span>
                   <input placeholder="https://example.com/course-thumbnail.jpg" value={courseForm.image} onChange={(e) => setCourseForm({ ...courseForm, image: e.target.value })} />
                 </label>
+                <label className="admin-course-field admin-course-field--wide admin-slider-upload-box">
+                  <span className="admin-slider-upload-title">Upload course thumbnail</span>
+                  <span className="admin-slider-upload-button">
+                    <Upload size={18} />
+                    Upload thumbnail image
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (!file) {
+                        setCourseThumbnailFile(null);
+                        return;
+                      }
+                      if (!file.type.startsWith('image/')) {
+                        setMessage('Please choose a valid course thumbnail image');
+                        e.target.value = '';
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setMessage('Course thumbnail must be 5 MB or smaller');
+                        e.target.value = '';
+                        return;
+                      }
+                      setMessage('');
+                      setCourseThumbnailFile(file);
+                    }}
+                    className="sr-only"
+                  />
+                  <span className="admin-slider-upload-hint">
+                    {courseThumbnailFile ? `${courseThumbnailFile.name} • ${(courseThumbnailFile.size / 1024 / 1024).toFixed(2)} MB` : 'Paste URL above or upload JPG, PNG, WEBP, GIF'}
+                  </span>
+                </label>
                 <label className="admin-course-field">
                   <span>Lesson count</span>
                   <input inputMode="numeric" placeholder="0" value={courseForm.lessons} onChange={(e) => setCourseForm({ ...courseForm, lessons: e.target.value.replace(/[^\d]/g, '') })} />
@@ -5656,8 +5988,8 @@ const AdminPanelScreen = ({
 
             <div className="admin-course-preview-panel">
               <div className="admin-course-preview-media">
-                {courseForm.image.trim() ? (
-                  <img src={courseForm.image.trim()} alt={courseForm.title || 'Course preview'} referrerPolicy="no-referrer" />
+                {courseThumbnailPreviewUrl.trim() ? (
+                  <img src={courseThumbnailPreviewUrl.trim()} alt={courseForm.title || 'Course preview'} referrerPolicy="no-referrer" />
                 ) : (
                   <div className="admin-course-preview-placeholder">
                     <BookOpen size={30} />
@@ -5681,13 +6013,252 @@ const AdminPanelScreen = ({
                 </div>
                 <div className="admin-course-preview-checks">
                   <span className={courseForm.title.trim() ? 'is-ready' : ''}>Title</span>
-                  <span className={/^https?:\/\//i.test(courseForm.image.trim()) ? 'is-ready' : ''}>Image</span>
+                  <span className={courseThumbnailFile || /^https?:\/\//i.test(courseForm.image.trim()) ? 'is-ready' : ''}>Image</span>
                   <span className={courseForm.type === 'free' || Number(courseForm.price || 0) > 0 ? 'is-ready' : ''}>{courseForm.type === 'premium' ? 'Price' : 'Free Access'}</span>
                   <span className={courseForm.category.trim() ? 'is-ready' : ''}>Category</span>
                 </div>
               </div>
             </div>
           </div>
+
+          {!isFreeCourseSection && (
+            <div className="admin-course-workspace">
+              <div className="admin-course-workspace-head">
+                <div>
+                  <p className="admin-control-eyebrow">Paid Course Content</p>
+                  <h3>Videos and MCQs in one place</h3>
+                  <span>Choose a paid course, add ordered videos, edit lessons, and attach MCQ questions for that course.</span>
+                </div>
+                <select
+                  value={managedCourse?.id || ''}
+                  onChange={(event) => {
+                    const courseId = event.target.value;
+                    setSelectedManagedCourseId(courseId);
+                    setLessonForm((current) => ({ ...current, course_id: courseId, sort_order: '1' }));
+                    setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
+                  }}
+                >
+                  <option value="">Choose paid course</option>
+                  {premiumCourses.map((course) => (
+                    <option key={course.id} value={course.id}>{course.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              {managedCourse ? (
+                <div className="admin-course-workspace-grid">
+                  <div className="admin-course-workspace-panel">
+                    <div className="admin-course-workspace-title">
+                      <Play size={20} />
+                      <div>
+                        <strong>Add videos to {managedCourse.title}</strong>
+                        <span>{managedCourseLessons.length} videos added</span>
+                      </div>
+                    </div>
+                    <div className="admin-course-mini-form">
+                      <input
+                        value={lessonForm.course_id === managedCourse.id ? lessonForm.title : ''}
+                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, title: event.target.value })}
+                        placeholder="Video title"
+                      />
+                      <div className="grid gap-3 md:grid-cols-[1fr_120px]">
+                        <input
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.duration : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, duration: event.target.value })}
+                          placeholder="Duration e.g. 18:20"
+                        />
+                        <input
+                          inputMode="numeric"
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.sort_order : String(managedCourseLessons.length + 1)}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, sort_order: event.target.value.replace(/[^\d]/g, '') })}
+                          placeholder="Order"
+                        />
+                      </div>
+                      <input
+                        value={lessonForm.course_id === managedCourse.id ? lessonForm.video_url : ''}
+                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, video_url: event.target.value })}
+                        placeholder="YouTube URL"
+                      />
+                      <input
+                        value={lessonForm.course_id === managedCourse.id ? lessonForm.thumbnail_url : ''}
+                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, thumbnail_url: event.target.value })}
+                        placeholder="Video thumbnail URL optional"
+                      />
+                      <label className="admin-slider-upload-box">
+                        <span className="admin-slider-upload-title">Video thumbnail</span>
+                        <span className="admin-slider-upload-button">
+                          <Upload size={18} />
+                          Upload video thumbnail
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] || null;
+                            if (!file) {
+                              setLessonThumbnailFile(null);
+                              return;
+                            }
+                            if (!file.type.startsWith('image/')) {
+                              setMessage('Please choose a valid video thumbnail image');
+                              event.target.value = '';
+                              return;
+                            }
+                            if (file.size > 5 * 1024 * 1024) {
+                              setMessage('Video thumbnail must be 5 MB or smaller');
+                              event.target.value = '';
+                              return;
+                            }
+                            setMessage('');
+                            setLessonThumbnailFile(file);
+                          }}
+                          className="sr-only"
+                        />
+                        <span className="admin-slider-upload-hint">
+                          {lessonThumbnailFile ? `${lessonThumbnailFile.name} • ${(lessonThumbnailFile.size / 1024 / 1024).toFixed(2)} MB` : 'Paste URL above or upload JPG, PNG, WEBP, GIF'}
+                        </span>
+                      </label>
+                      <input
+                        value={lessonForm.course_id === managedCourse.id ? lessonForm.note_url : ''}
+                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_url: event.target.value })}
+                        placeholder="Note URL optional"
+                      />
+                      <textarea
+                        value={lessonForm.course_id === managedCourse.id ? lessonForm.note_content : ''}
+                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_content: event.target.value })}
+                        placeholder="Note content optional"
+                      />
+                      <button type="button" onClick={submitLessonForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                        {editingLessonId ? 'Update Video' : 'Add Video'}
+                      </button>
+                    </div>
+
+                    <div className="admin-course-video-list">
+                      {managedCourseLessons.map((lesson, index) => (
+                        <div key={lesson.id} className="admin-course-video-row">
+                          {lesson.thumbnail_url ? (
+                            <img src={lesson.thumbnail_url} alt={lesson.title} className="h-12 w-16 rounded-xl object-cover bg-slate-100" referrerPolicy="no-referrer" />
+                          ) : (
+                            <b>{Number(lesson.sort_order || index + 1)}</b>
+                          )}
+                          <span>
+                            <strong>{lesson.title}</strong>
+                            <em>{lesson.duration || 'No duration'} • {lesson.video_url ? 'Video ready' : 'Missing URL'}</em>
+                          </span>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => submitAction('updateLesson', { ...lesson, sort_order: Math.max(1, Number(lesson.sort_order || index + 1) - 1) }, () => {})}
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => submitAction('updateLesson', { ...lesson, sort_order: Number(lesson.sort_order || index + 1) + 1 }, () => {})}
+                            >
+                              Down
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingLessonId(lesson.id);
+                                setLessonForm({
+                                  course_id: lesson.course_id,
+                                  title: lesson.title,
+                                  duration: lesson.duration,
+                                  note_content: lesson.note_content,
+                                  note_url: lesson.note_url || '',
+                                  video_url: lesson.video_url || '',
+                                  thumbnail_url: lesson.thumbnail_url || '',
+                                  sort_order: String(lesson.sort_order || index + 1),
+                                });
+                                setLessonThumbnailFile(null);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="is-danger"
+                              onClick={() => confirmDelete('Delete video?', `This will delete "${lesson.title}".`, () => submitAction('deleteLesson', { id: lesson.id }, () => {}))}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {!managedCourseLessons.length && (
+                        <div className="admin-empty-control">No videos yet. Add the first ordered video for this paid course.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="admin-course-workspace-panel">
+                    <div className="admin-course-workspace-title">
+                      <HelpCircle size={20} />
+                      <div>
+                        <strong>Course MCQs</strong>
+                        <span>{managedCourseQuestions.length} questions linked</span>
+                      </div>
+                    </div>
+                    <div className="admin-course-mini-form">
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <select
+                          value={courseQuizForm.quiz_id || managedCourseQuiz?.id || ''}
+                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, quiz_id: event.target.value })}
+                        >
+                          <option value="">Choose MCQ quiz</option>
+                          {quizzes.map((quiz) => (
+                            <option key={quiz.id} value={quiz.id}>{quiz.topic}</option>
+                          ))}
+                        </select>
+                        <button type="button" onClick={handleCreateManagedCourseQuiz} className="admin-secondary-button px-4 py-3 text-sm font-bold">
+                          Create Quiz
+                        </button>
+                      </div>
+                      <textarea
+                        value={courseQuizForm.text}
+                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, text: event.target.value })}
+                        placeholder="MCQ question text"
+                      />
+                      <textarea
+                        value={courseQuizForm.optionsText}
+                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, optionsText: event.target.value })}
+                        placeholder={'Options, one per line\nOption A\nOption B\nOption C\nOption D'}
+                      />
+                      <input
+                        inputMode="numeric"
+                        value={courseQuizForm.correctAnswer}
+                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, correctAnswer: event.target.value.replace(/[^\d]/g, '') })}
+                        placeholder="Correct answer index, e.g. 0"
+                      />
+                      <textarea
+                        value={courseQuizForm.explanation}
+                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, explanation: event.target.value })}
+                        placeholder="Explanation"
+                      />
+                      <button type="button" onClick={submitManagedCourseQuestion} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                        Add MCQ
+                      </button>
+                    </div>
+                    <div className="admin-course-mcq-list">
+                      {managedCourseQuestions.slice(0, 8).map((question, index) => (
+                        <div key={question.id} className="admin-course-mcq-row">
+                          <b>{index + 1}</b>
+                          <span>{question.text}</span>
+                        </div>
+                      ))}
+                      {!managedCourseQuestions.length && (
+                        <div className="admin-empty-control">No MCQs yet. Create or choose a quiz, then add questions here.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="admin-empty-control">No paid courses available. Create a premium course first.</div>
+              )}
+            </div>
+          )}
 
           <div className={cardClass}>
             <div className="admin-section-head">
@@ -5723,6 +6294,11 @@ const AdminPanelScreen = ({
                           type: course.type,
                           category: course.category,
                         });
+                        setCourseThumbnailFile(null);
+                        if (!isCourseFree(course)) {
+                          setSelectedManagedCourseId(course.id);
+                          setLessonForm((current) => ({ ...current, course_id: course.id, sort_order: String((course.lessonList?.length || 0) + 1) }));
+                        }
                         setActiveTab(isFreeCourseSection ? 'free-course' : 'course');
                       }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                       <button onClick={() => confirmDelete(
@@ -5763,8 +6339,46 @@ const AdminPanelScreen = ({
               {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
             </select>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson title" value={lessonForm.title} onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })} />
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Duration e.g. 20:15" value={lessonForm.duration} onChange={(e) => setLessonForm({ ...lessonForm, duration: e.target.value })} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Duration e.g. 20:15" value={lessonForm.duration} onChange={(e) => setLessonForm({ ...lessonForm, duration: e.target.value })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" inputMode="numeric" placeholder="Video order e.g. 1" value={lessonForm.sort_order} onChange={(e) => setLessonForm({ ...lessonForm, sort_order: e.target.value.replace(/[^\d]/g, '') })} />
+            </div>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="YouTube URL e.g. https://youtu.be/video-id" value={lessonForm.video_url} onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Video thumbnail URL (optional)" value={lessonForm.thumbnail_url} onChange={(e) => setLessonForm({ ...lessonForm, thumbnail_url: e.target.value })} />
+            <label className="admin-slider-upload-box">
+              <span className="admin-slider-upload-title">Video thumbnail</span>
+              <span className="admin-slider-upload-button">
+                <Upload size={18} />
+                Upload video thumbnail
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (!file) {
+                    setLessonThumbnailFile(null);
+                    return;
+                  }
+                  if (!file.type.startsWith('image/')) {
+                    setMessage('Please choose a valid video thumbnail image');
+                    e.target.value = '';
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    setMessage('Video thumbnail must be 5 MB or smaller');
+                    e.target.value = '';
+                    return;
+                  }
+                  setMessage('');
+                  setLessonThumbnailFile(file);
+                }}
+                className="sr-only"
+              />
+              <span className="admin-slider-upload-hint">
+                {lessonThumbnailFile ? `${lessonThumbnailFile.name} • ${(lessonThumbnailFile.size / 1024 / 1024).toFixed(2)} MB` : 'Paste URL above or upload JPG, PNG, WEBP, GIF'}
+              </span>
+            </label>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson note URL (optional)" value={lessonForm.note_url} onChange={(e) => setLessonForm({ ...lessonForm, note_url: e.target.value })} />
             <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Lesson note content (optional)" value={lessonForm.note_content} onChange={(e) => setLessonForm({ ...lessonForm, note_content: e.target.value })} />
             <button
@@ -5777,7 +6391,8 @@ const AdminPanelScreen = ({
             {editingLessonId && (
               <button onClick={() => {
                 setEditingLessonId('');
-                setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '' });
+                setLessonThumbnailFile(null);
+                setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', sort_order: '0' });
               }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
                 Cancel Edit
               </button>
@@ -5804,7 +6419,10 @@ const AdminPanelScreen = ({
                         note_content: lesson.note_content,
                         note_url: lesson.note_url || '',
                         video_url: lesson.video_url || '',
+                        thumbnail_url: lesson.thumbnail_url || '',
+                        sort_order: String(lesson.sort_order || 0),
                       });
+                      setLessonThumbnailFile(null);
                       setActiveTab('lesson');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                     <button onClick={() => confirmDelete(
@@ -5880,20 +6498,49 @@ const AdminPanelScreen = ({
               ))}
             </select>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Hosted note URL (optional)" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
+            <label className="admin-slider-upload-box">
+              <span className="admin-slider-upload-title">Note file</span>
+              <span className="admin-slider-upload-button">
+                <Upload size={18} />
+                Upload notes file
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (!file) {
+                    setNoteFile(null);
+                    return;
+                  }
+
+                  if (file.size > 15 * 1024 * 1024) {
+                    setMessage('Note file must be 15 MB or smaller');
+                    e.target.value = '';
+                    return;
+                  }
+
+                  setMessage('');
+                  setNoteFile(file);
+                }}
+                className="sr-only"
+              />
+              <span className="admin-slider-upload-hint">
+                {noteFile ? `${noteFile.name} • ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose PDF, image, DOC, PPT, XLS, TXT, or MD up to 15 MB'}
+              </span>
+            </label>
             <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Note content markdown/text (optional)" value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
             <button
               disabled={loading}
-              onClick={() => submitAction(editingNoteId ? 'updateNote' : 'createNote', { ...(editingNoteId ? { id: editingNoteId } : {}), ...noteForm, lessons: Number(noteForm.lessons || 0) }, () => {
-                setNoteForm({ title: '', lessons: '1', category: 'Chemistry', type: 'free', url: '', content: '' });
-                setEditingNoteId('');
-              })}
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold"
+              onClick={submitNote}
+              className="admin-slider-save-button w-full py-3 font-bold"
             >
-              {loading ? 'Saving...' : editingNoteId ? 'Update Note' : 'Save Note'}
+              {loading ? 'Saving...' : editingNoteId ? 'Update Note' : 'Upload & Save Note'}
             </button>
             {editingNoteId && (
               <button onClick={() => {
                 setEditingNoteId('');
+                setNoteFile(null);
                 setNoteForm({ title: '', lessons: '1', category: 'Chemistry', type: 'free', url: '', content: '' });
               }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
                 Cancel Edit
@@ -5914,6 +6561,7 @@ const AdminPanelScreen = ({
                   <div className="flex gap-2">
                     <button onClick={() => {
                       setEditingNoteId(note.id);
+                      setNoteFile(null);
                       setNoteForm({
                         title: note.title,
                         lessons: String(note.lessons || 1),
@@ -6181,18 +6829,19 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
 
       {activeTab === 'user' && (
         <div className="space-y-4">
-          <div className={cardClass}>
+          <div className="admin-user-manager">
             <div className="admin-section-head">
               <div>
-                <h3 className="font-bold text-gray-800">Student Data</h3>
-                <p className="text-xs text-gray-500 mt-1">View all registered students currently available from the academy database.</p>
+                <p className="admin-control-eyebrow">Students</p>
+                <h3 className="font-bold text-gray-800">Student Management</h3>
+                <p className="text-xs text-gray-500 mt-1">Open a student popup to unlock, block, or remove premium course access.</p>
               </div>
               <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
                 {users.length} students
               </div>
             </div>
 
-            <div className="mb-4">
+            <div className="admin-user-search">
               <input
                 className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
                 placeholder="Search student by name, email, or ID"
@@ -6201,37 +6850,44 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="admin-user-grid">
               {filteredUsers.length === 0 ? (
                 <div className="admin-soft-panel px-4 py-6 text-sm text-slate-500">
                   {users.length === 0 ? 'No student data found yet.' : 'No student matched your search.'}
                 </div>
               ) : (
                 filteredUsers.map((userItem) => (
-                  <div key={userItem.id} className="admin-list-card p-4">
-                    <div className="flex items-start justify-between gap-4">
+                  <button
+                    type="button"
+                    key={userItem.id}
+                    className="admin-user-card"
+                    onClick={() => {
+                      setSelectedStudent(userItem);
+                      setStudentAccessForm({ courseId: premiumCourses[0]?.id || '', durationDays: '30' });
+                      setStudentAccessCode('');
+                    }}
+                  >
+                    <div className="admin-user-card-top">
+                      <div className="admin-user-avatar">{getStudentInitials(userItem.name || userItem.email || 'S')}</div>
                       <div className="min-w-0">
-                        <div className="font-bold text-base text-slate-900 truncate">{userItem.name}</div>
-                        <div className="text-sm text-slate-500 mt-1 break-all">{userItem.email}</div>
-                        <div className="text-xs text-slate-400 mt-2">Student ID: {userItem.id}</div>
-                        {userItem.password && (
-                          <div className="text-xs text-slate-400 mt-1">Password: {String(userItem.password)}</div>
-                        )}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {Object.entries(userItem)
-                            .filter(([key, value]) => !['id', 'name', 'email', 'password', 'grantedCourseIds'].includes(key) && value !== '' && value !== null && value !== undefined)
-                            .map(([key, value]) => (
-                              <span key={`${userItem.id}-${key}`} className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
-                                {key}: {String(value)}
-                              </span>
-                            ))}
-                        </div>
-                      </div>
-                      <div className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
-                        {userItem.grantedCourseIds?.length || 0} courses unlocked
+                        <strong>{userItem.name || 'Student'}</strong>
+                        <span>{userItem.email || 'No email'}</span>
+                        <em>Student ID: {userItem.id}</em>
                       </div>
                     </div>
-                  </div>
+                    <div className="admin-user-card-meta">
+                      <span className={userItem.status === 'blocked' ? 'is-blocked' : ''}>
+                        {userItem.status === 'blocked' ? 'Platform blocked' : `${userItem.grantedCourseIds?.length || 0} courses unlocked`}
+                      </span>
+                      <b>Manage</b>
+                    </div>
+                    <div className="admin-user-card-tags">
+                        {userItem.password && (
+                          <span>Password saved</span>
+                        )}
+                      {userItem.phone && <span>{userItem.phone}</span>}
+                    </div>
+                  </button>
                 ))
               )}
             </div>
@@ -6245,7 +6901,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
             <div className="admin-section-head">
               <div>
                 <h3 className="font-bold text-gray-800">Customer Premium Access</h3>
-                <p className="text-xs text-gray-500 mt-1">Generate a unique premium course code for one student at a time.</p>
+                <p className="text-xs text-gray-500 mt-1">Unlock premium courses for a fixed time, revoke access, or block a student from a course.</p>
               </div>
               <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
                 {premiumCourses.length} premium courses
@@ -6265,7 +6921,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                 onChange={(e) => setAccessCourseSearchQuery(e.target.value)}
               />
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <select
                 className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
                 value={customerAccessForm.userId}
@@ -6294,21 +6950,65 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                   <option key={course.id} value={course.id}>{course.title}</option>
                 ))}
               </select>
+              <select
+                className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
+                value={customerAccessForm.durationDays}
+                onChange={(e) => {
+                  setCustomerAccessForm((current) => ({ ...current, durationDays: e.target.value }));
+                  setGeneratedCustomerCode('');
+                }}
+              >
+                <option value="7">7 days access</option>
+                <option value="30">30 days access</option>
+                <option value="90">90 days access</option>
+                <option value="180">180 days access</option>
+                <option value="365">1 year access</option>
+                <option value="0">Lifetime access</option>
+              </select>
             </div>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
               <button
                 type="button"
                 onClick={handleGenerateCustomerAccessCode}
                 disabled={loading}
                 className="admin-primary-button px-5 py-3 text-sm font-bold"
               >
-                {loading ? 'Generating...' : 'Generate Customer Code'}
+                {loading ? 'Working...' : 'Unlock / Generate Code'}
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDelete(
+                  'Block this course access?',
+                  'This student will not be able to unlock this selected premium course until you unlock again.',
+                  handleBlockCustomerAccess,
+                  'Block Access'
+                )}
+                disabled={loading}
+                className="rounded-xl bg-red-50 px-5 py-3 text-sm font-bold text-red-600"
+              >
+                Block User
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDelete(
+                  'Remove this course access?',
+                  'This will remove the selected premium course access for this student.',
+                  handleRevokeCustomerAccess,
+                  'Remove Access'
+                )}
+                disabled={loading}
+                className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-700"
+              >
+                Remove Access
               </button>
               {generatedCustomerCode && (
                 <div className="rounded-2xl bg-slate-900 px-4 py-3 font-mono text-sm font-bold tracking-[0.18em] text-white">
                   {generatedCustomerCode}
                 </div>
               )}
+            </div>
+            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-700">
+              Unlock dobara karne se blocked user active ho jayega aur selected duration reset ho jayega.
             </div>
           </div>
         </div>
@@ -6351,6 +7051,154 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
             <button type="button" onClick={() => setToast(null)} aria-label="Close notification">
               <X size={16} />
             </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedStudent && (
+          <motion.div
+            className="admin-student-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="admin-student-modal"
+              initial={{ opacity: 0, y: 22, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 22, scale: 0.96 }}
+            >
+              <div className="admin-student-modal-head">
+                <div className="admin-user-avatar admin-user-avatar--large">
+                  {getStudentInitials(selectedStudent.name || selectedStudent.email || 'S')}
+                </div>
+                <div>
+                  <p className="admin-control-eyebrow">Student Profile</p>
+                  <h3>{selectedStudent.name || 'Student'}</h3>
+                  <span>{selectedStudent.email || 'No email'} • ID {selectedStudent.id}</span>
+                  <div className={`admin-platform-status ${selectedStudent.status === 'blocked' ? 'is-blocked' : 'is-active'}`}>
+                    {selectedStudent.status === 'blocked' ? 'Platform blocked' : 'Platform active'}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setSelectedStudent(null)} aria-label="Close student popup">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="admin-student-modal-grid">
+                <div className="admin-student-info-panel">
+                  <strong>Platform Control</strong>
+                  <div className="admin-student-actions">
+                    <button
+                      type="button"
+                      disabled={loading || selectedStudent.status === 'blocked'}
+                      className="admin-student-block-button"
+                      onClick={() => confirmDelete(
+                        'Block student from platform?',
+                        'This student will not be able to login or use the app until unblocked.',
+                        () => runStudentPlatformAction('blockUser'),
+                        'Block Platform'
+                      )}
+                    >
+                      Block Platform
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading || selectedStudent.status !== 'blocked'}
+                      className="admin-primary-button"
+                      onClick={() => runStudentPlatformAction('unblockUser')}
+                    >
+                      Unblock Platform
+                    </button>
+                  </div>
+
+                  <strong>Unlocked Courses</strong>
+                  <div className="admin-student-course-list">
+                    {(selectedStudent.grantedCourseIds || []).length ? (
+                      (selectedStudent.grantedCourseIds || []).map((courseId) => {
+                        const course = courses.find((item) => String(item.id) === String(courseId));
+                        return (
+                          <span key={`${selectedStudent.id}-${courseId}`}>
+                            {course?.title || `Course ${courseId}`}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <em>No premium courses unlocked yet.</em>
+                    )}
+                  </div>
+                  <div className="admin-student-meta">
+                    {selectedStudent.phone && <span>Phone: {selectedStudent.phone}</span>}
+                    {selectedStudent.password && <span>Password: {String(selectedStudent.password)}</span>}
+                  </div>
+                </div>
+
+                <div className="admin-student-access-panel">
+                  <strong>Course Access Control</strong>
+                  <select
+                    value={studentAccessForm.courseId}
+                    onChange={(event) => {
+                      setStudentAccessForm((current) => ({ ...current, courseId: event.target.value }));
+                      setStudentAccessCode('');
+                    }}
+                  >
+                    <option value="">Select premium course</option>
+                    {premiumCourses.map((course) => (
+                      <option key={course.id} value={course.id}>{course.title}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={studentAccessForm.durationDays}
+                    onChange={(event) => setStudentAccessForm((current) => ({ ...current, durationDays: event.target.value }))}
+                  >
+                    <option value="7">7 days access</option>
+                    <option value="30">30 days access</option>
+                    <option value="90">90 days access</option>
+                    <option value="180">180 days access</option>
+                    <option value="365">1 year access</option>
+                    <option value="0">Lifetime access</option>
+                  </select>
+                  <div className="admin-student-actions">
+                    <button type="button" disabled={loading} className="admin-primary-button" onClick={() => runStudentAccessAction('grantCourseAccess')}>
+                      {loading ? 'Working...' : 'Unlock Access'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      className="admin-student-block-button"
+                      onClick={() => confirmDelete(
+                        'Block student access?',
+                        'This student will be blocked from the selected premium course until you unlock again.',
+                        () => runStudentAccessAction('blockCourseAccess'),
+                        'Block Access'
+                      )}
+                    >
+                      Block
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      className="admin-student-remove-button"
+                      onClick={() => confirmDelete(
+                        'Remove student access?',
+                        'This removes the selected premium course access from this student.',
+                        () => runStudentAccessAction('revokeCourseAccess'),
+                        'Remove Access'
+                      )}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  {studentAccessCode && (
+                    <div className="admin-student-code">
+                      <span>Access Code</span>
+                      <b>{studentAccessCode}</b>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

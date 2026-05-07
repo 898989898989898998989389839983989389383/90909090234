@@ -34,6 +34,7 @@ type SeedLesson = {
   note_content: string;
   note_url: string;
   video_url: string;
+  thumbnail_url?: string;
 };
 
 type SeedNote = {
@@ -1000,9 +1001,14 @@ const createSchema = async (client: Pool | PoolClient) => {
       duration TEXT,
       note_content TEXT,
       note_url TEXT,
-      video_url TEXT
+      video_url TEXT,
+      thumbnail_url TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0
     )
   `);
+
+  await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "sort_order" INTEGER DEFAULT 0`);
+  await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "thumbnail_url" TEXT DEFAULT ''`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS notes (
@@ -1022,11 +1028,13 @@ const createSchema = async (client: Pool | PoolClient) => {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       phone TEXT NOT NULL DEFAULT '',
-      password TEXT NOT NULL
+      password TEXT NOT NULL,
+      status TEXT DEFAULT 'active'
     )
   `);
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS admin_credentials (
@@ -1081,9 +1089,13 @@ const createSchema = async (client: Pool | PoolClient) => {
       course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
       access_code TEXT,
       granted_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ,
+      status TEXT DEFAULT 'active',
       UNIQUE(user_id, course_id)
     )
   `);
+  await client.query(`ALTER TABLE "enrollments" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE "enrollments" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'active'`);
 };
 
 const seedDatabase = async (client: Pool | PoolClient) => {

@@ -10,11 +10,11 @@ const SHEET_NAMES = {
 };
 
 const SHEET_HEADERS = {
-  Users: ['id', 'name', 'email', 'password'],
-  Enrollments: ['id', 'user_id', 'course_id', 'access_code', 'granted_at'],
+  Users: ['id', 'name', 'email', 'password', 'status'],
+  Enrollments: ['id', 'user_id', 'course_id', 'access_code', 'granted_at', 'expires_at', 'status'],
   Sliders: ['id', 'title', 'subtitle', 'image_url', 'drive_file_id', 'sort_order', 'is_active'],
   Courses: ['id', 'title', 'lessons', 'image', 'price', 'oldPrice', 'type', 'category', 'access_code'],
-  Lessons: ['id', 'course_id', 'title', 'duration', 'note_content', 'note_url', 'video_url'],
+  Lessons: ['id', 'course_id', 'title', 'duration', 'note_content', 'note_url', 'video_url', 'thumbnail_url', 'sort_order'],
   Notes: ['id', 'title', 'lessons', 'category', 'type', 'url', 'content'],
   Quizzes: ['id', 'topic', 'type', 'sheet_name'],
   Questions: ['id', 'quiz_id', 'text', 'options', 'correctAnswer', 'explanation', 'image_url', 'option_images'],
@@ -89,6 +89,12 @@ function doPost(e) {
         return jsonOutput(grantCourseAccess_(body));
       case 'revokeCourseAccess':
         return jsonOutput(revokeCourseAccess_(body));
+      case 'blockCourseAccess':
+        return jsonOutput(blockCourseAccess_(body));
+      case 'blockUser':
+        return jsonOutput(blockUser_(body));
+      case 'unblockUser':
+        return jsonOutput(unblockUser_(body));
       case 'verifyCourseAccess':
         return jsonOutput(verifyCourseAccess_(body));
       case 'updateCourseAccess':
@@ -181,6 +187,10 @@ function login_(body) {
     return { success: false, message: 'Invalid credentials' };
   }
 
+  if (String(matchedUser.status || 'active').toLowerCase() === 'blocked') {
+    return { success: false, message: 'Your account is blocked. Contact academy admin.' };
+  }
+
   return {
     success: true,
     user: {
@@ -210,9 +220,10 @@ function signup_(body) {
     name: body.name,
     email: body.email,
     password: body.password,
+    status: 'active',
   };
 
-  appendObjectRow_(usersSheet, ['id', 'name', 'email', 'password'], newUser);
+  appendObjectRow_(usersSheet, SHEET_HEADERS.Users, newUser);
 
   return {
     success: true,
@@ -259,13 +270,15 @@ function updateProfile_(body) {
 }
 
 function createCourse_(body) {
-  validateRequired_(body, ['title', 'lessons', 'image', 'price', 'oldPrice', 'type', 'category']);
+  validateRequired_(body, ['title', 'lessons', 'price', 'oldPrice', 'type', 'category']);
+
+  var uploaded = saveContentImage_(body, 'course');
 
   const course = {
     id: createId_('c'),
     title: body.title,
     lessons: body.lessons,
-    image: body.image,
+    image: uploaded.imageUrl || body.image || '',
     price: body.price,
     oldPrice: body.oldPrice,
     type: body.type,
@@ -273,7 +286,7 @@ function createCourse_(body) {
     access_code: body.access_code || '',
   };
 
-  appendObjectRow_(getSheet_(SHEET_NAMES.courses), ['id', 'title', 'lessons', 'image', 'price', 'oldPrice', 'type', 'category', 'access_code'], course);
+  appendObjectRow_(getSheet_(SHEET_NAMES.courses), SHEET_HEADERS.Courses, course);
   return { success: true, course: course };
 }
 
@@ -336,12 +349,18 @@ function deleteSlider_(body) {
 }
 
 function updateCourse_(body) {
-  validateRequired_(body, ['id', 'title', 'lessons', 'image', 'price', 'oldPrice', 'type', 'category']);
+  validateRequired_(body, ['id', 'title', 'lessons', 'price', 'oldPrice', 'type', 'category']);
+
+  var currentCourse = readSheetObjects_(SHEET_NAMES.courses).find(function(item) {
+    return String(item.id) === String(body.id);
+  });
+
+  var uploaded = saveContentImage_(body, 'course');
 
   updateRowById_(SHEET_NAMES.courses, body.id, {
     title: body.title,
     lessons: body.lessons,
-    image: body.image,
+    image: uploaded.imageUrl || body.image || (currentCourse && currentCourse.image) || '',
     price: body.price,
     oldPrice: body.oldPrice,
     type: body.type,
@@ -362,6 +381,7 @@ function deleteCourse_(body) {
 function createLesson_(body) {
   validateRequired_(body, ['course_id', 'title', 'duration', 'video_url']);
 
+  var uploaded = saveContentImage_(body, 'video');
   const lesson = {
     id: createId_('l'),
     course_id: body.course_id,
@@ -370,15 +390,22 @@ function createLesson_(body) {
     note_content: body.note_content || '',
     note_url: body.note_url || '',
     video_url: body.video_url,
+    thumbnail_url: uploaded.imageUrl || body.thumbnail_url || '',
+    sort_order: Number(body.sort_order || 0),
   };
 
-  appendObjectRow_(getSheet_(SHEET_NAMES.lessons), ['id', 'course_id', 'title', 'duration', 'note_content', 'note_url', 'video_url'], lesson);
+  appendObjectRow_(getSheet_(SHEET_NAMES.lessons), SHEET_HEADERS.Lessons, lesson);
   return { success: true, lesson: lesson };
 }
 
 function updateLesson_(body) {
   validateRequired_(body, ['id', 'course_id', 'title', 'duration', 'video_url']);
 
+  var currentLesson = readSheetObjects_(SHEET_NAMES.lessons).find(function(item) {
+    return String(item.id) === String(body.id);
+  });
+
+  var uploaded = saveContentImage_(body, 'video');
   updateRowById_(SHEET_NAMES.lessons, body.id, {
     course_id: body.course_id,
     title: body.title,
@@ -386,6 +413,8 @@ function updateLesson_(body) {
     note_content: body.note_content || '',
     note_url: body.note_url || '',
     video_url: body.video_url,
+    thumbnail_url: uploaded.imageUrl || body.thumbnail_url || (currentLesson && currentLesson.thumbnail_url) || '',
+    sort_order: Number(body.sort_order || 0),
   });
 
   return { success: true, message: 'Lesson updated' };
@@ -400,13 +429,14 @@ function deleteLesson_(body) {
 function createNote_(body) {
   validateRequired_(body, ['title', 'lessons', 'category']);
 
+  var uploaded = saveNoteFile_(body);
   const note = {
     id: createId_('n'),
     title: body.title,
     lessons: body.lessons,
     category: body.category,
     type: body.type || 'free',
-    url: body.url || '',
+    url: uploaded.fileUrl || body.url || '',
     content: body.content || '',
   };
 
@@ -417,12 +447,13 @@ function createNote_(body) {
 function updateNote_(body) {
   validateRequired_(body, ['id', 'title', 'lessons', 'category']);
 
+  var uploaded = saveNoteFile_(body);
   updateRowById_(SHEET_NAMES.notes, body.id, {
     title: body.title,
     lessons: body.lessons,
     category: body.category,
     type: body.type || 'free',
-    url: body.url || '',
+    url: uploaded.fileUrl || body.url || '',
     content: body.content || '',
   });
 
@@ -504,6 +535,12 @@ function verifyCourseAccess_(body) {
   var enrollment = readSheetObjects_(SHEET_NAMES.enrollments).find(function(item) {
     return String(item.user_id) === String(body.userId) && String(item.course_id) === String(body.courseId);
   });
+  if (String(enrollment && enrollment.status || 'active').toLowerCase() === 'blocked') {
+    return { success: false, message: 'This course access is blocked by admin' };
+  }
+  if (enrollment && enrollment.expires_at && new Date(enrollment.expires_at).getTime() <= new Date().getTime()) {
+    return { success: false, message: 'This course access has expired' };
+  }
   var expectedCode = String(enrollment && enrollment.access_code || '').trim().toUpperCase();
 
   if (!expectedCode || expectedCode !== String(body.accessCode || '').trim().toUpperCase()) {
@@ -516,7 +553,13 @@ function verifyCourseAccess_(body) {
 function grantCourseAccess_(body) {
   validateRequired_(body, ['userId', 'courseId']);
   var generatedCode = String(body.accessCode || generateEnrollmentCode_()).trim().toUpperCase();
-  ensureEnrollment_(body.userId, body.courseId, generatedCode);
+  var days = Number(body.durationDays || 0);
+  var expiresAt = body.expiresAt
+    ? new Date(body.expiresAt).toISOString()
+    : days > 0
+      ? new Date(new Date().getTime() + days * 24 * 60 * 60 * 1000).toISOString()
+      : '';
+  ensureEnrollment_(body.userId, body.courseId, generatedCode, expiresAt, 'active');
   return { success: true, message: 'Course access granted', accessCode: generatedCode };
 }
 
@@ -524,6 +567,28 @@ function revokeCourseAccess_(body) {
   validateRequired_(body, ['userId', 'courseId']);
   deleteEnrollment_(body.userId, body.courseId);
   return { success: true, message: 'Course access revoked' };
+}
+
+function blockCourseAccess_(body) {
+  validateRequired_(body, ['userId', 'courseId']);
+  ensureEnrollment_(body.userId, body.courseId, '', '', 'blocked');
+  return { success: true, message: 'Student blocked from this course' };
+}
+
+function blockUser_(body) {
+  validateRequired_(body, ['userId']);
+  updateRowById_(SHEET_NAMES.users, body.userId, {
+    status: 'blocked',
+  });
+  return { success: true, message: 'Student blocked from platform' };
+}
+
+function unblockUser_(body) {
+  validateRequired_(body, ['userId']);
+  updateRowById_(SHEET_NAMES.users, body.userId, {
+    status: 'active',
+  });
+  return { success: true, message: 'Student unblocked on platform' };
 }
 
 function updateCourseAccess_(body) {
@@ -663,6 +728,12 @@ function getCourses_() {
       access_code: undefined,
       lessonList: lessons.filter(function(lesson) {
         return String(lesson.course_id) === String(course.id);
+      }).map(function(lesson) {
+        return Object.assign({}, lesson, {
+          sort_order: Number(lesson.sort_order || 0),
+        });
+      }).sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
       }),
     });
   });
@@ -701,6 +772,7 @@ function getUsers_() {
       name: resolvedName || resolvedEmail || 'Student',
       email: resolvedEmail || '',
       password: resolvedPassword || '',
+      status: user.status || 'active',
       grantedCourseIds: getGrantedCourseIds_(resolvedId || resolvedEmail || resolvedName || ''),
     });
   }).filter(function(user) {
@@ -1039,28 +1111,31 @@ function deleteRowsByField_(sheetName, fieldName, value) {
 
 function getGrantedCourseIds_(userId) {
   const enrollments = readSheetObjects_(SHEET_NAMES.enrollments);
+  var now = new Date().getTime();
   return enrollments
     .filter(function(item) {
-      return String(item.user_id) === String(userId);
+      var isActive = String(item.status || 'active').toLowerCase() !== 'blocked';
+      var isNotExpired = !item.expires_at || new Date(item.expires_at).getTime() > now;
+      return String(item.user_id) === String(userId) && isActive && isNotExpired;
     })
     .map(function(item) {
       return String(item.course_id);
     });
 }
 
-function ensureEnrollment_(userId, courseId, accessCode) {
+function ensureEnrollment_(userId, courseId, accessCode, expiresAt, status) {
   const enrollments = readSheetObjects_(SHEET_NAMES.enrollments);
   const existing = enrollments.find(function(item) {
     return String(item.user_id) === String(userId) && String(item.course_id) === String(courseId);
   });
 
   if (existing) {
-    if (accessCode) {
-      updateRowById_(SHEET_NAMES.enrollments, existing.id, {
-        access_code: String(accessCode).trim().toUpperCase(),
-        granted_at: new Date().toISOString(),
-      });
-    }
+    updateRowById_(SHEET_NAMES.enrollments, existing.id, {
+      access_code: accessCode ? String(accessCode).trim().toUpperCase() : existing.access_code || '',
+      granted_at: new Date().toISOString(),
+      expires_at: expiresAt || '',
+      status: status || 'active',
+    });
     return;
   }
 
@@ -1073,6 +1148,8 @@ function ensureEnrollment_(userId, courseId, accessCode) {
       course_id: courseId,
       access_code: String(accessCode || '').trim().toUpperCase(),
       granted_at: new Date().toISOString(),
+      expires_at: expiresAt || '',
+      status: status || 'active',
     }
   );
 }
@@ -1128,6 +1205,56 @@ function saveSliderImage_(body) {
   };
 }
 
+function saveContentImage_(body, uploadKind) {
+  if (!body.imageData) {
+    return {
+      imageUrl: body.image || body.thumbnail_url || '',
+      driveFileId: '',
+    };
+  }
+
+  var base64Data = String(body.imageData).split(',').pop();
+  var bytes = Utilities.base64Decode(base64Data);
+  var contentType = body.mimeType || 'image/jpeg';
+  if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(contentType)) {
+    throw new Error('Only JPG, PNG, WEBP, and GIF thumbnail images are supported');
+  }
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error('Thumbnail image must be 5 MB or smaller');
+  }
+
+  var extension = getFileExtension_(contentType);
+  var prefix = uploadKind === 'video' ? 'video-thumbnail' : 'course-thumbnail';
+  var fileName = (body.fileName || (prefix + '-' + new Date().getTime() + extension)).replace(/[^\w.\- ]/g, '');
+  var blob = Utilities.newBlob(bytes, contentType, fileName);
+  var folder = getContentUploadFolder_(uploadKind);
+  var file = folder.createFile(blob);
+
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    imageUrl: buildDriveImageUrl_(file.getId()),
+    driveFileId: file.getId(),
+  };
+}
+
+function getContentUploadFolder_(uploadKind) {
+  var propertyName = uploadKind === 'video' ? 'VIDEO_THUMBNAIL_FOLDER_ID' : 'COURSE_THUMBNAIL_FOLDER_ID';
+  var folderId = PropertiesService.getScriptProperties().getProperty(propertyName)
+    || PropertiesService.getScriptProperties().getProperty('SLIDER_UPLOAD_FOLDER_ID');
+  if (folderId) {
+    return DriveApp.getFolderById(folderId);
+  }
+
+  var folderName = uploadKind === 'video' ? 'RBS Academy Video Thumbnails' : 'RBS Academy Course Thumbnails';
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+
+  return DriveApp.createFolder(folderName);
+}
+
 function getSliderUploadFolder_() {
   var folderId = PropertiesService.getScriptProperties().getProperty('SLIDER_UPLOAD_FOLDER_ID');
   if (folderId) {
@@ -1143,8 +1270,60 @@ function getSliderUploadFolder_() {
   return DriveApp.createFolder(folderName);
 }
 
+function saveNoteFile_(body) {
+  if (!body.fileData) {
+    return {
+      fileUrl: body.url || '',
+      driveFileId: '',
+    };
+  }
+
+  var base64Data = String(body.fileData).split(',').pop();
+  var bytes = Utilities.base64Decode(base64Data);
+  var contentType = body.mimeType || 'application/octet-stream';
+  var allowedTypes = /^(application\/pdf|image\/(jpeg|jpg|png|webp|gif)|text\/plain|text\/markdown|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/vnd\.ms-powerpoint|application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/i;
+  if (!allowedTypes.test(contentType)) {
+    throw new Error('Only PDF, image, DOC, PPT, XLS, TXT, and MD note files are supported');
+  }
+  if (bytes.length > 15 * 1024 * 1024) {
+    throw new Error('Note file must be 15 MB or smaller');
+  }
+
+  var fileName = (body.fileName || ('note-' + new Date().getTime())).replace(/[^\w.\- ]/g, '');
+  var blob = Utilities.newBlob(bytes, contentType, fileName);
+  var folder = getNoteUploadFolder_();
+  var file = folder.createFile(blob);
+
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    fileUrl: buildDriveFileUrl_(file.getId()),
+    driveFileId: file.getId(),
+  };
+}
+
+function getNoteUploadFolder_() {
+  var folderId = PropertiesService.getScriptProperties().getProperty('NOTE_UPLOAD_FOLDER_ID')
+    || PropertiesService.getScriptProperties().getProperty('SLIDER_UPLOAD_FOLDER_ID');
+  if (folderId) {
+    return DriveApp.getFolderById(folderId);
+  }
+
+  var folderName = 'RBS Academy Note Uploads';
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+
+  return DriveApp.createFolder(folderName);
+}
+
 function buildDriveImageUrl_(fileId) {
   return 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(fileId) + '=w1600';
+}
+
+function buildDriveFileUrl_(fileId) {
+  return 'https://drive.google.com/file/d/' + encodeURIComponent(fileId) + '/view?usp=drivesdk';
 }
 
 function trashDriveFile_(fileId) {
