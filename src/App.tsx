@@ -2738,203 +2738,243 @@ const NotesScreen = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
-  const isLoading = false;
-  const chipLabels = ['All', 'Class 12', 'Chemistry', 'Inorganic', 'Organic', 'Physics'];
-  const noteSizes = ['2.4 MB', '1.8 MB', '2.1 MB', '2.7 MB', '1.6 MB', '2.9 MB'];
 
-  const titleCasePdf = (title: string) => {
-    const normalized = title.replace(/\s+/g, ' ').trim();
+  const formatNoteTitle = (title: string) => {
+    const normalized = String(title || 'Untitled Note').replace(/\s+/g, ' ').trim();
     const extensionMatch = normalized.match(/(\.[a-z0-9]+)$/i);
-    const extension = extensionMatch ? extensionMatch[1].toLowerCase() : '';
-    const base = extension ? normalized.slice(0, -extension.length) : normalized;
-    return `${base.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())}${extension}`;
+    const extension = extensionMatch ? extensionMatch[1].toUpperCase().replace('.', '') : 'PDF';
+    const base = extensionMatch ? normalized.slice(0, -extensionMatch[1].length) : normalized;
+    return {
+      title: base.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase()),
+      extension,
+    };
   };
 
-  const matchesChip = (note: Note, chip: string) => {
+  const getNoteMeta = (note: Note) => {
     const haystack = `${note.title} ${note.category} ${note.content || ''}`.toLowerCase();
-    if (chip === 'All') return true;
-    if (chip === 'Class 12') return haystack.includes('class 12');
-    if (chip === 'Chemistry') return haystack.includes('chemistry');
-    if (chip === 'Inorganic') return haystack.includes('inorganic');
-    if (chip === 'Organic') return haystack.includes('organic') && !haystack.includes('inorganic');
-    if (chip === 'Physics') return haystack.includes('physics');
-    return true;
+    const branch = haystack.includes('organic')
+      ? 'Organic'
+      : haystack.includes('inorganic')
+        ? 'Inorganic'
+        : haystack.includes('physical')
+          ? 'Physical'
+          : haystack.includes('applied')
+            ? 'Applied'
+            : 'Chemistry';
+    const level = haystack.includes('class 12') ? 'Class 12' : haystack.includes('class 11') ? 'Class 11' : 'Study Note';
+    return { branch, level };
   };
 
-  const selectedBadge = activeCategory === 'All'
-    ? 'All Study Notes'
-    : activeCategory === 'Inorganic'
-      ? 'Chemistry - Class 12 Inorganic'
-      : activeCategory === 'Organic'
-        ? 'Chemistry - Class 12 Organic'
-        : activeCategory === 'Physics'
-          ? 'Physics - Study Notes'
-          : 'Chemistry - Class 12';
+  const noteCategories = Array.from(new Set(notes.map((note) => String(note.category || '').trim()).filter(Boolean)));
+  const quickFilters = ['All', 'Organic', 'Inorganic', 'Physical', ...noteCategories.slice(0, 5)]
+    .filter((item, index, array) => item && array.indexOf(item) === index);
+
+  const matchesFilter = (note: Note, filter: string) => {
+    if (filter === 'All') return true;
+    const haystack = `${note.title} ${note.category} ${note.content || ''}`.toLowerCase();
+    return haystack.includes(filter.toLowerCase());
+  };
 
   const filteredNotes = notes.filter((note) => {
     const query = searchQuery.trim().toLowerCase();
     const searchable = `${note.title} ${note.category} ${note.content || ''}`.toLowerCase();
-    return matchesChip(note, activeCategory) && (!query || searchable.includes(query));
+    return matchesFilter(note, activeCategory) && (!query || searchable.includes(query));
   });
 
-  const chipIcon = (chip: string) => {
-    if (chip === 'Chemistry') return <FlaskConical size={16} />;
-    if (chip === 'Class 12') return <BookOpen size={16} />;
+  const featuredNote = filteredNotes[0] || notes[0] || null;
+  const freeNotesCount = notes.filter((note) => String(note.type || 'free').toLowerCase() === 'free').length;
+  const cardStyles = [
+    { surface: 'from-sky-50 to-white', icon: 'bg-sky-100 text-sky-700', badge: 'bg-sky-100 text-sky-700', action: 'bg-sky-600 shadow-sky-100' },
+    { surface: 'from-emerald-50 to-white', icon: 'bg-emerald-100 text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', action: 'bg-emerald-600 shadow-emerald-100' },
+    { surface: 'from-amber-50 to-white', icon: 'bg-amber-100 text-amber-700', badge: 'bg-amber-100 text-amber-700', action: 'bg-amber-600 shadow-amber-100' },
+    { surface: 'from-rose-50 to-white', icon: 'bg-rose-100 text-rose-700', badge: 'bg-rose-100 text-rose-700', action: 'bg-rose-600 shadow-rose-100' },
+  ];
+
+  const filterIcon = (chip: string) => {
     if (chip === 'All') return <FileText size={16} />;
-    if (chip === 'Physics') return <Settings size={16} />;
-    return <Filter size={16} />;
+    if (chip.toLowerCase().includes('organic')) return <FlaskConical size={16} />;
+    if (chip.toLowerCase().includes('physical')) return <Settings size={16} />;
+    return <BookOpen size={16} />;
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1 }}
-      className="flex-1 overflow-y-auto bg-gradient-to-b from-[#F6F8FF] to-[#EEF3FF] px-4 pb-24 pt-4 text-slate-900"
+      className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0%,#f4f8f2_48%,#fff8ee_100%)] px-4 pb-24 pt-4 text-slate-900"
     >
-      <div className="sticky top-0 z-20 -mx-1 mb-7 rounded-[30px] bg-white/55 p-4 shadow-[0_22px_60px_rgba(55,91,170,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] ring-1 ring-white/70 backdrop-blur-2xl">
-        <div className="relative mb-5">
-          <Search className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={21} />
+      <section className="relative overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#14325c_0%,#11615d_58%,#6d4b16_100%)] p-5 text-white shadow-xl shadow-slate-300/50">
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.12))]" />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Study Library</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight">Notes</h2>
+            <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-white/72">Organized chemistry PDFs and chapter resources for fast revision.</p>
+          </div>
+          <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-white/14 text-white">
+            <FileText size={26} />
+          </div>
+        </div>
+
+        <div className="relative mt-5 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl bg-white/12 p-3 backdrop-blur-sm">
+            <p className="text-xl font-black">{notes.length}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Total</p>
+          </div>
+          <div className="rounded-2xl bg-white/12 p-3 backdrop-blur-sm">
+            <p className="text-xl font-black">{freeNotesCount}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Free</p>
+          </div>
+          <div className="rounded-2xl bg-white/12 p-3 backdrop-blur-sm">
+            <p className="text-xl font-black">{noteCategories.length || 1}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Groups</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="sticky top-0 z-20 -mx-1 mt-4 rounded-2xl border border-white/75 bg-white/82 p-3 shadow-lg shadow-slate-200/60 backdrop-blur-xl">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
           <input
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search notes, chapters, subjects..."
-            className="h-16 w-full rounded-[24px] bg-white/85 pl-14 pr-16 text-sm font-medium text-slate-700 shadow-[8px_10px_24px_rgba(99,126,191,0.14),-8px_-8px_18px_rgba(255,255,255,0.95),inset_0_1px_0_rgba(255,255,255,0.9)] outline-none ring-1 ring-white/80 transition focus:shadow-[0_0_0_4px_rgba(59,130,246,0.14),8px_10px_24px_rgba(99,126,191,0.14)]"
+            placeholder="Search notes..."
+            className="h-12 w-full rounded-xl border border-slate-100 bg-slate-50 pl-11 pr-12 text-sm font-semibold text-slate-800 outline-none transition focus:border-emerald-200 focus:bg-white focus:ring-4 focus:ring-emerald-100"
           />
-          <button type="button" aria-label="Filter notes" className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-[16px] bg-white text-blue-600 shadow-[0_10px_22px_rgba(70,101,170,0.16)] transition active:scale-95">
-            <Filter size={20} />
-          </button>
+          <div className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-white text-emerald-700 shadow-sm">
+            <Filter size={16} />
+          </div>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-          {chipLabels.map((chip) => {
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {quickFilters.map((chip) => {
             const isActive = activeCategory === chip;
             return (
               <button
                 key={chip}
                 type="button"
                 onClick={() => setActiveCategory(chip)}
-                className={`flex shrink-0 items-center gap-2 rounded-full px-5 py-3 text-sm font-extrabold transition-all active:scale-95 ${
+                className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-black transition active:scale-95 ${
                   isActive
-                    ? 'bg-gradient-to-br from-[#60A5FA] to-[#2448F5] text-white shadow-[0_16px_30px_rgba(37,99,235,0.30)]'
-                    : 'bg-white/95 text-slate-800 shadow-[7px_9px_20px_rgba(99,126,191,0.14),-6px_-6px_16px_rgba(255,255,255,0.9)]'
+                    ? 'bg-slate-950 text-white shadow-md shadow-slate-300'
+                    : 'bg-white text-slate-600 ring-1 ring-slate-100'
                 }`}
               >
-                {chipIcon(chip)}
-                {chip}
+                {filterIcon(chip)}
+                <span className="max-w-[140px] truncate">{chip}</span>
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div className="mb-5 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <div className="text-[22px] font-black tracking-tight text-[#10224A]">
-            {filteredNotes.length} Notes Found
+      {featuredNote && (
+        <button
+          type="button"
+          onClick={() => onViewNote(featuredNote)}
+          className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-amber-100 bg-white p-4 text-left shadow-lg shadow-amber-100/45 transition active:scale-[0.99]"
+        >
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+            <Download size={24} />
           </div>
-          <p className="mt-1 text-xs font-medium text-slate-500">High quality study notes for your preparation</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-600">Featured</p>
+            <h3 className="truncate text-base font-black text-slate-950">{formatNoteTitle(featuredNote.title).title}</h3>
+            <p className="truncate text-xs font-semibold text-slate-500">{featuredNote.category || 'Chemistry Notes'}</p>
+          </div>
+          <ChevronRight size={20} className="text-slate-300" />
+        </button>
+      )}
+
+      <div className="mb-3 mt-6 flex items-end justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black tracking-tight text-slate-950">{filteredNotes.length} Notes Found</h3>
+          <p className="text-xs font-semibold text-slate-500">{activeCategory === 'All' ? 'All categories' : activeCategory}</p>
         </div>
-        <div className="rounded-full bg-gradient-to-br from-[#5CB6FF] to-[#2450F5] px-4 py-2 text-[11px] font-extrabold text-white shadow-[0_14px_28px_rgba(37,99,235,0.24)]">
-          {selectedBadge}
-        </div>
+        {(searchQuery || activeCategory !== 'All') && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              setActiveCategory('All');
+            }}
+            className="rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      {isLoading && (
-        <div className="space-y-4">
-          {[0, 1, 2].map((item) => (
-            <div key={item} className="animate-pulse rounded-[24px] bg-white/80 p-5 shadow-[0_18px_42px_rgba(70,101,170,0.12)]">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-[22px] bg-blue-100" />
-                <div className="flex-1 space-y-3">
-                  <div className="h-4 w-2/3 rounded-full bg-slate-200" />
-                  <div className="h-3 w-4/5 rounded-full bg-slate-100" />
-                  <div className="h-3 w-1/2 rounded-full bg-slate-100" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="space-y-3">
+        {filteredNotes.map((note, index) => {
+          const style = cardStyles[index % cardStyles.length];
+          const title = formatNoteTitle(note.title);
+          const meta = getNoteMeta(note);
 
-      {!isLoading && (
-        <div className="space-y-4">
-          {filteredNotes.map((note, index) => {
-            const tones = [
-              { icon: 'text-blue-600 bg-blue-50', button: 'from-[#5EA8FF] to-[#2547F4]', tag: 'bg-blue-50 text-blue-700' },
-              { icon: 'text-violet-600 bg-violet-50', button: 'from-[#B15CFF] to-[#7437EA]', tag: 'bg-violet-50 text-violet-700' },
-              { icon: 'text-emerald-600 bg-emerald-50', button: 'from-[#4DD383] to-[#10B981]', tag: 'bg-emerald-50 text-emerald-700' },
-              { icon: 'text-amber-600 bg-amber-50', button: 'from-[#FDBA3B] to-[#F59E0B]', tag: 'bg-amber-50 text-amber-700' },
-            ][index % 4];
-
-            return (
-              <motion.div
-                key={note.id}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: Math.min(index * 0.035, 0.2) }}
-                whileTap={{ scale: 0.985 }}
-                className="rounded-[24px] bg-white/92 p-4 shadow-[0_18px_42px_rgba(70,101,170,0.13),inset_0_1px_0_rgba(255,255,255,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(70,101,170,0.18)] sm:p-5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`grid h-[76px] w-[76px] shrink-0 place-items-center rounded-[22px] ${tones.icon} shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]`}>
-                    <div className="relative">
-                      <FileText size={36} strokeWidth={2.3} />
-                      <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-slate-900 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
-                        PDF
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-lg font-black tracking-tight text-[#10224A]">{titleCasePdf(note.title)}</h3>
-                    <p className="mt-1 truncate text-xs font-medium text-slate-500">
-                      {note.lessons || 1} Detailed Chapter &bull; Chemistry &bull; Class 12
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-extrabold">
-                      <span className={`rounded-full px-2.5 py-1 ${tones.tag}`}>PDF</span>
-                      <span className="h-4 w-px bg-slate-200" />
-                      <span className="text-slate-500">{noteSizes[index % noteSizes.length]}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onViewNote(note)}
-                    className={`shrink-0 rounded-[16px] bg-gradient-to-br ${tones.button} px-5 py-3 text-sm font-black text-white shadow-[0_12px_22px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 active:scale-95`}
-                  >
-                    View
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
-
-          {!filteredNotes.length && (
+          return (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              key={note.id}
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-[28px] border border-dashed border-blue-200/80 bg-white/45 px-6 py-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl"
+              transition={{ duration: 0.22, delay: Math.min(index * 0.025, 0.18) }}
+              className={`rounded-2xl border border-white bg-gradient-to-br ${style.surface} p-4 shadow-md shadow-slate-200/70`}
             >
-              <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[22px] bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 shadow-[0_16px_28px_rgba(37,99,235,0.14)]">
-                <FileText size={30} />
+              <div className="flex gap-4">
+                <div className={`relative flex h-16 w-14 shrink-0 items-center justify-center rounded-xl ${style.icon}`}>
+                  <FileText size={28} />
+                  <span className="absolute -bottom-1 rounded-md bg-slate-950 px-1.5 py-0.5 text-[9px] font-black text-white">
+                    {title.extension.slice(0, 4)}
+                  </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h4 className="line-clamp-2 text-base font-black leading-snug text-slate-950">{title.title}</h4>
+                      <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">{note.category || `${meta.level} ${meta.branch}`}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                      {meta.branch}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+                      <BookOpen size={14} />
+                      <span>{note.lessons || 1} unit</span>
+                      <span className="h-1 w-1 rounded-full bg-slate-300" />
+                      <span>{meta.level}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onViewNote(note)}
+                      className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-black text-white shadow-lg transition active:scale-95 ${style.action}`}
+                    >
+                      <Eye size={15} />
+                      View
+                    </button>
+                  </div>
+                </div>
               </div>
-              <h3 className="text-lg font-black text-[#10224A]">No notes found</h3>
-              <p className="mx-auto mt-2 max-w-xs text-sm text-slate-500">Try adjusting your search or filter to find what you need.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setActiveCategory('All');
-                }}
-                className="mt-5 rounded-full bg-white px-5 py-2.5 text-sm font-extrabold text-blue-600 shadow-[0_12px_24px_rgba(70,101,170,0.16)] transition active:scale-95"
-              >
-                Clear Filters
-              </button>
             </motion.div>
-          )}
-        </div>
-      )}
+          );
+        })}
+
+        {!filteredNotes.length && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-dashed border-slate-200 bg-white/72 px-6 py-12 text-center shadow-inner"
+          >
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+              <FileText size={28} />
+            </div>
+            <h3 className="text-lg font-black text-slate-950">No notes found</h3>
+            <p className="mx-auto mt-2 max-w-xs text-sm text-slate-500">Try another keyword or open all categories.</p>
+          </motion.div>
+        )}
+      </div>
     </motion.div>
   );
 };
