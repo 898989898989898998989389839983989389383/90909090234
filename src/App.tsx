@@ -4207,6 +4207,40 @@ const openExternalResource = (url?: string) => {
   return true;
 };
 
+const getNoteFileExtension = (url?: string, title?: string) => {
+  const value = `${title || ''} ${url || ''}`.toLowerCase().split('?')[0];
+  const match = value.match(/\.([a-z0-9]+)(?:\s|$)/i);
+  return match?.[1] || '';
+};
+
+const getDrivePreviewUrl = (url?: string) => {
+  const fileId = getDriveFileIdFromUrl(url);
+  return fileId ? `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview` : '';
+};
+
+const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
+  const value = String(url || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  const drivePreviewUrl = getDrivePreviewUrl(value);
+  if (drivePreviewUrl) {
+    return drivePreviewUrl;
+  }
+
+  const extension = getNoteFileExtension(value, title);
+  const isDocument = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(extension);
+  if (isDocument) {
+    return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(value)}`;
+  }
+
+  return value;
+};
+
+const isImageNoteUrl = (url?: string, title?: string) =>
+  ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(getNoteFileExtension(url, title));
+
 const AdminLoginScreen = ({
   mode,
   onLogin
@@ -7509,6 +7543,9 @@ const NoteViewerScreen = ({
 }) => {
   if (!lesson) return null;
 
+  const previewUrl = getNoteHtmlPreviewUrl(lesson.note_url, lesson.title);
+  const imagePreview = isImageNoteUrl(lesson.note_url, lesson.title);
+
   return (
     <motion.div 
       initial={{ x: '100%' }} 
@@ -7543,33 +7580,54 @@ const NoteViewerScreen = ({
       </div>
 
       <div className="flex-1 overflow-hidden p-3 sm:p-4">
-        <div className="h-full overflow-y-auto rounded-[28px] border border-white/75 bg-white/80 p-6 shadow-[0_18px_55px_rgba(15,23,42,0.12)] backdrop-blur-sm sm:p-8">
+        <div className="h-full overflow-hidden rounded-[28px] border border-white/75 bg-white/80 shadow-[0_18px_55px_rgba(15,23,42,0.12)] backdrop-blur-sm">
           <div className="mb-6 border-b border-slate-200 pb-4">
-            <h1 className="text-2xl font-black text-slate-900">{lesson.title}</h1>
-            <p className="mt-2 text-sm text-slate-500">
-              {lesson.note_url ? 'This note opens in Google Drive or your external document link.' : 'Full screen study note reader'}
-            </p>
-          </div>
-          {lesson.note_url ? (
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
-                <ExternalLink size={24} />
-              </div>
-              <h2 className="mt-4 text-lg font-black text-slate-900">Open Study Material</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Embedded PDF viewer remove kar diya gaya hai. Is note ka Google Drive ya external link direct open hoga.
+            <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+              <h1 className="text-2xl font-black text-slate-900">{lesson.title}</h1>
+              <p className="mt-2 text-sm text-slate-500">
+                {lesson.note_url ? 'PDF/document is shown as an in-app HTML preview.' : 'Full screen study note reader'}
               </p>
-              <button
-                type="button"
-                onClick={() => openExternalResource(lesson.note_url)}
-                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100"
-              >
-                <ExternalLink size={16} />
-                Open Note Link
-              </button>
+            </div>
+          </div>
+          {previewUrl ? (
+            <div className="flex h-[calc(100%-110px)] flex-col px-3 pb-3 sm:px-4 sm:pb-4">
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-slate-600">
+                  <FileText size={16} className="text-primary" />
+                  <span className="truncate">HTML preview ready</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openExternalResource(lesson.note_url)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-black text-primary shadow-sm"
+                >
+                  <ExternalLink size={14} />
+                  Open
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                {imagePreview ? (
+                  <div className="h-full overflow-auto bg-slate-950/95 p-3">
+                    <img
+                      src={previewUrl}
+                      alt={lesson.title}
+                      className="mx-auto min-h-full max-w-full rounded-xl object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <iframe
+                    src={previewUrl}
+                    title={lesson.title}
+                    className="h-full w-full bg-white"
+                    loading="lazy"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                  />
+                )}
+              </div>
             </div>
           ) : (
-            <div className="markdown-body prose prose-sm max-w-none">
+            <div className="markdown-body prose prose-sm max-w-none overflow-y-auto px-6 pb-8">
               <ReactMarkdown>{lesson.note_content}</ReactMarkdown>
             </div>
           )}
@@ -7963,9 +8021,6 @@ export default function App() {
         <NotesScreen 
           notes={notes} 
           onViewNote={(note) => {
-            if (openExternalResource(note.url)) {
-              return;
-            }
             setSelectedLesson({
               id: note.id,
               course_id: '',
@@ -8033,9 +8088,6 @@ export default function App() {
           course={selectedCourse}
           onLessonSelect={(lesson) => setSelectedLesson(lesson)}
           onViewNotes={(lesson) => {
-            if (openExternalResource(lesson.note_url)) {
-              return;
-            }
             setSelectedLesson(lesson);
             setPreviousScreen('video-player');
             setScreen('note-viewer');
@@ -8062,9 +8114,6 @@ export default function App() {
             }
           }}
           onViewNotes={(lesson) => {
-            if (openExternalResource(lesson.note_url)) {
-              return;
-            }
             setSelectedLesson(lesson);
             setPreviousScreen('course-details');
             setScreen('note-viewer');
