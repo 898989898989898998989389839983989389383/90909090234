@@ -72,6 +72,19 @@ type SeedSlider = {
   is_active: number;
 };
 
+type SeedLiveClass = {
+  id: string;
+  title: string;
+  description: string;
+  meeting_url: string;
+  scheduled_at: string;
+  access_type: "free" | "premium";
+  audience_type: "all" | "course" | "selected";
+  course_id?: string;
+  selected_user_ids: string;
+  is_active: boolean;
+};
+
 const seedCourses: SeedCourse[] = [
   {
     id: "5",
@@ -785,6 +798,8 @@ const seedSliders: SeedSlider[] = [
   },
 ];
 
+const seedLiveClasses: SeedLiveClass[] = [];
+
 let pool: Pool | null = null;
 let initPromise: Promise<void> | null = null;
 
@@ -1100,6 +1115,30 @@ const createSchema = async (client: Pool | PoolClient) => {
   await client.query(`ALTER TABLE "enrollments" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'active'`);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS live_classes (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      meeting_url TEXT NOT NULL,
+      scheduled_at TIMESTAMPTZ,
+      access_type TEXT DEFAULT 'free',
+      audience_type TEXT DEFAULT 'all',
+      course_id TEXT REFERENCES courses(id) ON DELETE SET NULL,
+      selected_user_ids TEXT DEFAULT '[]',
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "description" TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "scheduled_at" TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "access_type" TEXT DEFAULT 'free'`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "audience_type" TEXT DEFAULT 'all'`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "course_id" TEXT REFERENCES courses(id) ON DELETE SET NULL`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "selected_user_ids" TEXT DEFAULT '[]'`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "is_active" BOOLEAN DEFAULT TRUE`);
+  await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMPTZ DEFAULT NOW()`);
+
+  await client.query(`
     UPDATE users
     SET user_category = CASE
       WHEN EXISTS (
@@ -1161,6 +1200,7 @@ const seedDatabase = async (client: Pool | PoolClient) => {
     })),
   );
   await seedRowsIfEmpty(client, "sliders", seedSliders);
+  await seedRowsIfEmpty(client, "live_classes", seedLiveClasses);
 };
 
 export const initDatabase = async () => {

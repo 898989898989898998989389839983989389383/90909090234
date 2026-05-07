@@ -47,7 +47,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes';
 
 interface Lesson {
   id: string;
@@ -110,6 +110,20 @@ interface SliderItem {
   is_active: boolean;
 }
 
+interface LiveClass {
+  id: string;
+  title: string;
+  description: string;
+  meeting_url: string;
+  scheduled_at: string;
+  access_type: 'free' | 'premium';
+  audience_type: 'all' | 'course' | 'selected';
+  course_id?: string;
+  selected_user_ids: string[];
+  is_active: boolean;
+  created_at?: string;
+}
+
 interface AuthUser {
   id: string;
   name: string;
@@ -118,6 +132,7 @@ interface AuthUser {
   status?: string;
   userCategory?: 'free' | 'premium';
   grantedCourseIds?: string[];
+  blockedCourseIds?: string[];
 }
 
 interface StoredUser extends AuthUser {
@@ -126,6 +141,7 @@ interface StoredUser extends AuthUser {
 
 interface AdminUser extends AuthUser {
   grantedCourseIds: string[];
+  blockedCourseIds: string[];
   password?: string;
   [key: string]: unknown;
 }
@@ -172,7 +188,7 @@ const getAppsScriptActionUrl = (action: string) => {
   return `${APPS_SCRIPT_URL}${separator}action=${encodeURIComponent(action)}`;
 };
 
-const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders', params?: Record<string, string>) => {
+const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders' | 'live-classes', params?: Record<string, string>) => {
   const query = new URLSearchParams(params || {});
   const suffix = query.toString();
   return fetch(`/api/${resource}${suffix ? `?${suffix}` : ''}`);
@@ -214,6 +230,9 @@ const normalizeAdminUser = (value: unknown): AdminUser | null => {
     grantedCourseIds: Array.isArray(record.grantedCourseIds)
       ? record.grantedCourseIds.map((item) => String(item))
       : [],
+    blockedCourseIds: Array.isArray(record.blockedCourseIds)
+      ? record.blockedCourseIds.map((item) => String(item))
+      : [],
   };
 };
 
@@ -241,6 +260,7 @@ const getCachedAppData = (): {
   courses: Course[];
   notes: Note[];
   quizzes: Quiz[];
+  liveClasses: LiveClass[];
 } | null => {
   if (typeof window === 'undefined') {
     return null;
@@ -257,10 +277,12 @@ const getCachedAppData = (): {
       courses: Course[];
       notes: Note[];
       quizzes: Quiz[];
+      liveClasses: LiveClass[];
     }>;
 
     return {
       sliders: normalizeSliders(parsed.sliders),
+      liveClasses: Array.isArray(parsed.liveClasses) ? parsed.liveClasses : [],
       ...filterChemistryAppData({
         courses: Array.isArray(parsed.courses) ? parsed.courses : [],
         notes: Array.isArray(parsed.notes) ? parsed.notes : [],
@@ -277,10 +299,12 @@ const saveCachedAppData = (payload: {
   courses: Course[];
   notes: Note[];
   quizzes: Quiz[];
+  liveClasses: LiveClass[];
 }) => {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify({
       sliders: payload.sliders,
+      liveClasses: payload.liveClasses,
       ...filterChemistryAppData(payload),
     }));
   }
@@ -310,9 +334,18 @@ const saveCachedAdminUsers = (users: AdminUser[]) => {
   }
 };
 
-const loadJsonResource = async <T,>(resource: 'sliders' | 'courses' | 'notes' | 'quizzes' | 'users', fallbackValue: T): Promise<T> => {
+const loadJsonResource = async <T,>(resource: 'sliders' | 'courses' | 'notes' | 'quizzes' | 'users' | 'live-classes', fallbackValue: T): Promise<T> => {
   try {
     const response = await apiGet(resource);
+    return await readJsonResponse(response);
+  } catch {
+    return fallbackValue;
+  }
+};
+
+const fetchStudentLiveClasses = async (userId: string, fallbackValue: LiveClass[] = []): Promise<LiveClass[]> => {
+  try {
+    const response = await apiGet('live-classes', userId ? { userId } : undefined);
     return await readJsonResponse(response);
   } catch {
     return fallbackValue;
@@ -418,6 +451,18 @@ const fetchAdminUsers = async (): Promise<AdminUser[]> => {
   }
 };
 
+const fetchAdminLiveClasses = async (): Promise<LiveClass[]> => {
+  try {
+    const response = await fetchWithTimeout('/api/admin-live-classes', {
+      headers: getAdminAuthHeaders(),
+    });
+    const payload = await readLenientJsonResponse(response);
+    return Array.isArray(payload) ? payload as LiveClass[] : [];
+  } catch {
+    return [];
+  }
+};
+
 const isChemistryCourse = (course: Course) => String(course.category || '').toLowerCase().includes('chem');
 const isChemistryNote = (note: Note) => String(note.category || '').toLowerCase().includes('chem');
 const isChemistryQuiz = (quiz: Quiz) => String(quiz.topic || '').toLowerCase().includes('chem');
@@ -425,6 +470,25 @@ const isCourseFree = (course?: Course | null) => String(course?.type || '').toLo
 const isCourseAccessible = (course: Course | null | undefined, unlockedCourseIds: string[]) => (
   !!course && (isCourseFree(course) || unlockedCourseIds.includes(course.id))
 );
+
+const formatLiveClassDate = (value: string) => {
+  if (!value) {
+    return 'Schedule anytime';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Schedule anytime';
+  }
+
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
 
 const makeCoursePremium = (course: Course): Course => {
   const price = Number(course.price || 0);
@@ -756,6 +820,9 @@ const normalizeAuthUser = (
   userCategory: String(user?.userCategory || user?.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
   grantedCourseIds: Array.isArray(user?.grantedCourseIds)
     ? user.grantedCourseIds.map((item: unknown) => String(item))
+    : [],
+  blockedCourseIds: Array.isArray(user?.blockedCourseIds)
+    ? user.blockedCourseIds.map((item: unknown) => String(item))
     : [],
 });
 
@@ -2094,6 +2161,7 @@ const HomeScreen = ({
   sliders, 
   unlockedCourseIds, 
   onOpenCoursesTab,
+  onOpenLiveClasses,
   onBuyClick,
   onCourseSelect
 }: { 
@@ -2104,6 +2172,7 @@ const HomeScreen = ({
   sliders: SliderItem[],
   unlockedCourseIds: string[],
   onOpenCoursesTab: (tab: 'free' | 'premium') => void,
+  onOpenLiveClasses: () => void,
   onBuyClick: (course: Course) => void,
   onCourseSelect: (course: Course) => void
 }) => {
@@ -2123,18 +2192,19 @@ const HomeScreen = ({
     >
       <ImageSlider sliders={sliders} />
 
-      <a
-        href="go:101"
+      <button
+        type="button"
+        onClick={onOpenLiveClasses}
         className="mb-6 flex w-full items-center justify-between rounded-2xl bg-[linear-gradient(135deg,#17304f_0%,#24527d_100%)] px-5 py-4 text-left text-white shadow-lg shadow-blue-900/15"
       >
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">Free Course Access</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">Live Classes Access</div>
           <div className="mt-1 text-base font-black">Start Free Learning</div>
         </div>
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/12">
           <ArrowRight size={20} />
         </div>
-      </a>
+      </button>
 
       {/* Main Actions */}
       <div className="grid grid-cols-2 gap-4 mb-8">
@@ -2238,6 +2308,97 @@ const HomeScreen = ({
         </div>
       </div>
     </motion.div>
+  );
+};
+
+const LiveClassesScreen = ({
+  liveClasses,
+  courses,
+}: {
+  liveClasses: LiveClass[];
+  courses: Course[];
+}) => {
+  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
+  const visibleClasses = liveClasses.filter((item) => item.access_type === activeTab);
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4">
+      <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#0f766e_100%)] p-5 text-white shadow-xl shadow-slate-300/40">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Live Classes</p>
+        <h2 className="mt-2 text-2xl font-black">Join the right class at the right time</h2>
+        <p className="mt-2 text-sm text-white/75">Free students see open sessions. Premium students also see locked batch classes made for their subscribed courses.</p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          {(['free', 'premium'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-2xl px-4 py-3 text-left text-sm font-bold transition ${
+                activeTab === tab ? 'bg-white text-slate-900' : 'bg-white/10 text-white'
+              }`}
+            >
+              <div className="uppercase tracking-[0.18em] text-[10px] opacity-70">{tab === 'free' ? 'Open' : 'Premium'}</div>
+              <div className="mt-1">{tab === 'free' ? 'Free Live Classes' : 'Premium Live Classes'}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {visibleClasses.map((liveClass) => {
+          const linkedCourse = courses.find((course) => String(course.id) === String(liveClass.course_id || ''));
+          return (
+            <div key={liveClass.id} className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {liveClass.access_type}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
+                      {liveClass.audience_type === 'all' ? 'All Students' : liveClass.audience_type === 'course' ? 'Course Students' : 'Selected Students'}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-lg font-black text-slate-900">{liveClass.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{liveClass.description || 'Live session is ready for students. Join on time from the class link below.'}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-100 p-3 text-slate-600">
+                  <Play size={18} />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Schedule</div>
+                  <div className="mt-1 font-bold">{formatLiveClassDate(liveClass.scheduled_at)}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Course</div>
+                  <div className="mt-1 font-bold">{linkedCourse?.title || (liveClass.audience_type === 'all' ? 'All courses' : 'Student specific session')}</div>
+                </div>
+              </div>
+
+              <a
+                href={liveClass.meeting_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
+              >
+                Join Live Class
+                <ExternalLink size={16} />
+              </a>
+            </div>
+          );
+        })}
+
+        {!visibleClasses.length && (
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center">
+            <div className="text-lg font-black text-slate-900">No {activeTab} live classes yet</div>
+            <p className="mt-2 text-sm text-slate-500">When admin schedules a session for your access level, it will appear here automatically.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -4255,9 +4416,21 @@ const AdminLoginScreen = ({
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [loginProgress, setLoginProgress] = useState(0);
 
   const signInAdmin = async (credentials: { username: string; password: string }) => {
     setError('');
+    setIsSigningIn(true);
+    setLoginProgress(0);
+    const progressTimer = window.setInterval(() => {
+      setLoginProgress((current) => {
+        if (current >= 94) {
+          return current;
+        }
+        return Math.min(94, current + Math.max(2, Math.round((94 - current) * 0.12)));
+      });
+    }, 120);
 
     try {
       const response = await fetch('/api/admin/login', {
@@ -4273,9 +4446,13 @@ const AdminLoginScreen = ({
 
       if (!data.success || !data.session?.token) {
         setError(data.message || 'Invalid admin credentials');
+        setLoginProgress(0);
+        setIsSigningIn(false);
         return;
       }
 
+      setLoginProgress(100);
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
       onLogin({
         role: data.session.role,
         username: data.session.username,
@@ -4285,6 +4462,10 @@ const AdminLoginScreen = ({
       return;
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to sign in. Check server admin configuration.');
+      setLoginProgress(0);
+      setIsSigningIn(false);
+    } finally {
+      window.clearInterval(progressTimer);
     }
   };
 
@@ -4338,6 +4519,7 @@ const AdminLoginScreen = ({
                   className="auth-scenic-input admin-login-underline-input text-sm"
                   placeholder="Enter admin username"
                   value={username}
+                  disabled={isSigningIn}
                   onChange={(e) => {
                     setUsername(e.target.value);
                     setError('');
@@ -4355,6 +4537,7 @@ const AdminLoginScreen = ({
                   className="auth-scenic-input admin-login-underline-input text-sm"
                   placeholder="Enter password"
                   value={password}
+                  disabled={isSigningIn}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     setError('');
@@ -4370,28 +4553,36 @@ const AdminLoginScreen = ({
                   type="checkbox"
                   className="h-4 w-4 rounded border-white/30 bg-white/10"
                   checked={rememberMe}
+                  disabled={isSigningIn}
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />
                 <span>Remember Me</span>
-                <span className="admin-slider-upload-button">
-                  <Upload size={18} />
-                  Upload slider image
-                </span>
               </label>
             </div>
 
             {error && <p className="auth-login-error">{error}</p>}
 
-            <button type="submit" className="auth-scenic-button auth-login-submit py-4 text-lg">
-              Continue
+            <button type="submit" disabled={isSigningIn} className="auth-scenic-button auth-login-submit py-4 text-lg">
+              {isSigningIn ? 'Opening...' : 'Continue'}
             </button>
-            <button
-              type="button"
-              onClick={handleDemoAdminLogin}
-              className="admin-login-demo-button w-full rounded-2xl px-4 py-3 text-sm font-bold transition"
-            >
-              Demo {mode === 'superadmin' ? 'Super Admin' : 'Admin'}
-            </button>
+            {isSigningIn && (
+              <div className="admin-login-progress" aria-label={`Login loading ${loginProgress}%`}>
+                <div className="admin-login-progress-track">
+                  <span style={{ width: `${loginProgress}%` }} />
+                </div>
+                <b>{loginProgress}%</b>
+              </div>
+            )}
+            {mode === 'admin' && (
+              <button
+                type="button"
+                onClick={handleDemoAdminLogin}
+                disabled={isSigningIn}
+                className="admin-login-demo-button w-full rounded-2xl px-4 py-3 text-sm font-bold transition"
+              >
+                Demo Admin
+              </button>
+            )}
           </form>
         </div>
       </motion.div>
@@ -4404,6 +4595,7 @@ const AdminPanelScreen = ({
   notes,
   quizzes,
   sliders,
+  liveClasses,
   users,
   authSession,
   onRefresh,
@@ -4413,12 +4605,13 @@ const AdminPanelScreen = ({
   notes: Note[],
   quizzes: Quiz[],
   sliders: SliderItem[],
+  liveClasses: LiveClass[],
   users: AdminUser[],
   authSession: AdminSession,
   onRefresh: () => Promise<void>,
   onLogout: () => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'user' | 'access' | 'push-notification'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'live' | 'user' | 'access' | 'push-notification'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
@@ -4472,6 +4665,17 @@ const AdminPanelScreen = ({
     content: '',
   });
   const [noteFile, setNoteFile] = useState<File | null>(null);
+  const [liveClassForm, setLiveClassForm] = useState({
+    title: '',
+    description: '',
+    meeting_url: '',
+    scheduled_at: '',
+    access_type: 'free' as 'free' | 'premium',
+    audience_type: 'all' as 'all' | 'course' | 'selected',
+    course_id: '',
+    selected_user_ids: [] as string[],
+    is_active: true,
+  });
   const [quizForm, setQuizForm] = useState({
     topic: '',
     type: 'free',
@@ -4501,6 +4705,7 @@ const AdminPanelScreen = ({
   const [editingLessonId, setEditingLessonId] = useState('');
   const [editingNoteId, setEditingNoteId] = useState('');
   const [editingQuizId, setEditingQuizId] = useState('');
+  const [editingLiveClassId, setEditingLiveClassId] = useState('');
   const [editingQuestionId, setEditingQuestionId] = useState('');
   const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>(() => getStoredAdminAccounts());
   const [adminAccountForm, setAdminAccountForm] = useState({ username: '', password: '' });
@@ -4514,6 +4719,7 @@ const AdminPanelScreen = ({
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [accessStudentSearchQuery, setAccessStudentSearchQuery] = useState('');
   const [accessCourseSearchQuery, setAccessCourseSearchQuery] = useState('');
+  const [liveClassStudentSearchQuery, setLiveClassStudentSearchQuery] = useState('');
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
 
   const tabs = [
@@ -4522,6 +4728,7 @@ const AdminPanelScreen = ({
     { id: 'course', label: 'Course Builder', icon: <BookOpen size={18} /> },
     { id: 'note', label: 'Notes', icon: <FileText size={18} /> },
     { id: 'quiz', label: 'Quiz Builder', icon: <HelpCircle size={18} /> },
+    { id: 'live', label: 'Live Classes', icon: <Bell size={18} /> },
     { id: 'user', label: 'Users', icon: <User size={18} /> },
     { id: 'access', label: 'Premium Access', icon: <Lock size={18} /> },
     { id: 'push-notification', label: 'Push Notification', icon: <Bell size={18} /> },
@@ -4553,8 +4760,15 @@ const AdminPanelScreen = ({
     ].some((value) => String(value || '').toLowerCase().includes(normalizedAccessStudentSearch));
   });
   const normalizedAccessCourseSearch = accessCourseSearchQuery.trim().toLowerCase();
+  const normalizedLiveClassStudentSearch = liveClassStudentSearchQuery.trim().toLowerCase();
   const freeCourses = courses.filter(isCourseFree);
   const premiumCourses = courses.filter((course) => !isCourseFree(course));
+  const liveClassStudentOptions = users.filter((userItem) => {
+    if (!normalizedLiveClassStudentSearch) {
+      return true;
+    }
+    return [userItem.name, userItem.email, userItem.id].some((value) => String(value || '').toLowerCase().includes(normalizedLiveClassStudentSearch));
+  });
   const filteredPremiumCourses = premiumCourses.filter((course) => {
     if (!normalizedAccessCourseSearch) {
       return true;
@@ -4731,6 +4945,7 @@ const AdminPanelScreen = ({
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
     { id: 'note', title: 'Notes', description: 'Publish downloadable notes and organize study material categories.', count: `${notes.length} notes`, tone: 'slate', icon: <FileText size={22} /> },
     { id: 'quiz', title: 'Quiz Builder', description: 'Create quiz sets, add MCQs, import JSON, and review answers in one place.', count: `${quizzes.length} quizzes, ${questions.length} MCQs`, tone: 'rose', icon: <HelpCircle size={22} /> },
+    { id: 'live', title: 'Live Classes', description: 'Schedule free or premium sessions and choose all, course, or student-specific visibility.', count: `${liveClasses.length} sessions`, tone: 'indigo', icon: <Bell size={22} /> },
     { id: 'user', title: 'Students', description: 'Search student records and check unlocked course access.', count: `${users.length} students`, tone: 'emerald', icon: <User size={22} /> },
     { id: 'push-notification', title: 'Push Notifications', description: 'Open the notification console inside the admin panel.', count: 'E-Droid', tone: 'indigo', icon: <Bell size={22} /> },
   ];
@@ -5211,6 +5426,72 @@ const AdminPanelScreen = ({
     setMessage('Note category added successfully');
   };
 
+  const resetLiveClassForm = () => {
+    setEditingLiveClassId('');
+    setLiveClassForm({
+      title: '',
+      description: '',
+      meeting_url: '',
+      scheduled_at: '',
+      access_type: 'free',
+      audience_type: 'all',
+      course_id: '',
+      selected_user_ids: [],
+      is_active: true,
+    });
+    setLiveClassStudentSearchQuery('');
+  };
+
+  const toggleLiveClassStudent = (userId: string) => {
+    setLiveClassForm((current) => ({
+      ...current,
+      selected_user_ids: current.selected_user_ids.includes(userId)
+        ? current.selected_user_ids.filter((item) => item !== userId)
+        : [...current.selected_user_ids, userId],
+    }));
+  };
+
+  const submitLiveClassForm = async () => {
+    if (!liveClassForm.title.trim() || !liveClassForm.meeting_url.trim()) {
+      setMessage('Live class title and meeting link are required');
+      return;
+    }
+
+    if (liveClassForm.audience_type === 'course' && !liveClassForm.course_id) {
+      setMessage('Choose a course for course-based live class visibility');
+      return;
+    }
+
+    if (liveClassForm.audience_type === 'selected' && !liveClassForm.selected_user_ids.length) {
+      setMessage('Choose at least one student for selected live class visibility');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await apiPost(editingLiveClassId ? 'updateLiveClass' : 'createLiveClass', {
+        ...(editingLiveClassId ? { id: editingLiveClassId } : {}),
+        ...liveClassForm,
+        course_id: liveClassForm.audience_type === 'course' ? liveClassForm.course_id : '',
+        selected_user_ids: liveClassForm.audience_type === 'selected' ? liveClassForm.selected_user_ids : [],
+      });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to save live class');
+        return;
+      }
+
+      resetLiveClassForm();
+      await onRefresh();
+      setMessage(data.message || 'Live class saved successfully');
+    } catch {
+      setMessage('Unable to save live class');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerateCustomerAccessCode = async () => {
     if (!customerAccessForm.userId || !customerAccessForm.courseId) {
       setMessage('Select a student and premium course first');
@@ -5292,14 +5573,21 @@ const AdminPanelScreen = ({
       setSelectedStudent((current) => {
         if (!current) return current;
         const currentIds = current.grantedCourseIds || [];
+        const currentBlockedIds = current.blockedCourseIds || [];
         if (action === 'grantCourseAccess') {
           const nextIds = currentIds.includes(studentAccessForm.courseId)
             ? currentIds
             : [...currentIds, studentAccessForm.courseId];
-          return { ...current, grantedCourseIds: nextIds, userCategory: nextIds.length ? 'premium' : 'free' };
+          const nextBlockedIds = currentBlockedIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId));
+          return { ...current, grantedCourseIds: nextIds, blockedCourseIds: nextBlockedIds, userCategory: nextIds.length ? 'premium' : 'free' };
         }
         const nextIds = currentIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId));
-        return { ...current, grantedCourseIds: nextIds, userCategory: nextIds.length ? 'premium' : 'free' };
+        const nextBlockedIds = action === 'blockCourseAccess'
+          ? currentBlockedIds.includes(studentAccessForm.courseId)
+            ? currentBlockedIds
+            : [...currentBlockedIds, studentAccessForm.courseId]
+          : currentBlockedIds.filter((courseId) => String(courseId) !== String(studentAccessForm.courseId));
+        return { ...current, grantedCourseIds: nextIds, blockedCourseIds: nextBlockedIds, userCategory: nextIds.length ? 'premium' : 'free' };
       });
       await onRefresh();
       setMessage(data.message || 'Student access updated');
@@ -7337,6 +7625,178 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
         </div>
       )}
 
+      {activeTab === 'live' && (
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#172554_0%,#1d4ed8_45%,#0f766e_100%)] p-5 text-white shadow-xl shadow-slate-300/40">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Live Classes</p>
+                <h3 className="mt-2 text-2xl font-black">Schedule free and premium sessions</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/72">Create one live class, then decide who should see it: all students, only one subscribed course, or selected students only.</p>
+              </div>
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/14">
+                <Bell size={28} />
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white/12 p-4">
+                <div className="text-2xl font-black">{liveClasses.length}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">All Sessions</div>
+              </div>
+              <div className="rounded-2xl bg-white/12 p-4">
+                <div className="text-2xl font-black">{liveClasses.filter((item) => item.is_active).length}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Active</div>
+              </div>
+              <div className="rounded-2xl bg-white/12 p-4">
+                <div className="text-2xl font-black">{liveClasses.filter((item) => item.access_type === 'premium').length}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Premium</div>
+              </div>
+            </div>
+          </div>
+
+          <div className={cardClass}>
+            <div className="admin-section-head">
+              <div>
+                <h3 className="font-bold text-gray-800">{editingLiveClassId ? 'Edit Live Class' : 'Create Live Class'}</h3>
+                <p className="text-xs text-gray-500 mt-1">Students will only see the session if they match the selected visibility rule.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Live class title" value={liveClassForm.title} onChange={(e) => setLiveClassForm({ ...liveClassForm, title: e.target.value })} />
+              <textarea className="w-full min-h-24 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Short class description" value={liveClassForm.description} onChange={(e) => setLiveClassForm({ ...liveClassForm, description: e.target.value })} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={liveClassForm.access_type} onChange={(e) => setLiveClassForm({ ...liveClassForm, access_type: e.target.value === 'premium' ? 'premium' : 'free' })}>
+                  <option value="free">Free Live Class</option>
+                  <option value="premium">Premium Live Class</option>
+                </select>
+                <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={liveClassForm.audience_type} onChange={(e) => setLiveClassForm({ ...liveClassForm, audience_type: e.target.value as 'all' | 'course' | 'selected' })}>
+                  <option value="all">Show to all matching students</option>
+                  <option value="course">Show to one course subscribers</option>
+                  <option value="selected">Show to selected students</option>
+                </select>
+              </div>
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Meeting link / Zoom / Google Meet URL" value={liveClassForm.meeting_url} onChange={(e) => setLiveClassForm({ ...liveClassForm, meeting_url: e.target.value })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" type="datetime-local" value={liveClassForm.scheduled_at} onChange={(e) => setLiveClassForm({ ...liveClassForm, scheduled_at: e.target.value })} />
+
+              {liveClassForm.audience_type === 'course' && (
+                <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={liveClassForm.course_id} onChange={(e) => setLiveClassForm({ ...liveClassForm, course_id: e.target.value })}>
+                  <option value="">Select subscribed course</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>{course.title}</option>
+                  ))}
+                </select>
+              )}
+
+              {liveClassForm.audience_type === 'selected' && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-slate-800">Selected Students</div>
+                      <div className="text-xs text-slate-500">{liveClassForm.selected_user_ids.length} students chosen</div>
+                    </div>
+                    <input
+                      className="w-full max-w-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Search students"
+                      value={liveClassStudentSearchQuery}
+                      onChange={(e) => setLiveClassStudentSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+                    {liveClassStudentOptions.map((userItem) => {
+                      const isSelected = liveClassForm.selected_user_ids.includes(userItem.id);
+                      return (
+                        <button
+                          key={userItem.id}
+                          type="button"
+                          onClick={() => toggleLiveClassStudent(userItem.id)}
+                          className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm ${
+                            isSelected ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'
+                          }`}
+                        >
+                          <span>
+                            <strong className="block">{userItem.name}</strong>
+                            <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-slate-500'}`}>{userItem.email}</span>
+                          </span>
+                          <span className="text-xs font-black uppercase tracking-[0.18em]">
+                            {isSelected ? 'Selected' : 'Pick'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                <input type="checkbox" checked={liveClassForm.is_active} onChange={(e) => setLiveClassForm({ ...liveClassForm, is_active: e.target.checked })} />
+                Keep this live class visible to matched students
+              </label>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button disabled={loading} onClick={submitLiveClassForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
+                  {loading ? 'Saving...' : editingLiveClassId ? 'Update Live Class' : 'Create Live Class'}
+                </button>
+                <button type="button" onClick={resetLiveClassForm} className="admin-secondary-button px-5 py-3 text-sm font-bold">
+                  {editingLiveClassId ? 'Cancel Edit' : 'Clear'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={cardClass}>
+            <h3 className="font-bold text-gray-800 mb-4">Manage Live Classes</h3>
+            <div className="space-y-3">
+              {liveClasses.map((liveClass) => {
+                const linkedCourse = courses.find((course) => String(course.id) === String(liveClass.course_id || ''));
+                return (
+                  <div key={liveClass.id} className="border border-gray-100 rounded-2xl p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{liveClass.access_type}</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">{liveClass.is_active ? 'Active' : 'Hidden'}</span>
+                        </div>
+                        <div className="mt-2 font-bold text-sm text-gray-800">{liveClass.title}</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {formatLiveClassDate(liveClass.scheduled_at)} • {liveClass.audience_type === 'all' ? 'All matching students' : liveClass.audience_type === 'course' ? (linkedCourse?.title || 'Course students') : `${liveClass.selected_user_ids.length} selected students`}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => {
+                          setEditingLiveClassId(liveClass.id);
+                          setLiveClassForm({
+                            title: liveClass.title,
+                            description: liveClass.description || '',
+                            meeting_url: liveClass.meeting_url,
+                            scheduled_at: liveClass.scheduled_at ? new Date(liveClass.scheduled_at).toISOString().slice(0, 16) : '',
+                            access_type: liveClass.access_type,
+                            audience_type: liveClass.audience_type,
+                            course_id: liveClass.course_id || '',
+                            selected_user_ids: liveClass.selected_user_ids || [],
+                            is_active: liveClass.is_active,
+                          });
+                          setActiveTab('live');
+                        }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
+                        <button onClick={() => confirmDelete(
+                          'Delete live class?',
+                          `This will delete "${liveClass.title}".`,
+                          () => submitAction('deleteLiveClass', { id: liveClass.id }, () => {})
+                        )} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!liveClasses.length && (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-500">
+                  No live classes created yet. Schedule the first session above.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'user' && (
         <div className="space-y-4">
           <div className="admin-user-manager">
@@ -7387,7 +7847,9 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                     </div>
                     <div className="admin-user-card-meta">
                       <span className={userItem.status === 'blocked' ? 'is-blocked' : ''}>
-                        {userItem.status === 'blocked' ? 'Platform blocked' : `${userItem.grantedCourseIds?.length || 0} courses unlocked`}
+                        {userItem.status === 'blocked'
+                          ? 'Platform blocked'
+                          : `${userItem.grantedCourseIds?.length || 0} unlocked${userItem.blockedCourseIds?.length ? `, ${userItem.blockedCourseIds.length} blocked` : ''}`}
                       </span>
                       <b>Manage</b>
                     </div>
@@ -7497,7 +7959,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                 disabled={loading}
                 className="rounded-xl bg-red-50 px-5 py-3 text-sm font-bold text-red-600"
               >
-                Block User
+                Block Course
               </button>
               <button
                 type="button"
@@ -7640,6 +8102,21 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                       })
                     ) : (
                       <em>No premium courses unlocked yet.</em>
+                    )}
+                  </div>
+                  <strong>Blocked Courses</strong>
+                  <div className="admin-student-course-list admin-student-course-list--blocked">
+                    {(selectedStudent.blockedCourseIds || []).length ? (
+                      (selectedStudent.blockedCourseIds || []).map((courseId) => {
+                        const course = courses.find((item) => String(item.id) === String(courseId));
+                        return (
+                          <span key={`${selectedStudent.id}-blocked-${courseId}`}>
+                            {course?.title || `Course ${courseId}`}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <em>No course blocks active.</em>
                     )}
                   </div>
                   <div className="admin-student-meta">
@@ -7902,6 +8379,7 @@ export default function App() {
     notes: [],
     quizzes: cachedAppData?.quizzes || fallbackQuizzes,
   }).quizzes);
+  const [liveClasses, setLiveClasses] = useState<LiveClass[]>(cachedAppData?.liveClasses || []);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>(cachedAdminUsers);
   const [loading, setLoading] = useState(!cachedAppData);
   const [user, setUser] = useState<AuthUser | null>(() => getStoredSessionUser());
@@ -7921,7 +8399,7 @@ export default function App() {
 
   const fetchAppData = async () => {
     try {
-      const [slidersData, coursesData, notesData, quizzesData] = await Promise.all([
+      const [slidersData, coursesData, notesData, quizzesData, liveClassesData] = await Promise.all([
         withTimeout(
           loadJsonResource<SliderItem[]>('sliders', fallbackSliders),
           sliders.length ? sliders : fallbackSliders
@@ -7937,6 +8415,12 @@ export default function App() {
         withTimeout(
           loadJsonResource<Quiz[]>('quizzes', cachedAppData?.quizzes || fallbackQuizzes),
           quizzes.length ? quizzes : (cachedAppData?.quizzes || fallbackQuizzes)
+        ),
+        withTimeout(
+          isManagementRoute
+            ? fetchAdminLiveClasses()
+            : fetchStudentLiveClasses(user?.id || '', cachedAppData?.liveClasses || []),
+          liveClasses.length ? liveClasses : (cachedAppData?.liveClasses || [])
         ),
       ]);
 
@@ -7971,11 +8455,15 @@ export default function App() {
       setCourses(chemistryOnlyData.courses);
       setNotes(chemistryOnlyData.notes);
       setQuizzes(chemistryOnlyData.quizzes);
+      setLiveClasses(Array.isArray(liveClassesData) ? liveClassesData : []);
       saveCachedAppData({
         sliders: nextSliders,
         courses: chemistryOnlyData.courses,
         notes: chemistryOnlyData.notes,
         quizzes: chemistryOnlyData.quizzes,
+        liveClasses: isManagementRoute
+          ? (cachedAppData?.liveClasses || [])
+          : (Array.isArray(liveClassesData) ? liveClassesData : []),
       });
       if (isManagementRoute) {
         const nextAdminUsers = await fetchAdminUsers();
@@ -7997,7 +8485,7 @@ export default function App() {
 
   useEffect(() => {
     fetchAppData();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || isManagementRoute) {
@@ -8217,7 +8705,7 @@ export default function App() {
       if (!adminSession || adminSession.role !== requiredRole) {
         return <AdminLoginScreen mode={requiredRole} onLogin={handleAdminLogin} />;
       }
-      return <AdminPanelScreen courses={courses} notes={notes} quizzes={quizzes} sliders={sliders} users={adminUsers} authSession={adminSession} onRefresh={fetchAppData} onLogout={handleAdminLogout} />;
+      return <AdminPanelScreen courses={courses} notes={notes} quizzes={quizzes} sliders={sliders} liveClasses={liveClasses} users={adminUsers} authSession={adminSession} onRefresh={fetchAppData} onLogout={handleAdminLogout} />;
     }
 
     if (loading) return <Loading />;
@@ -8233,6 +8721,7 @@ export default function App() {
           quizzes={quizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
+          onOpenLiveClasses={() => setScreen('live-classes')}
           onBuyClick={handleRequestCourseUnlock}
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
@@ -8247,6 +8736,7 @@ export default function App() {
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
+      case 'live-classes': return <LiveClassesScreen liveClasses={liveClasses} courses={courses} />;
       case 'binaural-beats': return <BinauralBeatsScreen />;
       case 'notes': return (
         <NotesScreen 
@@ -8310,6 +8800,7 @@ export default function App() {
         quizzes={quizzes}
         unlockedCourseIds={unlockedCourseIds}
         onOpenCoursesTab={handleOpenCoursesTab}
+        onOpenLiveClasses={() => setScreen('live-classes')}
         onBuyClick={handleRequestCourseUnlock}
         onCourseSelect={(course) => setSelectedCourse(course)}
       />;
@@ -8366,6 +8857,7 @@ export default function App() {
           quizzes={quizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
+          onOpenLiveClasses={() => setScreen('live-classes')}
         onBuyClick={handleRequestCourseUnlock}
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
@@ -8379,6 +8871,7 @@ export default function App() {
       case 'courses': return 'Courses';
       case 'notes': return 'Notes';
       case 'quiz': return 'Practice Quiz';
+      case 'live-classes': return 'Live Classes';
       case 'profile': return 'My Profile';
       case 'settings': return 'Settings';
       case 'profile-edit': return 'Profile Information';
@@ -8408,6 +8901,7 @@ export default function App() {
       case 'about-us':
       case 'about-developer':
       case 'privacy-policy':
+      case 'live-classes':
         return 'home';
       case 'my-courses':
       case 'offline-notes':

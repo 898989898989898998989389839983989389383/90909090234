@@ -35,6 +35,19 @@ type DbNote = RowDataPacket & { id: string; title: string; lessons: number; cate
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
 type DbQuestion = RowDataPacket & { id: string; quiz_id: string; text: string; options: string; correctAnswer: number; explanation: string; image_url?: string };
 type DbSlider = RowDataPacket & { id: string; title: string; subtitle: string; image_url: string; drive_file_id?: string; sort_order: number; is_active: number | boolean };
+type DbLiveClass = RowDataPacket & {
+  id: string;
+  title: string;
+  description?: string;
+  meeting_url: string;
+  scheduled_at?: Date | string;
+  access_type?: string;
+  audience_type?: string;
+  course_id?: string;
+  selected_user_ids?: string;
+  is_active?: number | boolean;
+  created_at?: Date | string;
+};
 type AdminRole = "admin" | "superadmin";
 type DbAdminCredential = RowDataPacket & { id: string; role: AdminRole; username: string; password: string; created_at?: Date | string; updated_at?: Date | string };
 
@@ -128,6 +141,24 @@ const normalizeSliderForClient = (slider: Partial<DbSlider>) => {
     image_url: driveFileId ? `/api/drive-image/${encodeURIComponent(driveFileId)}` : String(normalized.image_url || ""),
   };
 };
+
+const normalizeLiveClass = (liveClass: Partial<DbLiveClass>) => ({
+  id: String(liveClass.id || ""),
+  title: String(liveClass.title || ""),
+  description: String(liveClass.description || ""),
+  meeting_url: String(liveClass.meeting_url || ""),
+  scheduled_at: liveClass.scheduled_at ? new Date(liveClass.scheduled_at).toISOString() : "",
+  access_type: String(liveClass.access_type || "free").toLowerCase() === "premium" ? "premium" : "free",
+  audience_type: ["course", "selected"].includes(String(liveClass.audience_type || "").toLowerCase())
+    ? String(liveClass.audience_type).toLowerCase()
+    : "all",
+  course_id: String(liveClass.course_id || ""),
+  selected_user_ids: parseJsonArray(liveClass.selected_user_ids).map((item) => String(item)).filter(Boolean),
+  is_active: typeof liveClass.is_active === "string"
+    ? String(liveClass.is_active).toLowerCase() !== "false"
+    : Boolean(liveClass.is_active),
+  created_at: liveClass.created_at ? new Date(liveClass.created_at).toISOString() : "",
+});
 
 const parseImagePayload = (
   payload: Record<string, unknown>,
@@ -318,6 +349,14 @@ const getGrantedCourseIds = async (userId: string) => {
   return rows.map((item) => String(item.course_id || "").trim()).filter(Boolean);
 };
 
+const getBlockedCourseIds = async (userId: string) => {
+  const rows = await queryRows<RowDataPacket & { course_id: string }>(
+    "SELECT course_id FROM enrollments WHERE user_id = ? AND COALESCE(status, 'active') = 'blocked' ORDER BY granted_at DESC, id DESC",
+    [userId],
+  );
+  return rows.map((item) => String(item.course_id || "").trim()).filter(Boolean);
+};
+
 const getComputedUserCategory = (user: Partial<DbUser>, grantedCourseIds: string[]) =>
   grantedCourseIds.length > 0 ? "premium" : String(user.user_category || "free").toLowerCase() === "premium" ? "premium" : "free";
 
@@ -338,8 +377,33 @@ const syncUserCategory = async (userId: string) => {
   return nextCategory;
 };
 
+const canUserViewLiveClass = (
+  liveClass: ReturnType<typeof normalizeLiveClass>,
+  userId: string,
+  grantedCourseIds: string[],
+) => {
+  if (!liveClass.is_active) {
+    return false;
+  }
+
+  if (liveClass.access_type === "premium" && !grantedCourseIds.length) {
+    return false;
+  }
+
+  if (liveClass.audience_type === "all") {
+    return true;
+  }
+
+  if (liveClass.audience_type === "course") {
+    return !!liveClass.course_id && grantedCourseIds.includes(liveClass.course_id);
+  }
+
+  return liveClass.selected_user_ids.includes(userId);
+};
+
 const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone"> & Partial<DbUser>) => {
   const grantedCourseIds = await getGrantedCourseIds(String(user.id));
+  const blockedCourseIds = await getBlockedCourseIds(String(user.id));
   return {
     id: String(user.id),
     name: String(user.name || ""),
@@ -348,23 +412,38 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
     status: String((user as Partial<DbUser>).status || "active"),
     userCategory: getComputedUserCategory(user, grantedCourseIds),
     grantedCourseIds,
+    blockedCourseIds,
   };
 };
 
 const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "phone"> & Partial<DbUser>)[]) => {
   const userIds = users.map((user) => String(user.id)).filter(Boolean);
   const enrollments = userIds.length
-    ? await queryRows<RowDataPacket & { user_id: string; course_id: string }>(
-        "SELECT user_id, course_id FROM enrollments WHERE user_id = ANY($1::text[]) AND COALESCE(status, 'active') = 'active' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) ORDER BY granted_at DESC, id DESC",
+    ? await queryRows<RowDataPacket & { user_id: string; course_id: string; status?: string; expires_at?: Date }>(
+        "SELECT user_id, course_id, status, expires_at FROM enrollments WHERE user_id = ANY($1::text[]) ORDER BY granted_at DESC, id DESC",
         [userIds],
       )
     : [];
   const courseIdsByUser = new Map<string, string[]>();
+  const blockedCourseIdsByUser = new Map<string, string[]>();
 
   for (const enrollment of enrollments) {
     const userId = String(enrollment.user_id || "").trim();
     const courseId = String(enrollment.course_id || "").trim();
     if (!userId || !courseId) {
+      continue;
+    }
+
+    if (String(enrollment.status || "active").toLowerCase() === "blocked") {
+      const currentBlockedIds = blockedCourseIdsByUser.get(userId) || [];
+      if (!currentBlockedIds.includes(courseId)) {
+        currentBlockedIds.push(courseId);
+      }
+      blockedCourseIdsByUser.set(userId, currentBlockedIds);
+      continue;
+    }
+
+    if (enrollment.expires_at && new Date(enrollment.expires_at).getTime() <= Date.now()) {
       continue;
     }
 
@@ -383,6 +462,7 @@ const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "ph
     status: String(user.status || "active"),
     userCategory: getComputedUserCategory(user, courseIdsByUser.get(String(user.id)) || []),
     grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
+    blockedCourseIds: blockedCourseIdsByUser.get(String(user.id)) || [],
   }));
 };
 
@@ -853,6 +933,25 @@ export const createApiApp = async () => {
     res.json(sliders.map(normalizeSliderForClient));
   }));
 
+  app.get("/api/live-classes", asyncHandler(async (req, res) => {
+    const userId = String(req.query.userId || "").trim();
+    const liveClasses = await queryRows<DbLiveClass>("SELECT * FROM live_classes ORDER BY scheduled_at ASC NULLS LAST, created_at DESC, id DESC");
+    const normalized = liveClasses.map(normalizeLiveClass);
+
+    if (!userId) {
+      res.json(normalized.filter((item) => item.is_active && item.audience_type === "all" && item.access_type === "free"));
+      return;
+    }
+
+    const grantedCourseIds = await getGrantedCourseIds(userId);
+    res.json(normalized.filter((item) => canUserViewLiveClass(item, userId, grantedCourseIds)));
+  }));
+
+  app.get("/api/admin-live-classes", requireAdmin(), asyncHandler(async (_req, res) => {
+    const liveClasses = await queryRows<DbLiveClass>("SELECT * FROM live_classes ORDER BY scheduled_at ASC NULLS LAST, created_at DESC, id DESC");
+    res.json(liveClasses.map(normalizeLiveClass));
+  }));
+
   app.get("/api/drive-image/:fileId", asyncHandler(async (req, res) => {
     const fileId = getDriveFileIdFromUrl(req.params.fileId) || String(req.params.fileId || "").trim();
     if (!/^[A-Za-z0-9_-]{10,}$/.test(fileId)) {
@@ -946,6 +1045,111 @@ export const createApiApp = async () => {
     await deleteStoredImage(current?.image_url, "/uploads/sliders/");
     await execute("DELETE FROM sliders WHERE id = ?", [id]);
     res.json({ success: true, message: "Slider deleted" });
+  }));
+
+  app.post("/api/createLiveClass", requireAdmin(), asyncHandler(async (req, res) => {
+    const {
+      title,
+      description,
+      meeting_url,
+      scheduled_at,
+      access_type,
+      audience_type,
+      course_id,
+      selected_user_ids,
+      is_active,
+    } = req.body || {};
+
+    if (!title || !meeting_url) {
+      res.status(400).json({ success: false, message: "Title and meeting link are required" });
+      return;
+    }
+
+    const normalizedAudienceType = ["course", "selected"].includes(String(audience_type || "").toLowerCase())
+      ? String(audience_type).toLowerCase()
+      : "all";
+    const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
+    const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
+    const id = createId("lc");
+
+    await execute(
+      "INSERT INTO live_classes (id, title, description, meeting_url, scheduled_at, access_type, audience_type, course_id, selected_user_ids, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        id,
+        String(title).trim(),
+        String(description || "").trim(),
+        String(meeting_url).trim(),
+        scheduled_at ? new Date(String(scheduled_at)) : null,
+        normalizedAccessType,
+        normalizedAudienceType,
+        normalizedAudienceType === "course" ? String(course_id || "").trim() : "",
+        JSON.stringify(normalizedSelectedUserIds),
+        String(is_active) === "false" ? 0 : 1,
+      ],
+    );
+
+    res.status(201).json({ success: true, message: "Live class created" });
+  }));
+
+  app.post("/api/updateLiveClass", requireAdmin(), asyncHandler(async (req, res) => {
+    const {
+      id,
+      title,
+      description,
+      meeting_url,
+      scheduled_at,
+      access_type,
+      audience_type,
+      course_id,
+      selected_user_ids,
+      is_active,
+    } = req.body || {};
+
+    if (!id || !title || !meeting_url) {
+      res.status(400).json({ success: false, message: "Id, title and meeting link are required" });
+      return;
+    }
+
+    const current = await queryOne<DbLiveClass>("SELECT * FROM live_classes WHERE id = ?", [id]);
+    if (!current) {
+      res.status(404).json({ success: false, message: "Live class not found" });
+      return;
+    }
+
+    const normalizedAudienceType = ["course", "selected"].includes(String(audience_type || "").toLowerCase())
+      ? String(audience_type).toLowerCase()
+      : "all";
+    const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
+    const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
+
+    await execute(
+      "UPDATE live_classes SET title = ?, description = ?, meeting_url = ?, scheduled_at = ?, access_type = ?, audience_type = ?, course_id = ?, selected_user_ids = ?, is_active = ? WHERE id = ?",
+      [
+        String(title).trim(),
+        String(description || "").trim(),
+        String(meeting_url).trim(),
+        scheduled_at ? new Date(String(scheduled_at)) : null,
+        normalizedAccessType,
+        normalizedAudienceType,
+        normalizedAudienceType === "course" ? String(course_id || "").trim() : "",
+        JSON.stringify(normalizedSelectedUserIds),
+        String(is_active) === "false" ? 0 : 1,
+        id,
+      ],
+    );
+
+    res.json({ success: true, message: "Live class updated" });
+  }));
+
+  app.post("/api/deleteLiveClass", requireAdmin(), asyncHandler(async (req, res) => {
+    const { id } = req.body || {};
+    if (!id) {
+      res.status(400).json({ success: false, message: "Live class id is required" });
+      return;
+    }
+
+    await execute("DELETE FROM live_classes WHERE id = ?", [id]);
+    res.json({ success: true, message: "Live class deleted" });
   }));
 
   app.post("/api/createCourse", requireAdmin(), asyncHandler(async (req, res) => {
@@ -1090,7 +1294,13 @@ export const createApiApp = async () => {
       res.status(400).json({ success: false, message: "User id and course id are required" });
       return;
     }
-    await execute("UPDATE enrollments SET status = 'blocked' WHERE user_id = ? AND course_id = ?", [userId, courseId]);
+    await execute(
+      `INSERT INTO enrollments (id, user_id, course_id, access_code, granted_at, expires_at, status)
+       VALUES (?, ?, ?, '', ?, NULL, 'blocked')
+       ON CONFLICT (user_id, course_id)
+       DO UPDATE SET access_code = '', granted_at = EXCLUDED.granted_at, expires_at = NULL, status = 'blocked'`,
+      [createId("en"), userId, courseId, new Date()],
+    );
     await syncUserCategory(String(userId));
     res.json({ success: true, message: "Student blocked from this course" });
   }));
@@ -1129,6 +1339,12 @@ export const createApiApp = async () => {
     }
     if (course.type !== "premium") {
       res.json({ success: true, message: "Course unlocked" });
+      return;
+    }
+
+    const user = await queryOne<DbUser>("SELECT status FROM users WHERE id = ?", [userId]);
+    if (String(user?.status || "active").toLowerCase() === "blocked") {
+      res.status(403).json({ success: false, message: "Your account is blocked. Contact academy admin." });
       return;
     }
 
