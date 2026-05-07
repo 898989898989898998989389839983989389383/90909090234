@@ -330,7 +330,17 @@ function updateSlider_(body) {
     is_active: String(body.is_active || 'true'),
   });
 
-  return { success: true, message: 'Slider updated' };
+  return {
+    success: true,
+    message: 'Slider updated',
+    slider: {
+      id: body.id,
+      image_url: uploaded.imageUrl || body.image_url || currentSlider.image_url || '',
+      drive_file_id: uploaded.driveFileId || currentSlider.drive_file_id || '',
+    },
+    imageUrl: uploaded.imageUrl || body.image_url || currentSlider.image_url || '',
+    driveFileId: uploaded.driveFileId || currentSlider.drive_file_id || '',
+  };
 }
 
 function deleteSlider_(body) {
@@ -368,7 +378,15 @@ function updateCourse_(body) {
     access_code: body.access_code || '',
   });
 
-  return { success: true, message: 'Course updated' };
+  return {
+    success: true,
+    message: 'Course updated',
+    course: {
+      id: body.id,
+      image: uploaded.imageUrl || body.image || (currentCourse && currentCourse.image) || '',
+    },
+    imageUrl: uploaded.imageUrl || body.image || (currentCourse && currentCourse.image) || '',
+  };
 }
 
 function deleteCourse_(body) {
@@ -417,7 +435,15 @@ function updateLesson_(body) {
     sort_order: Number(body.sort_order || 0),
   });
 
-  return { success: true, message: 'Lesson updated' };
+  return {
+    success: true,
+    message: 'Lesson updated',
+    lesson: {
+      id: body.id,
+      thumbnail_url: uploaded.imageUrl || body.thumbnail_url || (currentLesson && currentLesson.thumbnail_url) || '',
+    },
+    imageUrl: uploaded.imageUrl || body.thumbnail_url || (currentLesson && currentLesson.thumbnail_url) || '',
+  };
 }
 
 function deleteLesson_(body) {
@@ -457,7 +483,15 @@ function updateNote_(body) {
     content: body.content || '',
   });
 
-  return { success: true, message: 'Note updated' };
+  return {
+    success: true,
+    message: 'Note updated',
+    note: {
+      id: body.id,
+      url: uploaded.fileUrl || body.url || '',
+    },
+    fileUrl: uploaded.fileUrl || body.url || '',
+  };
 }
 
 function deleteNote_(body) {

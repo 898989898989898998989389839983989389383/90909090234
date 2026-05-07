@@ -155,7 +155,6 @@ const NOTE_CATEGORIES_STORAGE_KEY = 'rbs-academy-note-categories';
 const APP_DATA_CACHE_KEY = 'rbs-academy-app-cache';
 const ADMIN_USERS_CACHE_KEY = 'rbs-academy-admin-users-cache';
 const DATA_REQUEST_TIMEOUT_MS = 8000;
-const ADMIN_USERS_RESOURCE_URL = 'https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users';
 const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec';
 const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL).trim();
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
@@ -172,51 +171,10 @@ const getAppsScriptActionUrl = (action: string) => {
   return `${APPS_SCRIPT_URL}${separator}action=${encodeURIComponent(action)}`;
 };
 
-const shouldFallbackToLocalApi = async (response: Response) => {
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    return true;
-  }
-
-  try {
-    const payload = await response.clone().json();
-    const message = String(payload?.message || '').toLowerCase();
-    return !response.ok || message === 'unsupported action' || message === 'unsupported resource';
-  } catch {
-    return !response.ok;
-  }
-};
-
-const fetchWithFallback = async (
-  appScriptRequest: () => Promise<Response>,
-  localRequest: () => Promise<Response>
-) => {
-  if (!APPS_SCRIPT_URL) {
-    return localRequest();
-  }
-
-  try {
-    const response = await appScriptRequest();
-    if (await shouldFallbackToLocalApi(response)) {
-      return localRequest();
-    }
-    return response;
-  } catch {
-    return localRequest();
-  }
-};
-
 const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders', params?: Record<string, string>) => {
-  if (resource === 'sliders') {
-    return fetch('/api/sliders');
-  }
-
   const query = new URLSearchParams(params || {});
-  query.set('resource', resource);
-  return fetchWithFallback(
-    () => fetch(`${APPS_SCRIPT_URL}?${query.toString()}`),
-    () => fetch(`/api/${resource}`)
-  );
+  const suffix = query.toString();
+  return fetch(`/api/${resource}${suffix ? `?${suffix}` : ''}`);
 };
 
 const normalizeAdminUser = (value: unknown): AdminUser | null => {
@@ -449,19 +407,6 @@ const fetchAdminUsers = async (): Promise<AdminUser[]> => {
     }
   } catch {}
 
-  if (!APPS_SCRIPT_URL) {
-    return [];
-  }
-
-  try {
-    const directResponse = await fetchWithTimeout(ADMIN_USERS_RESOURCE_URL);
-    const directPayload = await readLenientJsonResponse(directResponse);
-    const directUsers = mergeAdminUsers(extractUserArray(directPayload)).filter((user) => !isLegacySeedUser(user));
-    if (directUsers.length) {
-      return directUsers;
-    }
-  } catch {}
-
   try {
     const response = await apiGet('users');
     const payload = await readLenientJsonResponse(response);
@@ -670,33 +615,19 @@ const apiAuthPost = async (
   action: 'login' | 'signup',
   payload: Record<string, unknown>
 ) => {
-  return fetchWithFallback(
-    () => fetch(getAppsScriptActionUrl(action), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...payload })
-    }),
-    () => fetch(action === 'signup' ? '/api/signup' : '/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-  );
+  return fetch(action === 'signup' ? '/api/signup' : '/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
 };
 
 const apiPost = async (action: string, payload: Record<string, unknown>) => {
-  return fetchWithFallback(
-    () => fetch(getAppsScriptActionUrl(action), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...payload })
-    }),
-    () => fetch('/api/' + action, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
-      body: JSON.stringify(payload)
-    })
-  );
+  return fetch('/api/' + action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+    body: JSON.stringify(payload)
+  });
 };
 
 const apiPostToAppsScript = async (action: string, payload: Record<string, unknown>) => {
@@ -711,9 +642,59 @@ const apiPostToAppsScript = async (action: string, payload: Record<string, unkno
   });
 };
 
+const readAppsScriptUploadPayload = async (response: Response) => {
+  const payload = await readLenientJsonResponse(response);
+  if (!response.ok || payload?.success === false) {
+    throw new Error(String(payload?.message || 'Apps Script upload failed'));
+  }
+  return payload as Record<string, any>;
+};
+
+const stripUploadFields = (payload: Record<string, unknown>) => {
+  const nextPayload = { ...payload };
+  delete nextPayload.imageData;
+  delete nextPayload.fileData;
+  delete nextPayload.fileName;
+  delete nextPayload.mimeType;
+  delete nextPayload.uploadKind;
+  return nextPayload;
+};
+
+const uploadViaAppsScriptThenSaveToSupabase = async (
+  action: 'createSlider' | 'updateSlider' | 'createNote' | 'updateNote' | 'createCourse' | 'updateCourse' | 'createLesson' | 'updateLesson',
+  payload: Record<string, unknown>
+) => {
+  const uploadResponse = await apiPostToAppsScript(action, payload);
+  const uploadPayload = await readAppsScriptUploadPayload(uploadResponse);
+  const localPayload = stripUploadFields(payload);
+
+  const uploadedSlider = uploadPayload.slider || {};
+  const uploadedNote = uploadPayload.note || {};
+  const uploadedCourse = uploadPayload.course || {};
+  const uploadedLesson = uploadPayload.lesson || {};
+
+  if (uploadedSlider.image_url || uploadPayload.image_url || uploadPayload.imageUrl) {
+    localPayload.image_url = uploadedSlider.image_url || uploadPayload.image_url || uploadPayload.imageUrl;
+  }
+  if (uploadedSlider.drive_file_id || uploadPayload.drive_file_id || uploadPayload.driveFileId) {
+    localPayload.drive_file_id = uploadedSlider.drive_file_id || uploadPayload.drive_file_id || uploadPayload.driveFileId;
+  }
+  if (uploadedNote.url || uploadPayload.fileUrl || uploadPayload.url) {
+    localPayload.url = uploadedNote.url || uploadPayload.fileUrl || uploadPayload.url;
+  }
+  if (uploadedCourse.image || uploadPayload.imageUrl || uploadPayload.image) {
+    localPayload.image = uploadedCourse.image || uploadPayload.imageUrl || uploadPayload.image;
+  }
+  if (uploadedLesson.thumbnail_url || uploadPayload.thumbnail_url || uploadPayload.imageUrl) {
+    localPayload.thumbnail_url = uploadedLesson.thumbnail_url || uploadPayload.thumbnail_url || uploadPayload.imageUrl;
+  }
+
+  return apiPost(action, localPayload);
+};
+
 const apiSliderPost = async (action: 'createSlider' | 'updateSlider' | 'deleteSlider', payload: Record<string, unknown>) => {
-  if (payload.imageData) {
-    return apiPostToAppsScript(action, payload);
+  if (payload.imageData && action !== 'deleteSlider') {
+    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
   }
 
   return apiPost(action, payload);
@@ -721,7 +702,7 @@ const apiSliderPost = async (action: 'createSlider' | 'updateSlider' | 'deleteSl
 
 const apiNotePost = async (action: 'createNote' | 'updateNote', payload: Record<string, unknown>) => {
   if (payload.fileData) {
-    return apiPostToAppsScript(action, payload);
+    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
   }
 
   return apiPost(action, payload);
@@ -729,7 +710,7 @@ const apiNotePost = async (action: 'createNote' | 'updateNote', payload: Record<
 
 const apiMediaPost = async (action: 'createCourse' | 'updateCourse' | 'createLesson' | 'updateLesson', payload: Record<string, unknown>) => {
   if (payload.imageData) {
-    return apiPostToAppsScript(action, payload);
+    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
   }
 
   return apiPost(action, payload);
@@ -755,7 +736,7 @@ const readJsonResponse = async (response: Response) => {
 
 const readLenientJsonResponse = async (response: Response) => {
   try {
-    return await readJsonResponse(response);
+    return await readJsonResponse(response.clone());
   } catch {
     const bodyText = await response.text();
     return JSON.parse(bodyText);
@@ -7804,36 +7785,25 @@ export default function App() {
     const updatedUser = { ...user, name };
 
     try {
-      if (APPS_SCRIPT_URL) {
-        const response = await apiPost('updateProfile', {
-          id: user.id,
-          name,
-          password
-        });
-        const data = await response.json();
-
-        if (!data.success) {
-          return { success: false, message: data.message || 'Unable to update profile' };
-        }
-
-        const normalizedUser = normalizeAuthUser(data.user || updatedUser, updatedUser);
-        setUser(normalizedUser);
-        saveSessionUser(normalizedUser);
-        updateStoredUserCredentials({
-          id: normalizedUser.id,
-          name: normalizedUser.name,
-          password
-        });
-        return { success: true, message: 'Profile updated successfully' };
-      }
-
-      updateStoredUserCredentials({
-        id: updatedUser.id,
-        name: updatedUser.name,
+      const response = await apiPost('updateProfile', {
+        id: user.id,
+        name,
         password
       });
-      setUser(updatedUser);
-      saveSessionUser(updatedUser);
+      const data = await response.json();
+
+      if (!data.success) {
+        return { success: false, message: data.message || 'Unable to update profile' };
+      }
+
+      const normalizedUser = normalizeAuthUser(data.user || updatedUser, updatedUser);
+      setUser(normalizedUser);
+      saveSessionUser(normalizedUser);
+      updateStoredUserCredentials({
+        id: normalizedUser.id,
+        name: normalizedUser.name,
+        password
+      });
       return { success: true, message: 'Profile updated successfully' };
     } catch (error) {
       updateStoredUserCredentials({

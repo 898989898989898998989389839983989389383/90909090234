@@ -10,9 +10,6 @@ import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./m
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "uploads";
-const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec";
-const APPS_SCRIPT_URL = process.env.VITE_APPS_SCRIPT_URL?.trim() || DEFAULT_APPS_SCRIPT_URL;
-const ADMIN_USERS_RESOURCE_URL = "https://script.google.com/macros/s/AKfycbzj7_sa1S9oB2HEJbG6BzzCMK1GC9OYRDdw-0G9wDRJqMQexbEVvhPBSHWaASewOzEF_A/exec?resource=users";
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME?.trim() || "";
@@ -361,30 +358,6 @@ const normalizeUsers = async (users: Pick<DbUser, "id" | "name" | "email" | "pho
     phone: String(user.phone || ""),
     grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
   }));
-};
-
-const extractUsersPayload = (payload: unknown) => {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (payload && typeof payload === "object") {
-    const record = payload as Record<string, unknown>;
-    if (Array.isArray(record.users)) return record.users;
-    if (Array.isArray(record.data)) return record.data;
-  }
-  return [];
-};
-
-const fetchJsonWithTimeout = async (url: string, timeoutMs = 1000) => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
 };
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -843,37 +816,10 @@ export const createApiApp = async () => {
   app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
     const users = await queryRows<DbUser>("SELECT id, name, email, phone, status FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
-    if (normalized.length > 0) {
-      res.json(normalized);
-      return;
-    }
-
-    try {
-      const payload = await fetchJsonWithTimeout(ADMIN_USERS_RESOURCE_URL);
-      const externalUsers = extractUsersPayload(payload);
-      if (Array.isArray(externalUsers) && externalUsers.length > 0) {
-        res.json(externalUsers);
-        return;
-      }
-    } catch {}
-
     res.json(normalized);
   }));
 
   app.get("/api/sliders", asyncHandler(async (_req, res) => {
-    if (APPS_SCRIPT_URL) {
-      try {
-        const separator = APPS_SCRIPT_URL.includes("?") ? "&" : "?";
-        const payload = await fetchJsonWithTimeout(`${APPS_SCRIPT_URL}${separator}resource=sliders`, 15000);
-        if (Array.isArray(payload) && payload.length > 0) {
-          res.json(payload.map((slider) => normalizeSliderForClient(slider as Partial<DbSlider>)));
-          return;
-        }
-      } catch (error) {
-        console.error("Apps Script sliders fetch failed, using local sliders:", error);
-      }
-    }
-
     const sliders = await queryRows<DbSlider>("SELECT * FROM sliders ORDER BY sort_order ASC, id ASC");
     res.json(sliders.map(normalizeSliderForClient));
   }));
