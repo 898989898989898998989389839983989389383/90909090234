@@ -2993,9 +2993,9 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
     const incorrectSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3');
     
     if (type === 'correct') {
-      correctSound.play().catch(e => console.log('Audio play blocked'));
+      correctSound.play().catch(() => {});
     } else {
-      incorrectSound.play().catch(e => console.log('Audio play blocked'));
+      incorrectSound.play().catch(() => {});
     }
   };
 
@@ -4516,9 +4516,7 @@ const AdminPanelScreen = ({
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <Home size={18} /> },
     { id: 'slider', label: 'Sliders', icon: <Eye size={18} /> },
-    { id: 'course', label: 'Courses', icon: <BookOpen size={18} /> },
-    { id: 'free-course', label: 'Free Courses', icon: <CheckCircle2 size={18} /> },
-    { id: 'lesson', label: 'Videos', icon: <Play size={18} /> },
+    { id: 'course', label: 'Course Builder', icon: <BookOpen size={18} /> },
     { id: 'note', label: 'Notes', icon: <FileText size={18} /> },
     { id: 'quiz', label: 'Quiz Builder', icon: <HelpCircle size={18} /> },
     { id: 'user', label: 'Users', icon: <User size={18} /> },
@@ -4609,16 +4607,16 @@ const AdminPanelScreen = ({
       value: `${coursesWithVideos}/${courses.length || 0}`,
       detail: emptyCourseCount ? `${emptyCourseCount} courses still need videos` : 'Every course has attached lessons',
       tone: emptyCourseCount ? 'amber' : 'emerald',
-      action: 'Open Videos',
-      tab: 'lesson' as typeof activeTab,
+      action: 'Open Builder',
+      tab: 'course' as typeof activeTab,
     },
     {
       title: 'Free Learning',
       value: freeCourseCount.toLocaleString(),
       detail: 'Courses students can open without access codes',
       tone: 'green',
-      action: 'Manage Free',
-      tab: 'free-course' as typeof activeTab,
+      action: 'Manage Courses',
+      tab: 'course' as typeof activeTab,
     },
     {
       title: 'Quiz Depth',
@@ -4707,7 +4705,7 @@ const AdminPanelScreen = ({
       label: 'Free Access',
       value: `${freeCourseCount} open courses`,
       tone: 'blue',
-      tab: 'free-course' as typeof activeTab,
+      tab: 'course' as typeof activeTab,
     },
     {
       label: 'Premium',
@@ -4725,9 +4723,7 @@ const AdminPanelScreen = ({
     tone: string;
     icon: React.ReactNode;
   }> = [
-    { id: 'course', title: 'Courses', description: 'Create free courses or premium courses with pricing.', count: `${courses.length} live`, tone: 'blue', icon: <BookOpen size={22} /> },
-    { id: 'free-course', title: 'Free Courses', description: 'Create open courses students can access directly without codes.', count: `${freeCourseCount} free`, tone: 'emerald', icon: <CheckCircle2 size={22} /> },
-    { id: 'lesson', title: 'YouTube Videos', description: 'Attach YouTube lessons, durations, notes, and resources to any course.', count: `${lessons.length} lessons`, tone: 'green', icon: <Play size={22} /> },
+    { id: 'course', title: 'Course Builder', description: 'Create free or premium courses, upload thumbnails, and manage videos in one place.', count: `${courses.length} courses, ${lessons.length} lessons`, tone: 'blue', icon: <BookOpen size={22} /> },
     { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
     { id: 'note', title: 'Notes', description: 'Publish downloadable notes and organize study material categories.', count: `${notes.length} notes`, tone: 'slate', icon: <FileText size={22} /> },
@@ -4742,9 +4738,9 @@ const AdminPanelScreen = ({
     }
     return [item.title, item.description, item.count].some((value) => value.toLowerCase().includes(normalizedAdminSearch));
   });
-  const isFreeCourseSection = activeTab === 'free-course';
-  const displayedCourses = isFreeCourseSection ? freeCourses : courses;
-  const managedCourse = premiumCourses.find((course) => String(course.id) === String(selectedManagedCourseId)) || premiumCourses[0] || null;
+  const isFreeCourseSection = false;
+  const displayedCourses = courses;
+  const managedCourse = courses.find((course) => String(course.id) === String(selectedManagedCourseId)) || courses[0] || null;
   const managedCourseLessons = managedCourse
     ? [...(managedCourse.lessonList || [])].sort((left, right) => (Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0)) || String(left.title).localeCompare(String(right.title)))
     : [];
@@ -4782,7 +4778,7 @@ const AdminPanelScreen = ({
   };
 
   const openAdminTab = (tabId: typeof activeTab) => {
-    if (tabId === 'free-course') {
+    if (tabId === 'free-course' || tabId === 'lesson') {
       setEditingCourseId('');
       setCourseForm({
         title: '',
@@ -4794,7 +4790,12 @@ const AdminPanelScreen = ({
         category: 'General',
       });
     }
-    setActiveTab(tabId === 'question' ? 'quiz' : tabId);
+    const normalizedTab = tabId === 'question'
+      ? 'quiz'
+      : tabId === 'free-course' || tabId === 'lesson'
+        ? 'course'
+        : tabId;
+    setActiveTab(normalizedTab);
   };
 
   useEffect(() => {
@@ -4868,10 +4869,10 @@ const AdminPanelScreen = ({
   }, [message]);
 
   useEffect(() => {
-    if (!selectedManagedCourseId && premiumCourses[0]) {
-      setSelectedManagedCourseId(premiumCourses[0].id);
+    if (!selectedManagedCourseId && courses[0]) {
+      setSelectedManagedCourseId(courses[0].id);
     }
-  }, [premiumCourses, selectedManagedCourseId]);
+  }, [courses, selectedManagedCourseId]);
 
   useEffect(() => {
     const mergedCategories = Array.from(new Set([
@@ -5342,7 +5343,7 @@ const AdminPanelScreen = ({
     const title = courseForm.title.trim();
     const image = courseForm.image.trim();
     const category = courseForm.category.trim() || 'General';
-    const courseType = isFreeCourseSection ? 'free' : courseForm.type === 'premium' ? 'premium' : 'free';
+    const courseType = courseForm.type === 'premium' ? 'premium' : 'free';
     const lessonsCount = Number(courseForm.lessons || 0);
     const price = courseType === 'premium' ? Number(courseForm.price || 0) : 0;
     const oldPrice = courseType === 'premium' ? Number(courseForm.oldPrice || 0) : 0;
@@ -5480,13 +5481,13 @@ const AdminPanelScreen = ({
 
   const handleCreateManagedCourseQuiz = () => {
     if (!managedCourse) {
-      showNotice('Select a paid course first', 'error');
+      showNotice('Select a course first', 'error');
       return;
     }
 
     submitAction('createQuiz', {
       topic: `${managedCourse.title} MCQ`,
-      type: 'premium',
+      type: managedCourse.type === 'premium' ? 'premium' : 'free',
     }, () => {
       setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
     });
@@ -5498,7 +5499,7 @@ const AdminPanelScreen = ({
     const quizId = courseQuizForm.quiz_id || managedCourseQuiz?.id || '';
 
     if (!managedCourse) {
-      showNotice('Select a paid course first', 'error');
+      showNotice('Select a course first', 'error');
       return;
     }
 
@@ -6159,18 +6160,16 @@ const AdminPanelScreen = ({
         </div>
       )}
 
-      {(activeTab === 'course' || activeTab === 'free-course') && (
+      {(activeTab === 'course' || activeTab === 'free-course' || activeTab === 'lesson') && (
         <div className="space-y-4">
           <div className="admin-course-builder">
             <div className="admin-course-form-panel">
               <div className="admin-section-head">
                 <div>
-                  <p className="admin-control-eyebrow">{isFreeCourseSection ? 'Free Course Section' : 'Course Builder'}</p>
-                  <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Course' : isFreeCourseSection ? 'Add Free Course' : 'Add Free or Premium Course'}</h3>
+                  <p className="admin-control-eyebrow">Course Builder</p>
+                  <h3 className="font-black text-slate-900">{editingCourseId ? 'Edit Course' : 'Create Free or Premium Course'}</h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    {isFreeCourseSection
-                      ? 'Create free courses that students can open instantly without any access code.'
-                      : 'Free courses open instantly. Premium courses stay locked until access is granted.'}
+                    Free courses open instantly. Premium courses stay locked until access is granted.
                   </p>
                 </div>
                 <div className="admin-course-status-pill">
@@ -6184,7 +6183,6 @@ const AdminPanelScreen = ({
                   <span>Course type</span>
                   <select
                     value={courseForm.type}
-                    disabled={isFreeCourseSection}
                     onChange={(e) => {
                       const nextType = e.target.value === 'premium' ? 'premium' : 'free';
                       setCourseForm({
@@ -6311,13 +6309,12 @@ const AdminPanelScreen = ({
             </div>
           </div>
 
-          {!isFreeCourseSection && (
-            <div className="admin-course-workspace">
+          <div className="admin-course-workspace">
               <div className="admin-course-workspace-head">
                 <div>
-                  <p className="admin-control-eyebrow">Paid Course Content</p>
+                  <p className="admin-control-eyebrow">Selected Course Workspace</p>
                   <h3>Videos and MCQs in one place</h3>
-                  <span>Choose a paid course, add ordered videos, edit lessons, and attach MCQ questions for that course.</span>
+                  <span>Choose any course, add ordered videos, edit lessons, and attach MCQ questions without leaving the builder.</span>
                 </div>
                 <select
                   value={managedCourse?.id || ''}
@@ -6328,8 +6325,8 @@ const AdminPanelScreen = ({
                     setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
                   }}
                 >
-                  <option value="">Choose paid course</option>
-                  {premiumCourses.map((course) => (
+                  <option value="">Choose course</option>
+                  {courses.map((course) => (
                     <option key={course.id} value={course.id}>{course.title}</option>
                   ))}
                 </select>
@@ -6545,23 +6542,20 @@ const AdminPanelScreen = ({
                   </div>
                 </div>
               ) : (
-                <div className="admin-empty-control">No paid courses available. Create a premium course first.</div>
+                <div className="admin-empty-control">No courses available yet. Create a course first, then add videos and MCQs here.</div>
               )}
             </div>
-          )}
 
           <div className={cardClass}>
             <div className="admin-section-head">
               <div>
-                <h3 className="font-bold text-gray-800">{isFreeCourseSection ? 'Manage Free Courses' : 'Manage Courses'}</h3>
+                <h3 className="font-bold text-gray-800">Manage Courses</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  {isFreeCourseSection
-                    ? 'Only free courses are shown here. Edit thumbnails, lesson counts, and direct-access metadata.'
-                    : 'Edit free and premium courses, thumbnails, lesson counts, and pricing.'}
+                  Edit free and premium courses, thumbnails, lesson counts, pricing, and jump straight into the builder workspace.
                 </p>
               </div>
               <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
-                {displayedCourses.length} {isFreeCourseSection ? 'free courses' : 'courses'}
+                {displayedCourses.length} courses
               </div>
             </div>
             <div className="admin-course-list">
@@ -6589,7 +6583,7 @@ const AdminPanelScreen = ({
                           setSelectedManagedCourseId(course.id);
                           setLessonForm((current) => ({ ...current, course_id: course.id, sort_order: String((course.lessonList?.length || 0) + 1) }));
                         }
-                        setActiveTab(isFreeCourseSection ? 'free-course' : 'course');
+                        setActiveTab('course');
                       }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                       <button onClick={() => confirmDelete(
                         'Delete course?',
@@ -6602,7 +6596,7 @@ const AdminPanelScreen = ({
               ))}
               {!displayedCourses.length && (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-500">
-                  {isFreeCourseSection ? 'No free courses yet. Create your first directly accessible free course above.' : 'No courses found yet. Add your first course above.'}
+                  No courses found yet. Add your first course above.
                 </div>
               )}
             </div>
@@ -6702,6 +6696,7 @@ const AdminPanelScreen = ({
                   <div className="flex gap-2">
                     <button onClick={() => {
                       setEditingLessonId(lesson.id);
+                      setSelectedManagedCourseId(lesson.course_id);
                       setLessonForm({
                         course_id: lesson.course_id,
                         title: lesson.title,
@@ -6713,7 +6708,7 @@ const AdminPanelScreen = ({
                         sort_order: String(lesson.sort_order || 0),
                       });
                       setLessonThumbnailFile(null);
-                      setActiveTab('lesson');
+                      setActiveTab('course');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                     <button onClick={() => confirmDelete(
                       'Delete lesson?',
@@ -7321,7 +7316,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                         image_url: question.image_url || '',
                       });
                       setQuestionImageFile(null);
-                      setActiveTab('question');
+                      setActiveTab('quiz');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                     <button onClick={() => confirmDelete(
                       'Delete question?',
@@ -7530,9 +7525,9 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
           <button onClick={onRefresh} className="text-primary text-sm font-bold">Refresh</button>
         </div>
         <div className="admin-soft-panel px-4 py-4 text-xs text-gray-500 space-y-2">
-          <p>{courses.length} courses loaded from Sheets</p>
-          <p>{quizzes.length} quizzes loaded from Sheets</p>
-          <p>{users.length} students loaded from database</p>
+          <p>{courses.length} courses loaded from Supabase</p>
+          <p>{quizzes.length} quizzes loaded from Supabase</p>
+          <p>{users.length} students loaded from Supabase</p>
           {courses.slice(0, 5).map((course) => (
             <div key={course.id} className="flex justify-between gap-3">
               <span className="truncate">{course.title}</span>
