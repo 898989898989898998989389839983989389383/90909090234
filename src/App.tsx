@@ -33,7 +33,11 @@ import {
   Mail,
   Lock,
   ChevronDown,
-  ExternalLink
+  ExternalLink,
+  Headphones,
+  Pause,
+  Volume2,
+  Waves
   ,Upload,
   Phone,
   FlaskConical
@@ -43,7 +47,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats';
 
 interface Lesson {
   id: string;
@@ -1676,6 +1680,218 @@ const SectionHeader = ({ title, onSeeAll }: { title: string, onSeeAll?: () => vo
   </div>
 );
 
+const binauralBeatSessions = [
+  {
+    id: 'focus-14hz',
+    title: 'Focus Study',
+    beatHz: 14,
+    baseHz: 220,
+    length: '25 min',
+    tone: 'Deep focus',
+    color: 'from-blue-600 to-cyan-500',
+  },
+  {
+    id: 'memory-10hz',
+    title: 'Memory Boost',
+    beatHz: 10,
+    baseHz: 210,
+    length: '20 min',
+    tone: 'Calm revision',
+    color: 'from-emerald-600 to-teal-500',
+  },
+  {
+    id: 'relax-6hz',
+    title: 'Relax Reset',
+    beatHz: 6,
+    baseHz: 200,
+    length: '15 min',
+    tone: 'Slow breathing',
+    color: 'from-orange-500 to-rose-500',
+  },
+  {
+    id: 'sleep-3hz',
+    title: 'Sleep Prep',
+    beatHz: 3,
+    baseHz: 190,
+    length: '30 min',
+    tone: 'Night calm',
+    color: 'from-slate-700 to-indigo-600',
+  },
+];
+
+type BinauralAudioNodes = {
+  context: AudioContext;
+  leftOscillator: OscillatorNode;
+  rightOscillator: OscillatorNode;
+  leftGain: GainNode;
+  rightGain: GainNode;
+  outputGain: GainNode;
+};
+
+const BinauralBeatsScreen = () => {
+  const [activeBeatId, setActiveBeatId] = useState(binauralBeatSessions[0].id);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.35);
+  const audioNodesRef = useRef<BinauralAudioNodes | null>(null);
+  const activeBeat = binauralBeatSessions.find((beat) => beat.id === activeBeatId) || binauralBeatSessions[0];
+
+  const stopBeat = () => {
+    const nodes = audioNodesRef.current;
+    if (!nodes) {
+      setIsPlaying(false);
+      return;
+    }
+
+    const now = nodes.context.currentTime;
+    nodes.outputGain.gain.cancelScheduledValues(now);
+    nodes.outputGain.gain.setTargetAtTime(0.0001, now, 0.04);
+    window.setTimeout(() => {
+      try {
+        nodes.leftOscillator.stop();
+        nodes.rightOscillator.stop();
+        nodes.context.close();
+      } catch {}
+      if (audioNodesRef.current === nodes) {
+        audioNodesRef.current = null;
+      }
+    }, 140);
+    setIsPlaying(false);
+  };
+
+  const playBeat = async (beat = activeBeat) => {
+    stopBeat();
+
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) {
+      return;
+    }
+
+    const context = new AudioContextClass();
+    const leftOscillator = context.createOscillator();
+    const rightOscillator = context.createOscillator();
+    const leftGain = context.createGain();
+    const rightGain = context.createGain();
+    const merger = context.createChannelMerger(2);
+    const outputGain = context.createGain();
+
+    leftOscillator.type = 'sine';
+    rightOscillator.type = 'sine';
+    leftOscillator.frequency.value = beat.baseHz;
+    rightOscillator.frequency.value = beat.baseHz + beat.beatHz;
+    leftGain.gain.value = 0.5;
+    rightGain.gain.value = 0.5;
+    outputGain.gain.value = 0.0001;
+
+    leftOscillator.connect(leftGain).connect(merger, 0, 0);
+    rightOscillator.connect(rightGain).connect(merger, 0, 1);
+    merger.connect(outputGain).connect(context.destination);
+
+    leftOscillator.start();
+    rightOscillator.start();
+    await context.resume();
+    outputGain.gain.setTargetAtTime(volume, context.currentTime, 0.08);
+    audioNodesRef.current = { context, leftOscillator, rightOscillator, leftGain, rightGain, outputGain };
+    setIsPlaying(true);
+  };
+
+  useEffect(() => {
+    const nodes = audioNodesRef.current;
+    if (nodes) {
+      nodes.outputGain.gain.setTargetAtTime(volume, nodes.context.currentTime, 0.04);
+    }
+  }, [volume]);
+
+  useEffect(() => () => stopBeat(), []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      className="flex-1 overflow-y-auto px-4 pt-4 pb-24"
+    >
+      <section className="binaural-hero rounded-2xl p-5 text-white shadow-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">One Shot Mode</p>
+            <h2 className="mt-2 text-2xl font-black">Binaural Beats</h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/75">Use headphones and tap any beat below to start a focused study sound.</p>
+          </div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/14">
+            <Headphones size={24} />
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-black/18 p-4 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs text-white/60">Now selected</p>
+              <h3 className="text-lg font-black">{activeBeat.title}</h3>
+              <p className="text-xs text-white/65">{activeBeat.beatHz}Hz beat • {activeBeat.tone}</p>
+            </div>
+            <button
+              onClick={() => (isPlaying ? stopBeat() : playBeat())}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-slate-950 shadow-lg transition-transform active:scale-95"
+              aria-label={isPlaying ? 'Stop binaural beat' : 'Play binaural beat'}
+            >
+              {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+            </button>
+          </div>
+          <div className={`binaural-wave ${isPlaying ? 'binaural-wave--playing' : ''}`} aria-hidden="true">
+            {Array.from({ length: 16 }).map((_, index) => (
+              <span key={index} style={{ animationDelay: `${index * 0.06}s` }} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <SectionHeader title="Choose Beat" />
+        <div className="grid grid-cols-2 gap-3">
+          {binauralBeatSessions.map((beat) => {
+            const isActive = activeBeatId === beat.id;
+            return (
+              <button
+                key={beat.id}
+                onClick={() => {
+                  setActiveBeatId(beat.id);
+                  playBeat(beat);
+                }}
+                className={`rounded-2xl border p-4 text-left shadow-sm transition-transform active:scale-[0.98] ${isActive ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white'}`}
+              >
+                <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${beat.color} text-white`}>
+                  <Waves size={20} />
+                </div>
+                <h3 className="text-sm font-black text-gray-900">{beat.title}</h3>
+                <p className="mt-1 text-xs font-semibold text-gray-500">{beat.beatHz}Hz • {beat.length}</p>
+                <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">{beat.tone}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2 text-gray-800">
+          <Volume2 size={18} />
+          <h3 className="text-sm font-black">Volume</h3>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="0.8"
+          step="0.01"
+          value={volume}
+          onChange={(event) => setVolume(Number(event.target.value))}
+          className="w-full accent-primary"
+          aria-label="Binaural beat volume"
+        />
+        <p className="mt-3 text-xs leading-relaxed text-gray-500">Binaural beats work best with headphones at low volume. Do not use while driving.</p>
+      </section>
+    </motion.div>
+  );
+};
+
 const getDriveFileIdFromUrl = (url?: string) => {
   const value = String(url || '');
   return value.match(/[?&]id=([^&]+)/)?.[1]
@@ -1968,6 +2184,18 @@ const HomeScreen = ({
             <p className="font-bold">Practice Quiz</p>
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Test Skills</span>
           </div>
+        </button>
+        <button onClick={() => setScreen('binaural-beats')} className="binaural-action-card col-span-2 p-4 rounded-xl text-white text-left flex items-center justify-between shadow-lg shadow-cyan-100">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/16">
+              <Headphones size={24} />
+            </div>
+            <div>
+              <p className="font-bold">Binaural Beats</p>
+              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">One Shot Focus Audio</span>
+            </div>
+          </div>
+          <ChevronRight size={22} />
         </button>
       </div>
 
@@ -7720,6 +7948,7 @@ export default function App() {
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
+      case 'binaural-beats': return <BinauralBeatsScreen />;
       case 'notes': return (
         <NotesScreen 
           notes={notes} 
@@ -7872,6 +8101,7 @@ export default function App() {
       case 'offline-notes': return 'Download Note Offline';
       case 'video-player': return 'Video Player';
       case 'course-details': return 'Course Details';
+      case 'binaural-beats': return 'Binaural Beats';
       default: return 'RBS Academy';
     }
   };
