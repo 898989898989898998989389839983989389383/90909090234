@@ -368,6 +368,43 @@ body {
   color: #1d4ed8;
 }
 
+.blocked-account-card {
+  text-align: center;
+}
+
+.blocked-account-icon {
+  display: inline-flex;
+  width: 4rem;
+  height: 4rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.blocked-account-copy {
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.blocked-account-user {
+  display: grid;
+  gap: 0.2rem;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.9rem 1rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.blocked-account-user b {
+  color: #172033;
+  font-size: 0.9rem;
+}
+
 .admin-login-page {
   background: #f5f7fb;
 }

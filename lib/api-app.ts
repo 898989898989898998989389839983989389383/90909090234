@@ -885,10 +885,32 @@ export const createApiApp = async () => {
         name: user.name,
         email: user.email,
         phone: user.phone || "",
+        status: String(user.status || "active"),
         userCategory: getComputedUserCategory(user, grantedCourseIds),
         grantedCourseIds,
       },
     });
+  }));
+
+  app.get("/api/session-user", asyncHandler(async (req, res) => {
+    const userId = String(req.query.userId || "").trim();
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User id is required" });
+      return;
+    }
+
+    const user = await queryOne<DbUser>("SELECT id, name, email, phone, status, user_category FROM users WHERE id = ?", [userId]);
+    if (!user) {
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+
+    if (String(user.status || "active").toLowerCase() === "blocked") {
+      res.status(403).json({ success: false, blocked: true, message: "Your account is blocked. Contact academy admin." });
+      return;
+    }
+
+    res.json({ success: true, user: await normalizeUser(user) });
   }));
 
   app.get("/api/courses", asyncHandler(async (_req, res) => {
@@ -940,6 +962,12 @@ export const createApiApp = async () => {
 
     if (!userId) {
       res.json(normalized.filter((item) => item.is_active && item.audience_type === "all" && item.access_type === "free"));
+      return;
+    }
+
+    const user = await queryOne<DbUser>("SELECT status FROM users WHERE id = ?", [userId]);
+    if (String(user?.status || "active").toLowerCase() === "blocked") {
+      res.status(403).json({ success: false, blocked: true, message: "Your account is blocked. Contact academy admin." });
       return;
     }
 
@@ -1337,14 +1365,15 @@ export const createApiApp = async () => {
       res.status(404).json({ success: false, message: "Course not found" });
       return;
     }
-    if (course.type !== "premium") {
-      res.json({ success: true, message: "Course unlocked" });
-      return;
-    }
 
     const user = await queryOne<DbUser>("SELECT status FROM users WHERE id = ?", [userId]);
     if (String(user?.status || "active").toLowerCase() === "blocked") {
       res.status(403).json({ success: false, message: "Your account is blocked. Contact academy admin." });
+      return;
+    }
+
+    if (course.type !== "premium") {
+      res.json({ success: true, message: "Course unlocked" });
       return;
     }
 
@@ -1618,6 +1647,11 @@ export const createApiApp = async () => {
     const current = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [id]);
     if (!current) {
       res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+
+    if (String(current.status || "active").toLowerCase() === "blocked") {
+      res.status(403).json({ success: false, blocked: true, message: "Your account is blocked. Contact academy admin." });
       return;
     }
 

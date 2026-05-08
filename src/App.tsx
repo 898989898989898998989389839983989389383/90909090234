@@ -817,6 +817,7 @@ const normalizeAuthUser = (
   name: String(user?.name || fallback.name || 'Student'),
   email: String(user?.email || fallback.email || ''),
   phone: String(user?.phone || fallback.phone || ''),
+  status: String(user?.status || 'active'),
   userCategory: String(user?.userCategory || user?.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
   grantedCourseIds: Array.isArray(user?.grantedCourseIds)
     ? user.grantedCourseIds.map((item: unknown) => String(item))
@@ -917,6 +918,19 @@ const saveSessionUser = (user: AuthUser | null) => {
   }
 
   window.localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+};
+
+const fetchSessionUser = async (userId: string): Promise<AuthUser> => {
+  const query = new URLSearchParams({ userId });
+  const response = await fetch(`/api/session-user?${query.toString()}`);
+  const data = await readLenientJsonResponse(response);
+  if (!response.ok || !data.success) {
+    const error = new Error(data.message || 'Unable to verify account status') as Error & { blocked?: boolean };
+    error.blocked = response.status === 403 || Boolean(data.blocked);
+    throw error;
+  }
+
+  return normalizeAuthUser(data.user);
 };
 
 const getStoredAdminAccounts = (): AdminAccount[] => {
@@ -1374,7 +1388,8 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
           name: trimmedName,
           email,
           phone: normalizedPhone,
-          password
+          password,
+          status: 'active',
         };
 
         saveStoredUsers([...storedUsers, newUser]);
@@ -1548,6 +1563,46 @@ const Loading = () => (
     <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
     <p className="text-gray-500 text-sm animate-pulse">Loading Academy...</p>
   </div>
+);
+
+const BlockedAccountScreen = ({
+  user,
+  message,
+  onLogout,
+}: {
+  user: AuthUser | null;
+  message: string;
+  onLogout: () => void;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="auth-scenic-shell auth-login-page flex-1 flex items-center justify-center p-5 sm:p-6"
+  >
+    <div className="auth-scenic-card auth-login-card blocked-account-card px-6 py-7 sm:px-8 sm:py-8">
+      <div className="blocked-account-icon">
+        <Lock size={28} />
+      </div>
+      <div className="auth-login-brand blocked-account-copy">
+        <div className="auth-login-badge">Account Blocked</div>
+        <div className="auth-login-copy">
+          <h1 className="auth-login-title">Access stopped</h1>
+          <p className="auth-login-subtitle">
+            {message || 'Your account is blocked. Contact academy admin.'}
+          </p>
+        </div>
+      </div>
+      {user?.email && (
+        <div className="blocked-account-user">
+          <span>{user.name || 'Student'}</span>
+          <b>{user.email}</b>
+        </div>
+      )}
+      <button type="button" onClick={onLogout} className="auth-scenic-button auth-login-submit py-4 mt-5">
+        Back to Login
+      </button>
+    </div>
+  </motion.div>
 );
 
 const AccessCodeModal = ({ 
@@ -8354,6 +8409,7 @@ export default function App() {
   const isSuperAdminRoute = pathname === '/adminlogin/adminsachin' || pathname === '/superadmin';
   const isAdminRoute = pathname === '/adminlogin' || pathname === '/admin';
   const isManagementRoute = isAdminRoute || isSuperAdminRoute;
+  const initialSessionUser = getStoredSessionUser();
   const cachedAppData = getCachedAppData();
   const cachedAdminUsers = getCachedAdminUsers();
   const [screen, setScreenState] = useState<Screen>('home');
@@ -8382,7 +8438,15 @@ export default function App() {
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>(cachedAppData?.liveClasses || []);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>(cachedAdminUsers);
   const [loading, setLoading] = useState(!cachedAppData);
-  const [user, setUser] = useState<AuthUser | null>(() => getStoredSessionUser());
+  const [user, setUser] = useState<AuthUser | null>(() => initialSessionUser);
+  const [blockedAccount, setBlockedAccount] = useState<{ user: AuthUser | null; message: string } | null>(() =>
+    !isManagementRoute && initialSessionUser?.status === 'blocked'
+      ? { user: initialSessionUser, message: 'Your account is blocked. Contact academy admin.' }
+      : null
+  );
+  const [sessionChecking, setSessionChecking] = useState(() =>
+    !isManagementRoute && Boolean(initialSessionUser) && initialSessionUser?.status !== 'blocked'
+  );
   const [adminSession, setAdminSession] = useState<AdminSession | null>(() => getAdminSession());
   const [darkModeEnabled, setDarkModeEnabled] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -8390,12 +8454,26 @@ export default function App() {
   });
   const [coursesInitialTab, setCoursesInitialTab] = useState<'free' | 'premium'>('free');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [unlockedCourseIds, setUnlockedCourseIds] = useState<string[]>(() => getStoredSessionUser()?.grantedCourseIds || []);
+  const [unlockedCourseIds, setUnlockedCourseIds] = useState<string[]>(() => initialSessionUser?.grantedCourseIds || []);
   const [selectedCourseForUnlock, setSelectedCourseForUnlock] = useState<Course | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [selectedQuizTopic, setSelectedQuizTopic] = useState<Quiz | null>(null);
   const [previousScreen, setPreviousScreen] = useState<Screen>('home');
+
+  const blockCurrentStudentSession = (blockedUser: AuthUser | null, message = 'Your account is blocked. Contact academy admin.') => {
+    const nextUser = blockedUser ? { ...normalizeAuthUser(blockedUser), status: 'blocked' } : null;
+    setBlockedAccount({ user: nextUser, message });
+    setUser(nextUser);
+    saveSessionUser(nextUser);
+    setUnlockedCourseIds([]);
+    setSelectedCourseForUnlock(null);
+    setSelectedCourse(null);
+    setSelectedLesson(null);
+    setSelectedQuizTopic(null);
+    setIsDrawerOpen(false);
+    setScreen('home');
+  };
 
   const fetchAppData = async () => {
     try {
@@ -8557,37 +8635,103 @@ export default function App() {
   useEffect(() => {
     const loadUserAccess = async () => {
       if (!user) {
+        setSessionChecking(false);
+        return;
+      }
+
+      if (user.status === 'blocked') {
+        blockCurrentStudentSession(user);
+        setSessionChecking(false);
         return;
       }
 
       try {
-        const response = await apiGet('users');
-        const users = await readLenientJsonResponse(response);
-        const matchedUser = (users || []).find((item: AdminUser) => item.id === user.id);
-        const nextGrantedCourseIds = matchedUser?.grantedCourseIds || [];
+        setSessionChecking(true);
+        const freshUser = await fetchSessionUser(user.id);
+        const nextGrantedCourseIds = freshUser.grantedCourseIds || [];
         setUnlockedCourseIds(nextGrantedCourseIds);
-        saveSessionUser({
+        const nextUser = {
           ...normalizeAuthUser(user),
+          ...freshUser,
           grantedCourseIds: nextGrantedCourseIds,
-        });
+        };
+        setUser(nextUser);
+        saveSessionUser(nextUser);
+        setBlockedAccount(null);
       } catch (error) {
-        console.error('Error loading user access:', error);
+        if ((error as Error & { blocked?: boolean })?.blocked) {
+          const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
+          blockCurrentStudentSession(user, message);
+        } else {
+          console.error('Error loading user access:', error);
+        }
+      } finally {
+        setSessionChecking(false);
       }
     };
 
     loadUserAccess();
-  }, [user]);
+  }, [user?.id, user?.status]);
+
+  useEffect(() => {
+    if (!user || isManagementRoute || blockedAccount) {
+      return;
+    }
+
+    let isCancelled = false;
+    const checkCurrentUserStatus = async () => {
+      try {
+        const freshUser = await fetchSessionUser(user.id);
+        if (isCancelled) {
+          return;
+        }
+        const nextGrantedCourseIds = freshUser.grantedCourseIds || [];
+        setUnlockedCourseIds(nextGrantedCourseIds);
+        const nextUser = {
+          ...normalizeAuthUser(user),
+          ...freshUser,
+          grantedCourseIds: nextGrantedCourseIds,
+        };
+        setUser(nextUser);
+        saveSessionUser(nextUser);
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+        if ((error as Error & { blocked?: boolean })?.blocked) {
+          const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
+          blockCurrentStudentSession(user, message);
+        } else {
+          console.error('Error checking user status:', error);
+        }
+      }
+    };
+
+    const intervalId = window.setInterval(checkCurrentUserStatus, 12000);
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [user?.id, isManagementRoute, blockedAccount]);
 
   const handleLogin = (userData: AuthUser) => {
     const normalizedUser = normalizeAuthUser(userData);
+    if (normalizedUser.status === 'blocked') {
+      blockCurrentStudentSession(normalizedUser);
+      return;
+    }
+    setBlockedAccount(null);
     setUser(normalizedUser);
     saveSessionUser(normalizedUser);
     setUnlockedCourseIds(normalizedUser.grantedCourseIds || []);
+    setSessionChecking(true);
     setScreen('home');
   };
 
   const handleLogout = () => {
     setUser(null);
+    setBlockedAccount(null);
+    setSessionChecking(false);
     saveSessionUser(null);
     setUnlockedCourseIds([]);
     setScreen('home');
@@ -8610,6 +8754,9 @@ export default function App() {
       const data = await response.json();
 
       if (!data.success) {
+        if (data.blocked || response.status === 403) {
+          blockCurrentStudentSession(user, data.message || 'Your account is blocked. Contact academy admin.');
+        }
         return { success: false, message: data.message || 'Unable to update profile' };
       }
 
@@ -8641,10 +8788,13 @@ export default function App() {
   };
 
   const handleAdminLogout = () => {
+    const logoutPath = adminSession?.role === 'superadmin' || isSuperAdminRoute
+      ? '/adminlogin/adminsachin'
+      : '/adminlogin';
     setAdminSession(null);
     saveAdminSession(null);
     if (typeof window !== 'undefined') {
-      window.location.href = '/';
+      window.location.replace(logoutPath);
     }
   };
 
@@ -8662,6 +8812,9 @@ export default function App() {
       const data = await response.json();
 
       if (!data.success) {
+        if (data.blocked || response.status === 403 || String(data.message || '').toLowerCase().includes('account is blocked')) {
+          blockCurrentStudentSession(user, data.message || 'Your account is blocked. Contact academy admin.');
+        }
         return { success: false, message: data.message || 'Invalid access code' };
       }
 
@@ -8708,7 +8861,7 @@ export default function App() {
       return <AdminPanelScreen courses={courses} notes={notes} quizzes={quizzes} sliders={sliders} liveClasses={liveClasses} users={adminUsers} authSession={adminSession} onRefresh={fetchAppData} onLogout={handleAdminLogout} />;
     }
 
-    if (loading) return <Loading />;
+    if (loading || sessionChecking) return <Loading />;
     if (!user) return <LoginScreen onLogin={handleLogin} />;
 
     switch (screen) {
@@ -8910,6 +9063,18 @@ export default function App() {
         return 'home';
     }
   };
+
+  if (!isManagementRoute && blockedAccount) {
+    return (
+      <div className={`mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
+        <BlockedAccountScreen
+          user={blockedAccount.user}
+          message={blockedAccount.message}
+          onLogout={handleLogout}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={isManagementRoute ? 'admin-shell' : `mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
