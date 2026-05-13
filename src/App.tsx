@@ -217,6 +217,16 @@ interface NotificationHistoryItem {
   sentAt: string;
 }
 
+interface StudentNotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  receivedAt: number;
+  screen?: Screen | 'home';
+  type?: string;
+  data?: Record<string, unknown>;
+}
+
 type AdminPanelTab = 'dashboard' | 'app-control' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'live' | 'user' | 'access' | 'push-notification';
 
 const AUTH_STORAGE_KEY = 'rbs-academy-users';
@@ -232,6 +242,7 @@ const APP_WELCOME_SEEN_KEY = 'rbs-academy-welcome-seen';
 const NOTIFICATION_PREF_STORAGE_KEY = 'rbs-academy-notifications-enabled';
 const PUSH_TOKEN_STORAGE_KEY = 'rbs-academy-push-token';
 const PUSH_LAST_MESSAGE_STORAGE_KEY = 'rbs-academy-push-last-message';
+const STUDENT_NOTIFICATIONS_STORAGE_KEY = 'rbs-academy-student-notifications';
 const DEVICE_ID_STORAGE_KEY = 'rbs-academy-device-id';
 const NOTIFICATION_SOUND_FILE = 'rbs_wow_tone.wav';
 const NOTIFICATION_CHANNEL_UPDATES = 'rbs-wow-updates';
@@ -650,6 +661,113 @@ const formatLiveClassDate = (value: string) => {
     hour: 'numeric',
     minute: '2-digit',
   });
+};
+
+const formatNotificationTime = (value: number) => {
+  if (!value) {
+    return 'Just now';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Just now';
+  }
+
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
+const normalizeStudentNotification = (notification: Partial<StudentNotificationItem>): StudentNotificationItem | null => {
+  const title = String(notification.title || '').trim();
+  const body = String(notification.body || '').trim();
+  if (!title && !body) {
+    return null;
+  }
+
+  const data = notification.data && typeof notification.data === 'object' ? notification.data : {};
+  const screenValue = String(notification.screen || data.screen || 'home');
+  const screen = [
+    'home',
+    'courses',
+    'notes',
+    'quiz',
+    'profile',
+    'settings',
+    'profile-edit',
+    'help-center',
+    'support-chat',
+    'my-courses',
+    'offline-notes',
+    'about-us',
+    'about-developer',
+    'privacy-policy',
+    'admin',
+    'video-player',
+    'note-viewer',
+    'course-details',
+    'binaural-beats',
+    'live-classes',
+    'live-class-viewer',
+  ].includes(screenValue) ? screenValue as Screen : 'home';
+
+  return {
+    id: String(notification.id || data.notificationId || `notification-${Date.now()}`),
+    title: title || 'RBS Academy',
+    body: body || 'New academy update received.',
+    receivedAt: Number(notification.receivedAt || Date.now()),
+    screen,
+    type: String(notification.type || data.type || 'academy-update'),
+    data,
+  };
+};
+
+const getStoredStudentNotifications = () => {
+  if (typeof window === 'undefined') {
+    return [] as StudentNotificationItem[];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(STUDENT_NOTIFICATIONS_STORAGE_KEY) || '[]');
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((item) => normalizeStudentNotification(item))
+      .filter((item): item is StudentNotificationItem => Boolean(item))
+      .sort((a, b) => b.receivedAt - a.receivedAt)
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredStudentNotifications = (notifications: StudentNotificationItem[]) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(STUDENT_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications.slice(0, 50)));
+};
+
+const mergeStudentNotification = (
+  notifications: StudentNotificationItem[],
+  notification: Partial<StudentNotificationItem>
+) => {
+  const normalized = normalizeStudentNotification(notification);
+  if (!normalized) {
+    return notifications;
+  }
+
+  const next = [
+    normalized,
+    ...notifications.filter((item) => item.id !== normalized.id),
+  ].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 50);
+  saveStoredStudentNotifications(next);
+  return next;
 };
 
 const makeCoursePremium = (course: Course): Course => {
@@ -2451,7 +2569,7 @@ const BottomNav = ({ activeScreen, setScreen, onQuizClick }: { activeScreen: Scr
   </nav>
 );
 
-const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick }: { title: string, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void }) => (
+const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick, notificationCount = 0 }: { title: string, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
       {showBack ? (
@@ -2467,8 +2585,13 @@ const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick }: {
       </div>
     </div>
     <div className="flex items-center gap-4">
-      <button onClick={onNotificationClick} className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center">
+      <button onClick={onNotificationClick} className="relative w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center" aria-label="Open notifications">
         <Bell size={20} />
+        {notificationCount > 0 && (
+          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">
+            {notificationCount > 9 ? '9+' : notificationCount}
+          </span>
+        )}
       </button>
       <button
         onClick={() => {
@@ -2486,6 +2609,129 @@ const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick }: {
       </div>
     </div>
   </header>
+);
+
+const StudentNotificationsPanel = ({
+  isOpen,
+  notifications,
+  notificationsEnabled,
+  notificationStatus,
+  onClose,
+  onEnableNotifications,
+  onOpenNotification,
+  onClearNotifications,
+}: {
+  isOpen: boolean;
+  notifications: StudentNotificationItem[];
+  notificationsEnabled: boolean;
+  notificationStatus: string;
+  onClose: () => void;
+  onEnableNotifications: () => void;
+  onOpenNotification: (notification: StudentNotificationItem) => void;
+  onClearNotifications: () => void;
+}) => (
+  <AnimatePresence>
+    {isOpen && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[110] flex items-start justify-center bg-slate-950/55 px-4 py-5 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: -16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -16, scale: 0.98 }}
+          transition={{ duration: 0.18 }}
+          className="mt-14 flex max-h-[78vh] w-full max-w-md flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Recent</p>
+              <h2 className="text-lg font-black text-gray-900">Notifications</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid h-10 w-10 place-items-center rounded-2xl bg-gray-100 text-gray-600"
+              aria-label="Close notifications"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50 px-5 py-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-gray-800">
+                {notificationsEnabled ? 'Notifications enabled' : 'Notifications not enabled'}
+              </p>
+              <p className="truncate text-[11px] font-semibold text-gray-500">Status: {notificationStatus || 'unknown'}</p>
+            </div>
+            {!notificationsEnabled && (
+              <button
+                type="button"
+                onClick={onEnableNotifications}
+                className="shrink-0 rounded-xl bg-primary px-3 py-2 text-xs font-black text-white"
+              >
+                Enable
+              </button>
+            )}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {notifications.length ? (
+              <div className="space-y-3">
+                {notifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    onClick={() => onOpenNotification(notification)}
+                    className="w-full rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-primary">
+                        <Bell size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-black text-gray-900">{notification.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-gray-600">{notification.body}</span>
+                        <span className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-gray-400">
+                          <span>{formatNotificationTime(notification.receivedAt)}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-500">{notification.screen || 'home'}</span>
+                        </span>
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-primary shadow-sm">
+                  <Bell size={20} />
+                </div>
+                <h3 className="mt-4 text-sm font-black text-gray-900">No recent notifications</h3>
+                <p className="mt-1 text-xs leading-5 text-gray-500">Admin alerts, course unlocks, and live updates will appear here.</p>
+              </div>
+            )}
+          </div>
+
+          {notifications.length > 0 && (
+            <div className="border-t border-gray-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={onClearNotifications}
+                className="w-full rounded-2xl bg-gray-100 py-3 text-xs font-black text-gray-700"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
 );
 
 const SectionHeader = ({ title, onSeeAll }: { title: string, onSeeAll?: () => void }) => (
@@ -10128,6 +10374,28 @@ export default function App() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY) === 'true' || getNotificationPermissionState() === 'granted';
   });
+  const [studentNotifications, setStudentNotifications] = useState<StudentNotificationItem[]>(() => {
+    const storedNotifications = getStoredStudentNotifications();
+    const latestBroadcast = (cachedAppControlSettings.notificationId || cachedAppControlSettings.notificationSentAt)
+      ? normalizeStudentNotification({
+          id: cachedAppControlSettings.notificationId || 'latest-admin-broadcast',
+          title: cachedAppControlSettings.notificationTitle,
+          body: cachedAppControlSettings.notificationBody,
+          receivedAt: cachedAppControlSettings.notificationSentAt
+            ? new Date(cachedAppControlSettings.notificationSentAt).getTime()
+            : Date.now(),
+          screen: 'home',
+          type: 'admin-broadcast',
+          data: {
+            type: 'admin-broadcast',
+            screen: 'home',
+            notificationId: cachedAppControlSettings.notificationId || '',
+          },
+        })
+      : null;
+    return latestBroadcast ? mergeStudentNotification(storedNotifications, latestBroadcast) : storedNotifications;
+  });
+  const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [pushToken, setPushToken] = useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(PUSH_TOKEN_STORAGE_KEY) || '';
@@ -10172,6 +10440,10 @@ export default function App() {
     appControlSettings.screenProtectionScope === 'premium';
   const videoSurfaceProtectionActive = premiumSurfaceProtectionActive || videoPlayerProtectionActive;
 
+  const addStudentNotification = (notification: Partial<StudentNotificationItem>) => {
+    setStudentNotifications((current) => mergeStudentNotification(current, notification));
+  };
+
   const notifyCourseUnlocks = async (nextCourseIds: string[], previousCourseIds = unlockedCourseIdsRef.current) => {
     if (!appControlSettings.pushEnabled) {
       return;
@@ -10189,6 +10461,19 @@ export default function App() {
       notifiedCourseUnlockIdsRef.current.add(courseId);
       const unlockedCourse = coursesRef.current.find((course) => course.id === courseId);
       const courseTitle = unlockedCourse?.title || 'Premium course';
+      addStudentNotification({
+        id: `course-unlocked-${courseId}-${Date.now()}`,
+        title: 'Course unlocked',
+        body: `${courseTitle} is now available in your RBS Academy app.`,
+        receivedAt: Date.now(),
+        screen: 'video-player',
+        type: 'course-unlocked',
+        data: {
+          type: 'course-unlocked',
+          screen: 'video-player',
+          courseId,
+        },
+      });
       const shown = await showAppNotification(
         'Course unlocked',
         `${courseTitle} is now available in your RBS Academy app.`,
@@ -10359,6 +10644,21 @@ export default function App() {
       if (!isManagementRoute && !settings.splashEnabled) {
         setShowControlledSplash(false);
       }
+      if (!isManagementRoute && (settings.notificationId || settings.notificationSentAt)) {
+        addStudentNotification({
+          id: settings.notificationId || `admin-broadcast-${settings.notificationSentAt || Date.now()}`,
+          title: settings.notificationTitle || 'RBS Academy',
+          body: settings.notificationBody || 'New academy update received.',
+          receivedAt: settings.notificationSentAt ? new Date(settings.notificationSentAt).getTime() : Date.now(),
+          screen: 'home',
+          type: 'admin-broadcast',
+          data: {
+            type: 'admin-broadcast',
+            screen: 'home',
+            notificationId: settings.notificationId || '',
+          },
+        });
+      }
       appControlNotificationKeyRef.current = nextNotificationKey;
       appControlSyncReadyRef.current = true;
 
@@ -10514,13 +10814,23 @@ export default function App() {
         const title = notification.title || 'RBS Academy';
         const body = notification.body || 'New academy update received.';
         const payload = (notification.data || {}) as Record<string, unknown>;
+        const receivedAt = Date.now();
         setNotificationStatus('received');
         window.localStorage.setItem(PUSH_LAST_MESSAGE_STORAGE_KEY, JSON.stringify({
           title,
           body,
-          receivedAt: Date.now(),
+          receivedAt,
           data: payload,
         }));
+        addStudentNotification({
+          id: String(payload.notificationId || `push-${receivedAt}`),
+          title,
+          body,
+          receivedAt,
+          screen: typeof payload.screen === 'string' ? payload.screen as Screen : 'home',
+          type: String(payload.type || 'push'),
+          data: payload,
+        });
         await showAppNotification(title, body, payload, NOTIFICATION_CHANNEL_UPDATES);
       }));
 
@@ -10561,13 +10871,24 @@ export default function App() {
     const addLocalNotificationListeners = async () => {
       handles.push(await LocalNotifications.addListener('localNotificationReceived', (notification) => {
         if (!isMounted) return;
+        const receivedAt = Date.now();
+        const payload = (notification.extra || {}) as Record<string, unknown>;
         setNotificationStatus('received');
         window.localStorage.setItem(PUSH_LAST_MESSAGE_STORAGE_KEY, JSON.stringify({
           title: notification.title,
           body: notification.body,
-          receivedAt: Date.now(),
-          data: notification.extra || {},
+          receivedAt,
+          data: payload,
         }));
+        addStudentNotification({
+          id: String(payload.notificationId || `local-${receivedAt}`),
+          title: notification.title || 'RBS Academy',
+          body: notification.body || 'New academy update received.',
+          receivedAt,
+          screen: typeof payload.screen === 'string' ? payload.screen as Screen : 'home',
+          type: String(payload.type || 'local'),
+          data: payload,
+        });
       }));
 
       handles.push(await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
@@ -10964,6 +11285,24 @@ export default function App() {
     setNotificationsEnabled(result.success);
   };
 
+  const handleNotificationIconClick = () => {
+    setStudentNotifications(getStoredStudentNotifications());
+    setIsNotificationsPanelOpen(true);
+  };
+
+  const handleOpenStudentNotification = (notification: StudentNotificationItem) => {
+    setIsNotificationsPanelOpen(false);
+    openNotificationTarget({
+      ...(notification.data || {}),
+      screen: notification.screen || notification.data?.screen || 'home',
+    });
+  };
+
+  const handleClearStudentNotifications = () => {
+    setStudentNotifications([]);
+    saveStoredStudentNotifications([]);
+  };
+
   const handleRequestCourseUnlock = (course: Course) => {
     setSelectedCourse(course);
     if (isCourseFree(course)) {
@@ -11298,7 +11637,8 @@ export default function App() {
           showBack={screen !== 'home'} 
           onBack={() => setScreen(getBackScreen())} 
           onMenuClick={() => setIsDrawerOpen(true)}
-          onNotificationClick={handleEnableNotifications}
+          onNotificationClick={handleNotificationIconClick}
+          notificationCount={studentNotifications.length}
         />
       )}
       
@@ -11308,6 +11648,19 @@ export default function App() {
           onClose={() => setIsDrawerOpen(false)} 
           user={user}
           setScreen={setScreen}
+        />
+      )}
+
+      {!isManagementRoute && (
+        <StudentNotificationsPanel
+          isOpen={isNotificationsPanelOpen}
+          notifications={studentNotifications}
+          notificationsEnabled={notificationsEnabled}
+          notificationStatus={notificationStatus}
+          onClose={() => setIsNotificationsPanelOpen(false)}
+          onEnableNotifications={handleEnableNotifications}
+          onOpenNotification={handleOpenStudentNotification}
+          onClearNotifications={handleClearStudentNotifications}
         />
       )}
 
