@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "539763133572",
+    "project_id": "rbs-academy",
+    "storage_bucket": "rbs-academy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:539763133572:android:59e6533c8e12a8560406d1",
+        "android_client_info": {
+          "package_name": "com.rbsacademy.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvTWzAMHI6ouUuuqP7dhRxHRz3PnPCEMQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

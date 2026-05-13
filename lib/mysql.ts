@@ -1018,12 +1018,18 @@ const createSchema = async (client: Pool | PoolClient) => {
       note_url TEXT,
       video_url TEXT,
       thumbnail_url TEXT DEFAULT '',
+      download_url TEXT DEFAULT '',
+      download_label TEXT DEFAULT '',
+      download_enabled BOOLEAN DEFAULT TRUE,
       sort_order INTEGER DEFAULT 0
     )
   `);
 
   await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "sort_order" INTEGER DEFAULT 0`);
   await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "thumbnail_url" TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "download_url" TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "download_label" TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE "lessons" ADD COLUMN IF NOT EXISTS "download_enabled" BOOLEAN DEFAULT TRUE`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS notes (
@@ -1045,13 +1051,19 @@ const createSchema = async (client: Pool | PoolClient) => {
       phone TEXT NOT NULL DEFAULT '',
       password TEXT NOT NULL,
       status TEXT DEFAULT 'active',
-      user_category TEXT DEFAULT 'free'
+      user_category TEXT DEFAULT 'free',
+      device_id TEXT DEFAULT '',
+      device_label TEXT DEFAULT '',
+      device_bound_at TIMESTAMPTZ
     )
   `);
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_category TEXT DEFAULT 'free'`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_label TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_bound_at TIMESTAMPTZ`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS admin_credentials (
@@ -1086,6 +1098,56 @@ const createSchema = async (client: Pool | PoolClient) => {
   `);
 
   await client.query(`ALTER TABLE "sliders" ADD COLUMN IF NOT EXISTS "drive_file_id" TEXT DEFAULT ''`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      device_id TEXT DEFAULT '',
+      device_label TEXT DEFAULT '',
+      platform TEXT DEFAULT 'android',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await client.query(`ALTER TABLE push_tokens ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE SET NULL`);
+  await client.query(`ALTER TABLE push_tokens ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE push_tokens ADD COLUMN IF NOT EXISTS device_label TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE push_tokens ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'android'`);
+  await client.query(`ALTER TABLE push_tokens ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS notification_logs (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      audience TEXT DEFAULT 'all',
+      screen TEXT DEFAULT 'home',
+      target_user_ids TEXT DEFAULT '[]',
+      total_devices INTEGER DEFAULT 0,
+      sent_count INTEGER DEFAULT 0,
+      failed_count INTEGER DEFAULT 0,
+      credential_missing BOOLEAN DEFAULT FALSE,
+      errors TEXT DEFAULT '[]',
+      sent_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS target_user_ids TEXT DEFAULT '[]'`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS total_devices INTEGER DEFAULT 0`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS sent_count INTEGER DEFAULT 0`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS failed_count INTEGER DEFAULT 0`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS credential_missing BOOLEAN DEFAULT FALSE`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS errors TEXT DEFAULT '[]'`);
+  await client.query(`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ DEFAULT NOW()`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS questions (

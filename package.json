@@ -6,12 +6,18 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "android:sync": "npm run build && cap sync android",
+    "android:build": "npm run android:sync && cd android && gradlew assembleDebug",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "start": "node server.ts"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/local-notifications": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.4",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/pg": "^8.20.0",
@@ -28,6 +34,8 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.3.2",
+    "@capacitor/cli": "^8.3.2",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",

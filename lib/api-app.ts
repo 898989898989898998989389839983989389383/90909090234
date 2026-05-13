@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
+import { createHash, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import type { PoolConnection, RowDataPacket } from "./mysql.js";
 import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./mysql.js";
@@ -17,6 +17,31 @@ const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "";
 const ADMIN_AUTH_SECRET = process.env.ADMIN_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const PASSWORD_PREFIX = "scrypt";
+const APP_CONTROL_KEY = "app-control";
+const NOTIFICATION_CHANNEL_UPDATES = "rbs-wow-updates";
+const NOTIFICATION_SOUND_FILE = "rbs_wow_tone.wav";
+const DEFAULT_APP_CONTROL_SETTINGS = {
+  appName: "RBS Academy",
+  welcomeEnabled: true,
+  welcomeMessage: "Welcome to RBS Academy. Study smart, stay focused, and keep learning.",
+  maintenanceMode: false,
+  maintenanceMessage: "RBS Academy is under maintenance. Please check back soon.",
+  forceUpdate: false,
+  latestVersion: "1.0.0",
+  updateUrl: "",
+  screenProtection: true,
+  screenProtectionScope: "global",
+  videoProtectionEnabled: true,
+  videoNotesEnabled: true,
+  videoDownloadEnabled: false,
+  offlinePage: true,
+  splashEnabled: true,
+  pushEnabled: true,
+  notificationTitle: "RBS Academy",
+  notificationBody: "New course update available.",
+  notificationId: "",
+  notificationSentAt: "",
+};
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const uploadRoot = process.env.VERCEL
@@ -28,13 +53,49 @@ const questionUploadDir = path.join(uploadRoot, "questions");
 fs.mkdirSync(sliderUploadDir, { recursive: true });
 fs.mkdirSync(questionUploadDir, { recursive: true });
 
-type DbUser = RowDataPacket & { id: string; name: string; email: string; phone: string; password: string; status?: string; user_category?: string };
+type DbUser = RowDataPacket & {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  status?: string;
+  user_category?: string;
+  device_id?: string;
+  device_label?: string;
+  device_bound_at?: Date | string | null;
+};
 type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
-type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; sort_order?: number };
+type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; download_url?: string; download_label?: string; download_enabled?: boolean; sort_order?: number };
 type DbNote = RowDataPacket & { id: string; title: string; lessons: number; category: string; type: string; url?: string; content?: string };
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
 type DbQuestion = RowDataPacket & { id: string; quiz_id: string; text: string; options: string; correctAnswer: number; explanation: string; image_url?: string };
 type DbSlider = RowDataPacket & { id: string; title: string; subtitle: string; image_url: string; drive_file_id?: string; sort_order: number; is_active: number | boolean };
+type DbAppSetting = RowDataPacket & { key: string; value: string; updated_at?: Date | string };
+type DbPushToken = RowDataPacket & {
+  id: string;
+  token: string;
+  user_id?: string;
+  device_id?: string;
+  device_label?: string;
+  platform?: string;
+  created_at?: Date | string;
+  last_seen_at?: Date | string;
+};
+type DbNotificationLog = RowDataPacket & {
+  id: string;
+  title: string;
+  body: string;
+  audience: string;
+  screen: string;
+  target_user_ids?: string;
+  total_devices?: number;
+  sent_count?: number;
+  failed_count?: number;
+  credential_missing?: boolean | number | string;
+  errors?: string;
+  sent_at?: Date | string;
+};
 type DbLiveClass = RowDataPacket & {
   id: string;
   title: string;
@@ -59,6 +120,8 @@ const createId = (prefix: string) => `${prefix}${Date.now()}${randomUUID().repla
 const isValidStudentName = (value: string) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const normalizePhoneNumber = (value: string) => value.replace(/\D/g, "");
+const normalizeDeviceId = (value: unknown) => String(value || "").trim().slice(0, 160);
+const normalizeDeviceLabel = (value: unknown) => String(value || "Student mobile").trim().slice(0, 240);
 const toBase64Url = (value: string) => Buffer.from(value).toString("base64url");
 const fromBase64Url = (value: string) => Buffer.from(value, "base64url").toString("utf8");
 const hashValue = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -118,6 +181,198 @@ const normalizeSlider = (slider: Partial<DbSlider>) => ({
     : Boolean(slider.is_active),
   drive_file_id: String(slider.drive_file_id || ""),
 });
+
+const normalizeNotificationLog = (notification: Partial<DbNotificationLog>) => ({
+  id: String(notification.id || ""),
+  title: String(notification.title || ""),
+  body: String(notification.body || ""),
+  audience: String(notification.audience || "all"),
+  screen: String(notification.screen || "home"),
+  targetUserIds: parseJsonArray(notification.target_user_ids).map((item) => String(item)),
+  totalDevices: Number(notification.total_devices || 0),
+  sent: Number(notification.sent_count || 0),
+  failed: Number(notification.failed_count || 0),
+  credentialMissing: typeof notification.credential_missing === "string"
+    ? notification.credential_missing.toLowerCase() === "true"
+    : Boolean(notification.credential_missing),
+  errors: parseJsonArray(notification.errors).map((item) => String(item)),
+  sentAt: notification.sent_at ? new Date(notification.sent_at).toISOString() : "",
+});
+
+const normalizeAppControlSettings = (value: unknown) => {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    ...DEFAULT_APP_CONTROL_SETTINGS,
+    ...record,
+    appName: String(record.appName || DEFAULT_APP_CONTROL_SETTINGS.appName),
+    welcomeEnabled: Boolean(record.welcomeEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.welcomeEnabled),
+    welcomeMessage: String(record.welcomeMessage || DEFAULT_APP_CONTROL_SETTINGS.welcomeMessage),
+    maintenanceMode: Boolean(record.maintenanceMode ?? DEFAULT_APP_CONTROL_SETTINGS.maintenanceMode),
+    maintenanceMessage: String(record.maintenanceMessage || DEFAULT_APP_CONTROL_SETTINGS.maintenanceMessage),
+    forceUpdate: Boolean(record.forceUpdate ?? DEFAULT_APP_CONTROL_SETTINGS.forceUpdate),
+    latestVersion: String(record.latestVersion || DEFAULT_APP_CONTROL_SETTINGS.latestVersion),
+    updateUrl: String(record.updateUrl || ""),
+    screenProtection: Boolean(record.screenProtection ?? DEFAULT_APP_CONTROL_SETTINGS.screenProtection),
+    screenProtectionScope: String(record.screenProtectionScope || DEFAULT_APP_CONTROL_SETTINGS.screenProtectionScope) === "premium" ? "premium" : "global",
+    videoProtectionEnabled: Boolean(record.videoProtectionEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoProtectionEnabled),
+    videoNotesEnabled: Boolean(record.videoNotesEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoNotesEnabled),
+    videoDownloadEnabled: Boolean(record.videoDownloadEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoDownloadEnabled),
+    offlinePage: Boolean(record.offlinePage ?? DEFAULT_APP_CONTROL_SETTINGS.offlinePage),
+    splashEnabled: Boolean(record.splashEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.splashEnabled),
+    pushEnabled: Boolean(record.pushEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.pushEnabled),
+    notificationTitle: String(record.notificationTitle || DEFAULT_APP_CONTROL_SETTINGS.notificationTitle),
+    notificationBody: String(record.notificationBody || DEFAULT_APP_CONTROL_SETTINGS.notificationBody),
+    notificationId: String(record.notificationId || ""),
+    notificationSentAt: String(record.notificationSentAt || ""),
+  };
+};
+
+const getAppControlSettings = async () => {
+  const row = await queryOne<DbAppSetting>("SELECT value FROM app_settings WHERE key = ?", [APP_CONTROL_KEY]);
+  if (!row?.value) {
+    return DEFAULT_APP_CONTROL_SETTINGS;
+  }
+
+  try {
+    return normalizeAppControlSettings(JSON.parse(String(row.value)));
+  } catch {
+    return DEFAULT_APP_CONTROL_SETTINGS;
+  }
+};
+
+const getFirebaseServiceAccount = () => {
+  const rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+  if (!rawValue.trim()) {
+    return null;
+  }
+
+  try {
+    const decoded = rawValue.trim().startsWith("{")
+      ? rawValue
+      : Buffer.from(rawValue.trim(), "base64").toString("utf8");
+    const account = JSON.parse(decoded) as { project_id?: string; client_email?: string; private_key?: string };
+    if (!account.project_id || !account.client_email || !account.private_key) {
+      return null;
+    }
+    return account;
+  } catch {
+    return null;
+  }
+};
+
+let firebaseTokenCache: { token: string; expiresAt: number } | null = null;
+
+const getFirebaseAccessToken = async () => {
+  if (firebaseTokenCache && firebaseTokenCache.expiresAt > Date.now() + 60_000) {
+    return firebaseTokenCache.token;
+  }
+
+  const serviceAccount = getFirebaseServiceAccount();
+  if (!serviceAccount) {
+    return "";
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const encodedHeader = toBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const encodedClaims = toBase64Url(JSON.stringify({
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  }));
+  const signingInput = `${encodedHeader}.${encodedClaims}`;
+  const signature = createSign("RSA-SHA256")
+    .update(signingInput)
+    .sign(serviceAccount.private_key.replace(/\\n/g, "\n"), "base64url");
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: `${signingInput}.${signature}`,
+    }),
+  });
+  const data = await response.json() as { access_token?: string; expires_in?: number; error_description?: string };
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error_description || "Unable to authorize Firebase Cloud Messaging.");
+  }
+
+  firebaseTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000,
+  };
+  return data.access_token;
+};
+
+const sendFirebasePushToToken = async (
+  token: string,
+  notification: { title: string; body: string; data?: Record<string, string> },
+) => {
+  const serviceAccount = getFirebaseServiceAccount();
+  const legacyServerKey = process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY || "";
+
+  if (serviceAccount) {
+    const accessToken = await getFirebaseAccessToken();
+    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: {
+            title: notification.title,
+            body: notification.body,
+          },
+          data: notification.data || {},
+          android: {
+            priority: "HIGH",
+            notification: {
+              channel_id: NOTIFICATION_CHANNEL_UPDATES,
+              sound: NOTIFICATION_SOUND_FILE,
+            },
+          },
+        },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String((data as Record<string, unknown>)?.error || "FCM send failed"));
+    }
+    return;
+  }
+
+  if (legacyServerKey) {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        Authorization: `key=${legacyServerKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: token,
+        priority: "high",
+        notification: {
+          title: notification.title,
+          body: notification.body,
+          sound: NOTIFICATION_SOUND_FILE,
+          channel_id: NOTIFICATION_CHANNEL_UPDATES,
+        },
+        data: notification.data || {},
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || Number((data as { failure?: number }).failure || 0) > 0) {
+      throw new Error(String((data as Record<string, unknown>)?.error || "FCM send failed"));
+    }
+  }
+};
+
+const hasFirebasePushCredentials = () => Boolean(getFirebaseServiceAccount() || process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY);
 
 const getDriveFileIdFromUrl = (url?: string) => {
   const value = String(url || "");
@@ -377,6 +632,11 @@ const syncUserCategory = async (userId: string) => {
   return nextCategory;
 };
 
+const getFreshNormalizedUser = async (userId: string) => {
+  const user = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [userId]);
+  return user ? normalizeUser(user) : null;
+};
+
 const canUserViewLiveClass = (
   liveClass: ReturnType<typeof normalizeLiveClass>,
   userId: string,
@@ -404,6 +664,7 @@ const canUserViewLiveClass = (
 const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone"> & Partial<DbUser>) => {
   const grantedCourseIds = await getGrantedCourseIds(String(user.id));
   const blockedCourseIds = await getBlockedCourseIds(String(user.id));
+  const deviceBoundAt = user.device_bound_at ? new Date(user.device_bound_at).toISOString() : "";
   return {
     id: String(user.id),
     name: String(user.name || ""),
@@ -413,6 +674,10 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
     userCategory: getComputedUserCategory(user, grantedCourseIds),
     grantedCourseIds,
     blockedCourseIds,
+    deviceId: String(user.device_id || ""),
+    deviceLabel: String(user.device_label || ""),
+    deviceBoundAt,
+    deviceLocked: Boolean(user.device_id),
   };
 };
 
@@ -463,7 +728,46 @@ const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "ph
     userCategory: getComputedUserCategory(user, courseIdsByUser.get(String(user.id)) || []),
     grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
     blockedCourseIds: blockedCourseIdsByUser.get(String(user.id)) || [],
+    deviceId: String(user.device_id || ""),
+    deviceLabel: String(user.device_label || ""),
+    deviceBoundAt: user.device_bound_at ? new Date(user.device_bound_at).toISOString() : "",
+    deviceLocked: Boolean(user.device_id),
   }));
+};
+
+const verifyAndBindUserDevice = async (user: DbUser, deviceId: string, deviceLabel: string) => {
+  const normalizedDeviceId = normalizeDeviceId(deviceId);
+  const normalizedDeviceLabel = normalizeDeviceLabel(deviceLabel);
+  const existingDeviceId = normalizeDeviceId(user.device_id);
+
+  if (!normalizedDeviceId) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Device verification failed. Please update the app and login again.",
+    };
+  }
+
+  if (existingDeviceId && existingDeviceId !== normalizedDeviceId) {
+    return {
+      ok: false,
+      status: 403,
+      message: "This student ID is already active on another mobile. Contact admin to reset device.",
+      deviceLocked: true,
+    };
+  }
+
+  if (!existingDeviceId) {
+    await execute(
+      "UPDATE users SET device_id = ?, device_label = ?, device_bound_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [normalizedDeviceId, normalizedDeviceLabel, user.id],
+    );
+    user.device_id = normalizedDeviceId;
+    user.device_label = normalizedDeviceLabel;
+    user.device_bound_at = new Date();
+  }
+
+  return { ok: true, status: 200, message: "Device verified" };
 };
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -695,7 +999,14 @@ export const createApiApp = async () => {
 
   const app = express();
   app.disable("x-powered-by");
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control");
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
@@ -822,13 +1133,20 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/signup", asyncHandler(async (req, res) => {
-    const { name, email, phone, password } = req.body || {};
+    const { name, email, phone, password, deviceId, deviceLabel } = req.body || {};
     const trimmedName = String(name || "").trim();
     const normalizedEmail = normalizeEmail(String(email || ""));
     const normalizedPhone = normalizePhoneNumber(String(phone || ""));
+    const normalizedDeviceId = normalizeDeviceId(deviceId);
+    const normalizedDeviceLabel = normalizeDeviceLabel(deviceLabel);
 
     if (!trimmedName || !normalizedEmail || !password || !normalizedPhone) {
       res.status(400).json({ success: false, message: "All fields are required" });
+      return;
+    }
+
+    if (!normalizedDeviceId) {
+      res.status(400).json({ success: false, message: "Device verification failed. Please update the app and try again." });
       return;
     }
 
@@ -849,12 +1167,28 @@ export const createApiApp = async () => {
     }
 
     const id = `u${Date.now()}`;
-    await execute("INSERT INTO users (id, name, email, phone, password, status, user_category) VALUES (?, ?, ?, ?, ?, 'active', 'free')", [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password))]);
-    res.status(201).json({ success: true, user: { id, name: trimmedName, email: normalizedEmail, phone: normalizedPhone, userCategory: "free" } });
+    await execute(
+      "INSERT INTO users (id, name, email, phone, password, status, user_category, device_id, device_label, device_bound_at) VALUES (?, ?, ?, ?, ?, 'active', 'free', ?, ?, CURRENT_TIMESTAMP)",
+      [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password)), normalizedDeviceId, normalizedDeviceLabel],
+    );
+    res.status(201).json({
+      success: true,
+      user: await normalizeUser({
+        id,
+        name: trimmedName,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        status: "active",
+        user_category: "free",
+        device_id: normalizedDeviceId,
+        device_label: normalizedDeviceLabel,
+        device_bound_at: new Date(),
+      }),
+    });
   }));
 
   app.post("/api/login", asyncHandler(async (req, res) => {
-    const { email, password } = req.body || {};
+    const { email, password, deviceId, deviceLabel } = req.body || {};
     if (!email || !password) {
       res.status(400).json({ success: false, message: "Email and password are required" });
       return;
@@ -876,30 +1210,25 @@ export const createApiApp = async () => {
       await execute("UPDATE users SET password = ? WHERE id = ?", [hashPassword(String(password)), user.id]);
     }
 
-    const grantedCourseIds = await getGrantedCourseIds(String(user.id));
+    const deviceCheck = await verifyAndBindUserDevice(user, String(deviceId || ""), String(deviceLabel || ""));
+    if (!deviceCheck.ok) {
+      res.status(deviceCheck.status).json({ success: false, message: deviceCheck.message, deviceLocked: deviceCheck.deviceLocked });
+      return;
+    }
 
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone || "",
-        status: String(user.status || "active"),
-        userCategory: getComputedUserCategory(user, grantedCourseIds),
-        grantedCourseIds,
-      },
-    });
+    res.json({ success: true, user: await normalizeUser(user) });
   }));
 
   app.get("/api/session-user", asyncHandler(async (req, res) => {
     const userId = String(req.query.userId || "").trim();
+    const deviceId = String(req.query.deviceId || "");
+    const deviceLabel = String(req.query.deviceLabel || "");
     if (!userId) {
       res.status(400).json({ success: false, message: "User id is required" });
       return;
     }
 
-    const user = await queryOne<DbUser>("SELECT id, name, email, phone, status, user_category FROM users WHERE id = ?", [userId]);
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [userId]);
     if (!user) {
       res.status(404).json({ success: false, message: "User not found" });
       return;
@@ -907,6 +1236,17 @@ export const createApiApp = async () => {
 
     if (String(user.status || "active").toLowerCase() === "blocked") {
       res.status(403).json({ success: false, blocked: true, message: "Your account is blocked. Contact academy admin." });
+      return;
+    }
+
+    const deviceCheck = await verifyAndBindUserDevice(user, deviceId, deviceLabel);
+    if (!deviceCheck.ok) {
+      res.status(deviceCheck.status).json({
+        success: false,
+        blocked: deviceCheck.status === 403,
+        deviceLocked: deviceCheck.deviceLocked,
+        message: deviceCheck.message,
+      });
       return;
     }
 
@@ -939,13 +1279,13 @@ export const createApiApp = async () => {
   }));
 
   app.get("/api/users", asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status, user_category FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT * FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
 
   app.get("/api/admin-users", requireAdmin(), asyncHandler(async (_req, res) => {
-    const users = await queryRows<DbUser>("SELECT id, name, email, phone, status, user_category FROM users ORDER BY name ASC, id ASC");
+    const users = await queryRows<DbUser>("SELECT * FROM users ORDER BY name ASC, id ASC");
     const normalized = await normalizeUsers(users);
     res.json(normalized);
   }));
@@ -953,6 +1293,190 @@ export const createApiApp = async () => {
   app.get("/api/sliders", asyncHandler(async (_req, res) => {
     const sliders = await queryRows<DbSlider>("SELECT * FROM sliders ORDER BY sort_order ASC, id ASC");
     res.json(sliders.map(normalizeSliderForClient));
+  }));
+
+  app.get("/api/app-control", asyncHandler(async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.json({ settings: await getAppControlSettings() });
+  }));
+
+  app.post("/api/app-control", requireAdmin(["superadmin"]), asyncHandler(async (req, res) => {
+    const settings = normalizeAppControlSettings((req.body || {}).settings || req.body || {});
+    await execute(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      [APP_CONTROL_KEY, JSON.stringify(settings), new Date()],
+    );
+    res.json({ success: true, message: "App control settings saved", settings });
+  }));
+
+  app.post("/api/register-push-token", asyncHandler(async (req, res) => {
+    const token = String(req.body?.token || "").trim();
+    const userId = String(req.body?.userId || "").trim();
+    const deviceId = normalizeDeviceId(req.body?.deviceId);
+    const deviceLabel = normalizeDeviceLabel(req.body?.deviceLabel);
+    const platform = String(req.body?.platform || "android").trim().slice(0, 40);
+
+    if (!token) {
+      res.status(400).json({ success: false, message: "Push token is required" });
+      return;
+    }
+
+    const existingUser = userId ? await queryOne<DbUser>("SELECT id FROM users WHERE id = ?", [userId]) : null;
+    await execute(
+      `INSERT INTO push_tokens (id, token, user_id, device_id, device_label, platform, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (token)
+       DO UPDATE SET user_id = EXCLUDED.user_id, device_id = EXCLUDED.device_id, device_label = EXCLUDED.device_label, platform = EXCLUDED.platform, last_seen_at = CURRENT_TIMESTAMP`,
+      [createId("pt"), token, existingUser ? userId : null, deviceId, deviceLabel, platform || "android"],
+    );
+
+    res.json({ success: true, message: "Push token registered" });
+  }));
+
+  app.get("/api/notification-history", requireAdmin(), asyncHandler(async (_req, res) => {
+    const notifications = await queryRows<DbNotificationLog>(
+      "SELECT * FROM notification_logs ORDER BY sent_at DESC, id DESC LIMIT 50",
+    );
+    res.json({ success: true, notifications: notifications.map(normalizeNotificationLog) });
+  }));
+
+  app.post("/api/sendPushNotification", requireAdmin(), asyncHandler(async (req, res) => {
+    const title = String(req.body?.title || "").trim().slice(0, 120);
+    const body = String(req.body?.body || "").trim().slice(0, 500);
+    const audience = String(req.body?.audience || "all").toLowerCase();
+    const userIds = parseJsonArray(req.body?.userIds).map((item) => String(item)).filter(Boolean);
+    const screen = String(req.body?.screen || "home").trim().slice(0, 60);
+
+    if (!title || !body) {
+      res.status(400).json({ success: false, message: "Notification title and body are required" });
+      return;
+    }
+
+    if (audience === "selected" && !userIds.length) {
+      res.status(400).json({ success: false, message: "Select at least one student" });
+      return;
+    }
+
+    const notificationId = `push-${Date.now()}`;
+    const sentAt = new Date().toISOString();
+    const settings = normalizeAppControlSettings({
+      ...(await getAppControlSettings()),
+      pushEnabled: true,
+      notificationTitle: title,
+      notificationBody: body,
+      notificationId,
+      notificationSentAt: sentAt,
+    });
+    await execute(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      [APP_CONTROL_KEY, JSON.stringify(settings), new Date()],
+    );
+
+    let rows: DbPushToken[] = [];
+    if (audience === "selected") {
+      rows = await queryRows<DbPushToken>(
+        "SELECT pt.* FROM push_tokens pt JOIN users u ON u.id = pt.user_id WHERE u.status <> 'blocked' AND pt.user_id = ANY($1::text[]) ORDER BY pt.last_seen_at DESC",
+        [userIds],
+      );
+    } else if (audience === "premium") {
+      rows = await queryRows<DbPushToken>(
+        "SELECT pt.* FROM push_tokens pt JOIN users u ON u.id = pt.user_id WHERE u.status <> 'blocked' AND u.user_category = 'premium' ORDER BY pt.last_seen_at DESC",
+      );
+    } else if (audience === "free") {
+      rows = await queryRows<DbPushToken>(
+        "SELECT pt.* FROM push_tokens pt JOIN users u ON u.id = pt.user_id WHERE u.status <> 'blocked' AND COALESCE(u.user_category, 'free') <> 'premium' ORDER BY pt.last_seen_at DESC",
+      );
+    } else {
+      rows = await queryRows<DbPushToken>(
+        "SELECT pt.* FROM push_tokens pt LEFT JOIN users u ON u.id = pt.user_id WHERE COALESCE(u.status, 'active') <> 'blocked' ORDER BY pt.last_seen_at DESC",
+      );
+    }
+
+    const tokens = Array.from(new Set(rows.map((row) => String(row.token || "").trim()).filter(Boolean)));
+    let sent = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    if (hasFirebasePushCredentials()) {
+      for (const token of tokens) {
+        try {
+          await sendFirebasePushToToken(token, {
+            title,
+            body,
+            data: {
+              type: "admin-broadcast",
+              screen,
+              notificationId,
+            },
+          });
+          sent += 1;
+        } catch (error) {
+          failed += 1;
+          if (errors.length < 3) {
+            errors.push(error instanceof Error ? error.message : "FCM send failed");
+          }
+        }
+      }
+    }
+
+    const credentialMissing = !hasFirebasePushCredentials();
+    const message = credentialMissing
+      ? "Notification saved for app broadcast. Add Firebase service account env to send when app is closed."
+      : `Push notification sent to ${sent} device${sent === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}.`;
+    await execute(
+      `INSERT INTO notification_logs (id, title, body, audience, screen, target_user_ids, total_devices, sent_count, failed_count, credential_missing, errors, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        notificationId,
+        title,
+        body,
+        audience,
+        screen,
+        JSON.stringify(userIds),
+        tokens.length,
+        sent,
+        failed,
+        credentialMissing,
+        JSON.stringify(errors),
+        new Date(sentAt),
+      ],
+    );
+    const notification = normalizeNotificationLog({
+      id: notificationId,
+      title,
+      body,
+      audience,
+      screen,
+      target_user_ids: JSON.stringify(userIds),
+      total_devices: tokens.length,
+      sent_count: sent,
+      failed_count: failed,
+      credential_missing: credentialMissing,
+      errors: JSON.stringify(errors),
+      sent_at: sentAt,
+    });
+
+    res.json({
+      success: true,
+      message,
+      notificationId,
+      sentAt,
+      audience,
+      total: tokens.length,
+      sent,
+      failed,
+      fallbackBroadcast: true,
+      credentialMissing,
+      errors,
+      settings,
+      notification,
+    });
   }));
 
   app.get("/api/live-classes", asyncHandler(async (req, res) => {
@@ -1293,7 +1817,7 @@ export const createApiApp = async () => {
     if (existing) {
       await execute("UPDATE enrollments SET access_code = ?, granted_at = ?, expires_at = ?, status = 'active' WHERE id = ?", [generatedCode, new Date(), expiryDate, existing.id]);
       await syncUserCategory(String(userId));
-      res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
+      res.json({ success: true, message: "Course access granted", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
       return;
     }
 
@@ -1302,7 +1826,7 @@ export const createApiApp = async () => {
       [createId("en"), userId, courseId, generatedCode, new Date(), expiryDate],
     );
     await syncUserCategory(String(userId));
-    res.json({ success: true, message: "Course access granted", accessCode: generatedCode });
+    res.json({ success: true, message: "Course access granted", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
   }));
 
   app.post("/api/revokeCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
@@ -1313,7 +1837,7 @@ export const createApiApp = async () => {
     }
     await execute("DELETE FROM enrollments WHERE user_id = ? AND course_id = ?", [userId, courseId]);
     await syncUserCategory(String(userId));
-    res.json({ success: true, message: "Course access revoked" });
+    res.json({ success: true, message: "Course access revoked", user: await getFreshNormalizedUser(String(userId)) });
   }));
 
   app.post("/api/blockCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
@@ -1330,7 +1854,7 @@ export const createApiApp = async () => {
       [createId("en"), userId, courseId, new Date()],
     );
     await syncUserCategory(String(userId));
-    res.json({ success: true, message: "Student blocked from this course" });
+    res.json({ success: true, message: "Student blocked from this course", user: await getFreshNormalizedUser(String(userId)) });
   }));
 
   app.post("/api/blockUser", requireAdmin(), asyncHandler(async (req, res) => {
@@ -1340,7 +1864,7 @@ export const createApiApp = async () => {
       return;
     }
     await execute("UPDATE users SET status = 'blocked' WHERE id = ?", [userId]);
-    res.json({ success: true, message: "Student blocked from platform" });
+    res.json({ success: true, message: "Student blocked from platform", user: await getFreshNormalizedUser(String(userId)) });
   }));
 
   app.post("/api/unblockUser", requireAdmin(), asyncHandler(async (req, res) => {
@@ -1350,11 +1874,26 @@ export const createApiApp = async () => {
       return;
     }
     await execute("UPDATE users SET status = 'active' WHERE id = ?", [userId]);
-    res.json({ success: true, message: "Student unblocked on platform" });
+    res.json({ success: true, message: "Student unblocked on platform", user: await getFreshNormalizedUser(String(userId)) });
+  }));
+
+  app.post("/api/resetStudentDevice", requireAdmin(), asyncHandler(async (req, res) => {
+    const { userId } = req.body || {};
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User id is required" });
+      return;
+    }
+
+    await execute("UPDATE users SET device_id = '', device_label = '', device_bound_at = NULL WHERE id = ?", [userId]);
+    res.json({
+      success: true,
+      message: "Student mobile reset. Next login will bind the new mobile.",
+      user: await getFreshNormalizedUser(String(userId)),
+    });
   }));
 
   app.post("/api/verifyCourseAccess", asyncHandler(async (req, res) => {
-    const { courseId, accessCode, userId } = req.body || {};
+    const { courseId, accessCode, userId, deviceId, deviceLabel } = req.body || {};
     if (!courseId || !userId) {
       res.status(400).json({ success: false, message: "Course id and user id are required" });
       return;
@@ -1366,9 +1905,25 @@ export const createApiApp = async () => {
       return;
     }
 
-    const user = await queryOne<DbUser>("SELECT status FROM users WHERE id = ?", [userId]);
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [userId]);
     if (String(user?.status || "active").toLowerCase() === "blocked") {
       res.status(403).json({ success: false, message: "Your account is blocked. Contact academy admin." });
+      return;
+    }
+
+    if (!user) {
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+
+    const deviceCheck = await verifyAndBindUserDevice(user, String(deviceId || ""), String(deviceLabel || ""));
+    if (!deviceCheck.ok) {
+      res.status(deviceCheck.status).json({
+        success: false,
+        blocked: deviceCheck.status === 403,
+        deviceLocked: deviceCheck.deviceLocked,
+        message: deviceCheck.message,
+      });
       return;
     }
 
@@ -1404,7 +1959,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/createLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order } = req.body || {};
+    const { course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
     if (!course_id || !title) {
       res.status(400).json({ success: false, message: "Course and lesson title are required" });
       return;
@@ -1412,14 +1967,14 @@ export const createApiApp = async () => {
 
     const id = createId("l");
     await execute(
-      "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", Number(sort_order || 0)],
+      "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", download_url || "", download_label || "", download_enabled === false ? false : true, Number(sort_order || 0)],
     );
     res.status(201).json({ success: true, message: "Lesson created" });
   }));
 
   app.post("/api/updateLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, sort_order } = req.body || {};
+    const { id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
     if (!id || !course_id || !title) {
       res.status(400).json({ success: false, message: "Id, course, and lesson title are required" });
       return;
@@ -1432,8 +1987,8 @@ export const createApiApp = async () => {
     }
 
     await execute(
-      "UPDATE lessons SET course_id = ?, title = ?, duration = ?, note_content = ?, note_url = ?, video_url = ?, thumbnail_url = ?, sort_order = ? WHERE id = ?",
-      [course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", Number(sort_order || 0), id],
+      "UPDATE lessons SET course_id = ?, title = ?, duration = ?, note_content = ?, note_url = ?, video_url = ?, thumbnail_url = ?, download_url = ?, download_label = ?, download_enabled = ?, sort_order = ? WHERE id = ?",
+      [course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", download_url || "", download_label || "", download_enabled === false ? false : true, Number(sort_order || 0), id],
     );
     res.json({ success: true, message: "Lesson updated" });
   }));
@@ -1657,7 +2212,7 @@ export const createApiApp = async () => {
 
     const nextPassword = password ? hashPassword(String(password)) : current.password;
     await execute("UPDATE users SET name = ?, password = ? WHERE id = ?", [trimmedName, nextPassword, id]);
-    const updatedUser = await queryOne<DbUser>("SELECT id, name, email, phone, status, user_category FROM users WHERE id = ?", [id]);
+    const updatedUser = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [id]);
     res.json({ success: true, message: "Profile updated", user: updatedUser ? await normalizeUser(updatedUser) : null });
   }));
 

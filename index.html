@@ -3,9 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>rbs acdemy</title>
+    <meta name="theme-color" content="#0047AB" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="RBS Academy" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(145deg, #082847 0%, #0b56c4 52%, #15958c 100%);
+        color: #fff;
+        transition: opacity 220ms ease, visibility 220ms ease;
+      }
+      #app-splash.app-splash--hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .app-splash-panel {
+        display: grid;
+        gap: 16px;
+        place-items: center;
+        text-align: center;
+      }
+      .app-splash-panel img {
+        width: 112px;
+        height: 112px;
+        filter: drop-shadow(0 20px 34px rgba(0, 0, 0, 0.28));
+      }
+      .app-splash-panel strong {
+        font: 800 28px/1.1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .app-splash-panel span {
+        color: rgba(255, 255, 255, 0.72);
+        font: 700 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
+    </style>
+    <title>RBS Academy</title>
   </head>
   <body>
+    <div id="app-splash" aria-hidden="true">
+      <div class="app-splash-panel">
+        <img src="/splash.svg" alt="" />
+        <strong>RBS Academy</strong>
+        <span>Premium Chemistry Learning</span>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

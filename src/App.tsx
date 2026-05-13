@@ -37,7 +37,10 @@ import {
   Headphones,
   Pause,
   Volume2,
-  Waves
+  Waves,
+  WifiOff,
+  RefreshCw,
+  Smartphone
   ,Upload,
   Phone,
   FlaskConical
@@ -45,9 +48,13 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 import ReactMarkdown from 'react-markdown';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
 
 interface Lesson {
   id: string;
@@ -58,6 +65,9 @@ interface Lesson {
   note_url?: string;
   video_url?: string;
   thumbnail_url?: string;
+  download_url?: string;
+  download_label?: string;
+  download_enabled?: boolean;
   sort_order?: number;
 }
 
@@ -133,6 +143,10 @@ interface AuthUser {
   userCategory?: 'free' | 'premium';
   grantedCourseIds?: string[];
   blockedCourseIds?: string[];
+  deviceId?: string;
+  deviceLabel?: string;
+  deviceBoundAt?: string;
+  deviceLocked?: boolean;
 }
 
 interface StoredUser extends AuthUser {
@@ -163,6 +177,45 @@ interface AdminSession {
   rememberMe?: boolean;
 }
 
+interface AppControlSettings {
+  appName: string;
+  welcomeEnabled: boolean;
+  welcomeMessage: string;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  forceUpdate: boolean;
+  latestVersion: string;
+  updateUrl: string;
+  screenProtection: boolean;
+  screenProtectionScope?: 'global' | 'premium';
+  videoProtectionEnabled: boolean;
+  videoNotesEnabled: boolean;
+  videoDownloadEnabled: boolean;
+  offlinePage: boolean;
+  splashEnabled: boolean;
+  pushEnabled: boolean;
+  notificationTitle: string;
+  notificationBody: string;
+  notificationId?: string;
+  notificationSentAt?: string;
+}
+
+interface NotificationHistoryItem {
+  id: string;
+  title: string;
+  body: string;
+  audience: string;
+  screen: string;
+  targetUserIds: string[];
+  totalDevices: number;
+  sent: number;
+  failed: number;
+  credentialMissing: boolean;
+  sentAt: string;
+}
+
+type AdminPanelTab = 'dashboard' | 'app-control' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'live' | 'user' | 'access' | 'push-notification';
+
 const AUTH_STORAGE_KEY = 'rbs-academy-users';
 const THEME_STORAGE_KEY = 'rbs-academy-theme';
 const USER_SESSION_KEY = 'rbs-academy-user-session';
@@ -171,9 +224,41 @@ const ADMIN_ACCOUNTS_STORAGE_KEY = 'rbs-academy-admin-accounts';
 const NOTE_CATEGORIES_STORAGE_KEY = 'rbs-academy-note-categories';
 const APP_DATA_CACHE_KEY = 'rbs-academy-app-cache';
 const ADMIN_USERS_CACHE_KEY = 'rbs-academy-admin-users-cache';
+const APP_CONTROL_CACHE_KEY = 'rbs-academy-app-control-cache';
+const APP_WELCOME_SEEN_KEY = 'rbs-academy-welcome-seen';
+const NOTIFICATION_PREF_STORAGE_KEY = 'rbs-academy-notifications-enabled';
+const PUSH_TOKEN_STORAGE_KEY = 'rbs-academy-push-token';
+const PUSH_LAST_MESSAGE_STORAGE_KEY = 'rbs-academy-push-last-message';
+const DEVICE_ID_STORAGE_KEY = 'rbs-academy-device-id';
+const NOTIFICATION_SOUND_FILE = 'rbs_wow_tone.wav';
+const NOTIFICATION_CHANNEL_UPDATES = 'rbs-wow-updates';
+const NOTIFICATION_CHANNEL_COURSE_ACCESS = 'rbs-wow-course-access';
 const DATA_REQUEST_TIMEOUT_MS = 8000;
+const DEFAULT_APP_CONTROL_SETTINGS: AppControlSettings = {
+  appName: 'RBS Academy',
+  welcomeEnabled: true,
+  welcomeMessage: 'Welcome to RBS Academy. Study smart, stay focused, and keep learning.',
+  maintenanceMode: false,
+  maintenanceMessage: 'RBS Academy is under maintenance. Please check back soon.',
+  forceUpdate: false,
+  latestVersion: '1.0.0',
+  updateUrl: '',
+  screenProtection: true,
+  screenProtectionScope: 'premium',
+  videoProtectionEnabled: true,
+  videoNotesEnabled: true,
+  videoDownloadEnabled: false,
+  offlinePage: true,
+  splashEnabled: true,
+  pushEnabled: true,
+  notificationTitle: 'RBS Academy',
+  notificationBody: 'New course update available.',
+  notificationId: '',
+  notificationSentAt: '',
+};
 const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec';
 const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL).trim();
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
@@ -188,10 +273,19 @@ const getAppsScriptActionUrl = (action: string) => {
   return `${APPS_SCRIPT_URL}${separator}action=${encodeURIComponent(action)}`;
 };
 
+const apiUrl = (path: string) => {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+};
+
 const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders' | 'live-classes', params?: Record<string, string>) => {
   const query = new URLSearchParams(params || {});
   const suffix = query.toString();
-  return fetch(`/api/${resource}${suffix ? `?${suffix}` : ''}`);
+  return fetch(apiUrl(`/api/${resource}${suffix ? `?${suffix}` : ''}`));
 };
 
 const normalizeAdminUser = (value: unknown): AdminUser | null => {
@@ -334,10 +428,71 @@ const saveCachedAdminUsers = (users: AdminUser[]) => {
   }
 };
 
+const normalizeAppControlSettings = (value: unknown): AppControlSettings => {
+  const record = value && typeof value === 'object' ? value as Partial<AppControlSettings> : {};
+  return {
+    ...DEFAULT_APP_CONTROL_SETTINGS,
+    ...record,
+    appName: String(record.appName || DEFAULT_APP_CONTROL_SETTINGS.appName),
+    welcomeEnabled: Boolean(record.welcomeEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.welcomeEnabled),
+    welcomeMessage: String(record.welcomeMessage || DEFAULT_APP_CONTROL_SETTINGS.welcomeMessage),
+    maintenanceMode: Boolean(record.maintenanceMode ?? DEFAULT_APP_CONTROL_SETTINGS.maintenanceMode),
+    maintenanceMessage: String(record.maintenanceMessage || DEFAULT_APP_CONTROL_SETTINGS.maintenanceMessage),
+    forceUpdate: Boolean(record.forceUpdate ?? DEFAULT_APP_CONTROL_SETTINGS.forceUpdate),
+    latestVersion: String(record.latestVersion || DEFAULT_APP_CONTROL_SETTINGS.latestVersion),
+    updateUrl: String(record.updateUrl || ''),
+    screenProtection: Boolean(record.screenProtection ?? DEFAULT_APP_CONTROL_SETTINGS.screenProtection),
+    screenProtectionScope: String(record.screenProtectionScope || DEFAULT_APP_CONTROL_SETTINGS.screenProtectionScope) === 'premium' ? 'premium' : 'global',
+    videoProtectionEnabled: Boolean(record.videoProtectionEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoProtectionEnabled),
+    videoNotesEnabled: Boolean(record.videoNotesEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoNotesEnabled),
+    videoDownloadEnabled: Boolean(record.videoDownloadEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.videoDownloadEnabled),
+    offlinePage: Boolean(record.offlinePage ?? DEFAULT_APP_CONTROL_SETTINGS.offlinePage),
+    splashEnabled: Boolean(record.splashEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.splashEnabled),
+    pushEnabled: Boolean(record.pushEnabled ?? DEFAULT_APP_CONTROL_SETTINGS.pushEnabled),
+    notificationTitle: String(record.notificationTitle || DEFAULT_APP_CONTROL_SETTINGS.notificationTitle),
+    notificationBody: String(record.notificationBody || DEFAULT_APP_CONTROL_SETTINGS.notificationBody),
+    notificationId: String(record.notificationId || ''),
+    notificationSentAt: String(record.notificationSentAt || ''),
+  };
+};
+
+const getCachedAppControlSettings = () => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_APP_CONTROL_SETTINGS;
+  }
+
+  try {
+    return normalizeAppControlSettings(JSON.parse(window.localStorage.getItem(APP_CONTROL_CACHE_KEY) || 'null'));
+  } catch {
+    return DEFAULT_APP_CONTROL_SETTINGS;
+  }
+};
+
+const saveCachedAppControlSettings = (settings: AppControlSettings) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(APP_CONTROL_CACHE_KEY, JSON.stringify(settings));
+  }
+};
+
 const loadJsonResource = async <T,>(resource: 'sliders' | 'courses' | 'notes' | 'quizzes' | 'users' | 'live-classes', fallbackValue: T): Promise<T> => {
   try {
     const response = await apiGet(resource);
     return await readJsonResponse(response);
+  } catch {
+    return fallbackValue;
+  }
+};
+
+const fetchAppControlSettings = async (fallbackValue = DEFAULT_APP_CONTROL_SETTINGS): Promise<AppControlSettings> => {
+  try {
+    const response = await fetchWithTimeout(apiUrl(`/api/app-control?ts=${Date.now()}`), {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
+    });
+    const payload = await readLenientJsonResponse(response);
+    return normalizeAppControlSettings(payload?.settings || payload);
   } catch {
     return fallbackValue;
   }
@@ -423,7 +578,7 @@ const extractUserArray = (payload: unknown) => {
 
 const fetchAdminUsers = async (): Promise<AdminUser[]> => {
   try {
-    const response = await fetchWithTimeout('/api/admin-users', {
+    const response = await fetchWithTimeout(apiUrl('/api/admin-users'), {
       headers: getAdminAuthHeaders(),
     });
     const payload = await readLenientJsonResponse(response);
@@ -434,7 +589,7 @@ const fetchAdminUsers = async (): Promise<AdminUser[]> => {
   } catch {}
 
   try {
-    const response = await fetchWithTimeout('/api/users');
+    const response = await fetchWithTimeout(apiUrl('/api/users'));
     const payload = await readLenientJsonResponse(response);
     const users = mergeAdminUsers(extractUserArray(payload)).filter((user) => !isLegacySeedUser(user));
     if (users.length) {
@@ -453,7 +608,7 @@ const fetchAdminUsers = async (): Promise<AdminUser[]> => {
 
 const fetchAdminLiveClasses = async (): Promise<LiveClass[]> => {
   try {
-    const response = await fetchWithTimeout('/api/admin-live-classes', {
+    const response = await fetchWithTimeout(apiUrl('/api/admin-live-classes'), {
       headers: getAdminAuthHeaders(),
     });
     const payload = await readLenientJsonResponse(response);
@@ -681,19 +836,79 @@ const apiAuthPost = async (
   action: 'login' | 'signup',
   payload: Record<string, unknown>
 ) => {
-  return fetch(action === 'signup' ? '/api/signup' : '/api/login', {
+  return fetch(apiUrl(action === 'signup' ? '/api/signup' : '/api/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 };
 
+const createClientDeviceId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const getClientDeviceId = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const existingId = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+  if (existingId) {
+    return existingId;
+  }
+
+  const nextId = createClientDeviceId();
+  window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, nextId);
+  return nextId;
+};
+
+const getClientDeviceLabel = () => {
+  if (typeof navigator === 'undefined') {
+    return 'Student device';
+  }
+
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  const platform = nav.userAgentData?.platform || navigator.platform || 'Android';
+  const userAgent = navigator.userAgent ? ` - ${navigator.userAgent.slice(0, 80)}` : '';
+  return `${platform}${userAgent}`;
+};
+
+const getDevicePayload = () => ({
+  deviceId: getClientDeviceId(),
+  deviceLabel: getClientDeviceLabel(),
+});
+
 const apiPost = async (action: string, payload: Record<string, unknown>) => {
-  return fetch('/api/' + action, {
+  return fetch(apiUrl('/api/' + action), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
     body: JSON.stringify(payload)
   });
+};
+
+const registerPushToken = async (token: string, userId = '') => {
+  if (!token) {
+    return;
+  }
+
+  try {
+    await fetch(apiUrl('/api/register-push-token'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        userId,
+        platform: Capacitor.getPlatform(),
+        ...getDevicePayload(),
+      }),
+    });
+  } catch (error) {
+    console.warn('Unable to register push token:', error);
+  }
 };
 
 const apiPostToAppsScript = async (action: string, payload: Record<string, unknown>) => {
@@ -803,9 +1018,25 @@ const readJsonResponse = async (response: Response) => {
 const readLenientJsonResponse = async (response: Response) => {
   try {
     return await readJsonResponse(response.clone());
-  } catch {
+  } catch (error) {
     const bodyText = await response.text();
-    return JSON.parse(bodyText);
+    const trimmedBody = bodyText.trim();
+
+    if (!trimmedBody) {
+      if (response.ok) {
+        return { success: true };
+      }
+      throw new Error(error instanceof Error ? error.message : `Server returned an empty response (${response.status}).`);
+    }
+
+    try {
+      return JSON.parse(trimmedBody);
+    } catch {
+      if (trimmedBody.startsWith('<')) {
+        throw new Error('Server returned HTML instead of JSON. Please refresh and login again.');
+      }
+      throw new Error(trimmedBody.slice(0, 220));
+    }
   }
 };
 
@@ -825,6 +1056,10 @@ const normalizeAuthUser = (
   blockedCourseIds: Array.isArray(user?.blockedCourseIds)
     ? user.blockedCourseIds.map((item: unknown) => String(item))
     : [],
+  deviceId: String(user?.deviceId || user?.device_id || ''),
+  deviceLabel: String(user?.deviceLabel || user?.device_label || ''),
+  deviceBoundAt: String(user?.deviceBoundAt || user?.device_bound_at || ''),
+  deviceLocked: Boolean(user?.deviceLocked || user?.device_id || user?.deviceId),
 });
 
 const isLegacySeedUser = (value: { id?: string; name?: string; email?: string } | null | undefined) =>
@@ -921,12 +1156,13 @@ const saveSessionUser = (user: AuthUser | null) => {
 };
 
 const fetchSessionUser = async (userId: string): Promise<AuthUser> => {
-  const query = new URLSearchParams({ userId });
-  const response = await fetch(`/api/session-user?${query.toString()}`);
+  const query = new URLSearchParams({ userId, ...getDevicePayload() });
+  const response = await fetch(apiUrl(`/api/session-user?${query.toString()}`));
   const data = await readLenientJsonResponse(response);
   if (!response.ok || !data.success) {
-    const error = new Error(data.message || 'Unable to verify account status') as Error & { blocked?: boolean };
+    const error = new Error(data.message || 'Unable to verify account status') as Error & { blocked?: boolean; deviceLocked?: boolean };
     error.blocked = response.status === 403 || Boolean(data.blocked);
+    error.deviceLocked = Boolean(data.deviceLocked);
     throw error;
   }
 
@@ -1324,6 +1560,305 @@ const getProtectedEmbedUrl = (url?: string) => {
   return normalizedUrl;
 };
 
+type NativeBridgeWindow = Window & {
+  Android?: {
+    setSecureMode?: (enabled: boolean) => void;
+    setFlagSecure?: (enabled: boolean) => void;
+    enableSecureMode?: () => void;
+    disableSecureMode?: () => void;
+    enablePushNotifications?: () => void;
+    openNotifications?: () => void;
+  };
+  ReactNativeWebView?: {
+    postMessage: (message: string) => void;
+  };
+  webkit?: {
+    messageHandlers?: {
+      secureMode?: { postMessage: (message: unknown) => void };
+      notifications?: { postMessage: (message: unknown) => void };
+    };
+  };
+};
+
+const callNativeBridge = (action: string, payload: Record<string, unknown> = {}) => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const bridgeWindow = window as NativeBridgeWindow;
+
+  try {
+    if (action === 'secure-mode') {
+      const enabled = Boolean(payload.enabled);
+      if (bridgeWindow.Android?.setSecureMode) {
+        bridgeWindow.Android.setSecureMode(enabled);
+        return true;
+      }
+      if (bridgeWindow.Android?.setFlagSecure) {
+        bridgeWindow.Android.setFlagSecure(enabled);
+        return true;
+      }
+      if (enabled && bridgeWindow.Android?.enableSecureMode) {
+        bridgeWindow.Android.enableSecureMode();
+        return true;
+      }
+      if (!enabled && bridgeWindow.Android?.disableSecureMode) {
+        bridgeWindow.Android.disableSecureMode();
+        return true;
+      }
+      if (bridgeWindow.webkit?.messageHandlers?.secureMode) {
+        bridgeWindow.webkit.messageHandlers.secureMode.postMessage({ enabled });
+        return true;
+      }
+    }
+
+    if (action === 'notifications') {
+      if (bridgeWindow.Android?.openNotifications) {
+        bridgeWindow.Android.openNotifications();
+        return true;
+      }
+      if (bridgeWindow.Android?.enablePushNotifications) {
+        bridgeWindow.Android.enablePushNotifications();
+        return true;
+      }
+      if (bridgeWindow.webkit?.messageHandlers?.notifications) {
+        bridgeWindow.webkit.messageHandlers.notifications.postMessage(payload);
+        return true;
+      }
+    }
+
+    if (bridgeWindow.ReactNativeWebView?.postMessage) {
+      bridgeWindow.ReactNativeWebView.postMessage(JSON.stringify({ action, ...payload }));
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+};
+
+const setNativeSecureMode = (enabled: boolean) => {
+  callNativeBridge('secure-mode', { enabled });
+  if (typeof document !== 'undefined') {
+    document.body.classList.toggle('app-secure-mode', enabled);
+  }
+};
+
+const isNotificationSupported = () => (
+  typeof window !== 'undefined' && 'Notification' in window
+);
+
+const getNotificationPermissionState = () => (
+  isNotificationSupported() ? Notification.permission : 'unsupported'
+);
+
+const isNativePushAvailable = () => (
+  Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('PushNotifications')
+);
+
+const isNativeLocalNotificationAvailable = () => (
+  Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications')
+);
+
+const ensureNativeNotificationChannels = async () => {
+  if (isNativePushAvailable()) {
+    await PushNotifications.createChannel({
+      id: NOTIFICATION_CHANNEL_UPDATES,
+      name: 'RBS Academy Updates',
+      description: 'Course updates, live class reminders, and academy notices.',
+      importance: 4,
+      visibility: 1,
+      sound: NOTIFICATION_SOUND_FILE,
+      lights: true,
+      lightColor: '#0047AB',
+      vibration: true,
+    });
+  }
+
+  if (isNativeLocalNotificationAvailable()) {
+    await Promise.all([
+      LocalNotifications.createChannel({
+        id: NOTIFICATION_CHANNEL_UPDATES,
+        name: 'RBS Academy Updates',
+        description: 'Course updates, live class reminders, and academy notices.',
+        importance: 4,
+        visibility: 1,
+        sound: NOTIFICATION_SOUND_FILE,
+        lights: true,
+        lightColor: '#0047AB',
+        vibration: true,
+      }),
+      LocalNotifications.createChannel({
+        id: NOTIFICATION_CHANNEL_COURSE_ACCESS,
+        name: 'Course Access',
+        description: 'Premium course unlock and access alerts.',
+        importance: 5,
+        visibility: 1,
+        sound: NOTIFICATION_SOUND_FILE,
+        lights: true,
+        lightColor: '#0047AB',
+        vibration: true,
+      }),
+    ]);
+  }
+};
+
+const showLocalNotification = async (title: string, options: NotificationOptions = {}) => {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') {
+    return false;
+  }
+
+  const notificationOptions: NotificationOptions = {
+    badge: '/icons/icon-192.svg',
+    icon: '/icons/icon-192.svg',
+    ...options,
+  };
+
+  if ('serviceWorker' in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification(title, notificationOptions);
+    return true;
+  }
+
+  new Notification(title, notificationOptions);
+  return true;
+};
+
+const showAppNotification = async (
+  title: string,
+  body: string,
+  extra: Record<string, unknown> = {},
+  channelId = NOTIFICATION_CHANNEL_UPDATES
+) => {
+  if (isNativeLocalNotificationAvailable()) {
+    try {
+      await ensureNativeNotificationChannels();
+      let permission = await LocalNotifications.checkPermissions();
+      if (permission.display === 'prompt' || permission.display === 'prompt-with-rationale') {
+        permission = await LocalNotifications.requestPermissions();
+      }
+
+      if (permission.display !== 'granted') {
+        return false;
+      }
+
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: Math.floor(Date.now() % 2147483647),
+          title,
+          body,
+          largeBody: body,
+          channelId,
+          sound: NOTIFICATION_SOUND_FILE,
+          iconColor: '#0047AB',
+          autoCancel: true,
+          extra,
+        }],
+      });
+      return true;
+    } catch (error) {
+      console.error('Unable to show native notification:', error);
+    }
+  }
+
+  return showLocalNotification(title, {
+    body,
+    tag: String(extra.type || channelId),
+    data: extra,
+  });
+};
+
+const requestAppNotifications = async () => {
+  callNativeBridge('notifications', { source: 'student-app' });
+
+  if (isNativePushAvailable() || isNativeLocalNotificationAvailable()) {
+    try {
+      await ensureNativeNotificationChannels();
+
+      let pushStatus = 'unavailable';
+      if (isNativePushAvailable()) {
+        let permission = await PushNotifications.checkPermissions();
+        if (permission.receive === 'prompt' || permission.receive === 'prompt-with-rationale') {
+          permission = await PushNotifications.requestPermissions();
+        }
+        pushStatus = permission.receive;
+      }
+
+      let localStatus = 'unavailable';
+      if (isNativeLocalNotificationAvailable()) {
+        let permission = await LocalNotifications.checkPermissions();
+        if (permission.display === 'prompt' || permission.display === 'prompt-with-rationale') {
+          permission = await LocalNotifications.requestPermissions();
+        }
+        localStatus = permission.display;
+      }
+
+      const success = pushStatus === 'granted' || localStatus === 'granted';
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, success ? 'true' : 'false');
+      }
+
+      if (!success) {
+        return {
+          success: false,
+          status: localStatus !== 'unavailable' ? localStatus : pushStatus,
+          message: 'Notification permission was not allowed.',
+        };
+      }
+
+      if (pushStatus === 'granted' && isNativePushAvailable()) {
+        await PushNotifications.register();
+      }
+
+      await showAppNotification('RBS Academy notifications enabled', 'Course unlock, live class, and admin alerts are now active.', {
+        type: 'notifications-enabled',
+        screen: 'home',
+      });
+
+      return {
+        success: true,
+        status: pushStatus === 'granted' ? 'registering' : 'local-ready',
+        message: pushStatus === 'granted'
+          ? 'Push registration started. Token will appear after Firebase responds.'
+          : 'Local notifications enabled.',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unable to register push notifications.',
+      };
+    }
+  }
+
+  if (!isNotificationSupported()) {
+    return { success: false, status: 'unsupported', message: 'Notifications are not supported in this browser.' };
+  }
+
+  const permission = Notification.permission === 'default'
+    ? await Notification.requestPermission()
+    : Notification.permission;
+
+  const success = permission === 'granted';
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, success ? 'true' : 'false');
+  }
+
+  if (success) {
+    await showLocalNotification('RBS Academy notifications enabled', {
+      body: 'You will receive course updates, live class reminders, and admin alerts here.',
+      tag: 'rbs-notifications-enabled',
+    });
+  }
+
+  return {
+    success,
+    status: permission,
+    message: success ? 'Notifications enabled' : 'Notification permission was not allowed.',
+  };
+};
+
 // --- Components ---
 
 const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
@@ -1363,7 +1898,10 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
     }
 
     try {
-      const payload = isSignup ? { name: trimmedName, email, phone: normalizedPhone, password } : { email, password };
+      const devicePayload = getDevicePayload();
+      const payload = isSignup
+        ? { name: trimmedName, email, phone: normalizedPhone, password, ...devicePayload }
+        : { email, password, ...devicePayload };
 
       const res = await apiAuthPost(isSignup ? 'signup' : 'login', payload);
       const data = await res.json();
@@ -1373,40 +1911,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         setError(data.message || (isSignup ? 'Signup failed' : 'Login failed'));
       }
     } catch (err) {
-      const storedUsers = getStoredUsers();
-
-      if (isSignup) {
-        const existingUser = storedUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
-        if (existingUser) {
-          setError('Email already registered');
-          setLoading(false);
-          return;
-        }
-
-        const newUser: StoredUser = {
-          id: `u${Date.now()}`,
-          name: trimmedName,
-          email,
-          phone: normalizedPhone,
-          password,
-          status: 'active',
-        };
-
-        saveStoredUsers([...storedUsers, newUser]);
-        onLogin(normalizeAuthUser(newUser, { name: trimmedName, email, phone: normalizedPhone }));
-      } else {
-        const matchedUser = storedUsers.find(
-          (user) => user.email.toLowerCase() === email.toLowerCase() && user.password === password
-        );
-
-        if (!matchedUser) {
-          setError('Invalid credentials');
-          setLoading(false);
-          return;
-        }
-
-        onLogin(normalizeAuthUser(matchedUser, { email }));
-      }
+      setError(err instanceof Error ? err.message : 'Internet is required to verify this mobile. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1563,6 +2068,63 @@ const Loading = () => (
     <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
     <p className="text-gray-500 text-sm animate-pulse">Loading Academy...</p>
   </div>
+);
+
+const NoInternetScreen = ({ onRetry }: { onRetry: () => void }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="no-internet-screen flex-1"
+  >
+    <div className="no-internet-card">
+      <div className="no-internet-icon">
+        <WifiOff size={34} />
+      </div>
+      <p className="no-internet-kicker">Connection Lost</p>
+      <h1>No internet connection</h1>
+      <p>
+        Please check mobile data or Wi-Fi. RBS Academy will reconnect automatically when the network is back.
+      </p>
+      <button type="button" onClick={onRetry}>
+        <RefreshCw size={18} />
+        Try Again
+      </button>
+      <span>Cached pages and installed app shell stay ready offline.</span>
+    </div>
+  </motion.div>
+);
+
+const AppControlStopScreen = ({
+  title,
+  message,
+  actionLabel,
+  actionUrl,
+}: {
+  title: string;
+  message: string;
+  actionLabel?: string;
+  actionUrl?: string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="no-internet-screen flex-1"
+  >
+    <div className="no-internet-card">
+      <div className="no-internet-icon">
+        <Smartphone size={34} />
+      </div>
+      <p className="no-internet-kicker">App Control</p>
+      <h1>{title}</h1>
+      <p>{message}</p>
+      {actionUrl && (
+        <button type="button" onClick={() => openExternalResource(actionUrl)}>
+          <ExternalLink size={18} />
+          {actionLabel || 'Open'}
+        </button>
+      )}
+    </div>
+  </motion.div>
 );
 
 const BlockedAccountScreen = ({
@@ -2008,7 +2570,7 @@ const getDriveFileIdFromUrl = (url?: string) => {
 const getImageSourceCandidates = (imageUrl?: string, driveFileId?: string) => {
   const fileId = String(driveFileId || getDriveFileIdFromUrl(imageUrl)).trim();
   const candidates = [
-    fileId ? `/api/drive-image/${encodeURIComponent(fileId)}` : '',
+    fileId ? apiUrl(`/api/drive-image/${encodeURIComponent(fileId)}`) : '',
     String(imageUrl || '').trim(),
     fileId ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600` : '',
     fileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600` : '',
@@ -2312,7 +2874,10 @@ const HomeScreen = ({
         <div>
           <SectionHeader title="Premium Courses" onSeeAll={() => onOpenCoursesTab('premium')} />
           <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-            {premiumCourses.slice(0, 4).map(course => {
+            {[...premiumCourses]
+              .sort((a, b) => Number(unlockedCourseIds.includes(b.id)) - Number(unlockedCourseIds.includes(a.id)))
+              .slice(0, 4)
+              .map(course => {
               const isUnlocked = unlockedCourseIds.includes(course.id);
               return (
                 <button
@@ -2326,8 +2891,8 @@ const HomeScreen = ({
                   <div className="relative h-24">
                     <img src={course.image} alt={course.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                    <div className="absolute left-3 top-3 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-black text-amber-700">
-                      Rs {course.price || 0}
+                    <div className={`absolute left-3 top-3 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-black ${isUnlocked ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {isUnlocked ? 'Admin Access' : `Rs ${course.price || 0}`}
                     </div>
                     <div className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
                       {isUnlocked ? <CheckCircle2 size={14} /> : <Lock size={14} />}
@@ -2369,9 +2934,11 @@ const HomeScreen = ({
 const LiveClassesScreen = ({
   liveClasses,
   courses,
+  onJoinClass,
 }: {
   liveClasses: LiveClass[];
   courses: Course[];
+  onJoinClass: (liveClass: LiveClass) => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
   const visibleClasses = liveClasses.filter((item) => item.access_type === activeTab);
@@ -2415,7 +2982,7 @@ const LiveClassesScreen = ({
                     </span>
                   </div>
                   <h3 className="mt-3 text-lg font-black text-slate-900">{liveClass.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{liveClass.description || 'Live session is ready for students. Join on time from the class link below.'}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{liveClass.description || 'Live session is ready for students. Join on time from the in-app class room.'}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-100 p-3 text-slate-600">
                   <Play size={18} />
@@ -2433,15 +3000,14 @@ const LiveClassesScreen = ({
                 </div>
               </div>
 
-              <a
-                href={liveClass.meeting_url}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => onJoinClass(liveClass)}
                 className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
               >
                 Join Live Class
-                <ExternalLink size={16} />
-              </a>
+                <Play size={16} />
+              </button>
             </div>
           );
         })}
@@ -2457,9 +3023,84 @@ const LiveClassesScreen = ({
   );
 };
 
-const CoursesScreen = ({ 
-  setScreen, 
-  courses, 
+const LiveClassViewerScreen = ({
+  liveClass,
+  onBack,
+}: {
+  liveClass: LiveClass | null;
+  onBack: () => void;
+}) => {
+  const [showFallback, setShowFallback] = useState(false);
+
+  useEffect(() => {
+    setShowFallback(false);
+    const timer = window.setTimeout(() => setShowFallback(true), 4500);
+    return () => window.clearTimeout(timer);
+  }, [liveClass?.id]);
+
+  if (!liveClass) {
+    return null;
+  }
+
+  const openMeetInCurrentWebView = () => {
+    if (liveClass.meeting_url) {
+      window.location.assign(liveClass.meeting_url);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-white"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950 px-4 py-3">
+        <button type="button" onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
+          <ArrowLeft size={20} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-black">{liveClass.title}</h3>
+          <p className="truncate text-[11px] font-semibold text-white/55">{formatLiveClassDate(liveClass.scheduled_at)}</p>
+        </div>
+        <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
+          In App
+        </span>
+      </div>
+
+      <div className="relative min-h-0 flex-1 bg-black">
+        <iframe
+          title={liveClass.title}
+          src={liveClass.meeting_url}
+          className="h-full w-full border-0 bg-black"
+          allow="camera; microphone; fullscreen; display-capture; autoplay; encrypted-media"
+          referrerPolicy="no-referrer"
+        />
+        {showFallback && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/85 to-transparent p-4 pt-16">
+            <div className="pointer-events-auto rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+              <div className="text-sm font-black">Google Meet loading issue?</div>
+              <p className="mt-1 text-xs leading-5 text-white/70">
+                Some Google accounts block iframe mode. This button opens the same Meet inside the app WebView without showing a shareable link.
+              </p>
+              <button
+                type="button"
+                onClick={openMeetInCurrentWebView}
+                className="mt-3 w-full rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-950"
+              >
+                Open Meet In App
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const CoursesScreen = ({
+  setScreen,
+  courses,
   unlockedCourseIds, 
   initialTab,
   onBuyClick,
@@ -2476,15 +3117,18 @@ const CoursesScreen = ({
   const [searchQuery, setSearchQuery] = useState('');
   const freeCount = courses.filter(isCourseFree).length;
   const premiumCount = courses.filter(c => !isCourseFree(c)).length;
+  const unlockedPremiumCount = courses.filter((course) => !isCourseFree(course) && unlockedCourseIds.includes(course.id)).length;
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  const filteredCourses = courses.filter(c =>
-    (activeTab === 'free' ? isCourseFree(c) : !isCourseFree(c)) &&
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCourses = courses
+    .filter(c =>
+      (activeTab === 'free' ? isCourseFree(c) : !isCourseFree(c)) &&
+      c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => Number(unlockedCourseIds.includes(b.id)) - Number(unlockedCourseIds.includes(a.id)));
 
   return (
     <motion.div 
@@ -2498,7 +3142,11 @@ const CoursesScreen = ({
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{activeTab === 'premium' ? 'Premium Courses' : 'Free Courses'}</p>
               <h2 className="mt-1 text-xl font-black">{activeTab === 'premium' ? 'Unlock focused batches' : 'Start learning today'}</h2>
-              <p className="mt-1 text-xs text-white/75">{activeTab === 'premium' ? `${premiumCount} premium courses with admin access code` : `${freeCount} free courses available now`}</p>
+              <p className="mt-1 text-xs text-white/75">
+                {activeTab === 'premium'
+                  ? `${unlockedPremiumCount} unlocked, ${premiumCount} total premium courses`
+                  : `${freeCount} free courses available now`}
+              </p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/16">
               {activeTab === 'premium' ? <CreditCard size={22} /> : <BookOpen size={22} />}
@@ -2537,8 +3185,8 @@ const CoursesScreen = ({
               <div className="relative h-40">
                 <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 {!isFree && (
-                  <div className="absolute left-3 top-3 rounded-full bg-white/92 px-3 py-1 text-[10px] font-black uppercase text-amber-700 shadow-sm">
-                    Premium
+                    <div className={`absolute left-3 top-3 rounded-full bg-white/92 px-3 py-1 text-[10px] font-black uppercase shadow-sm ${isUnlocked ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {isUnlocked ? 'Admin Access' : 'Premium'}
                   </div>
                 )}
                 <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isAccessible ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
@@ -2563,7 +3211,9 @@ const CoursesScreen = ({
                   <p className="text-xs text-gray-500">{course.lessons}+ Video Lessons & Notes</p>
                   {!isFree && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700">Rs {course.price} Only</span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${isUnlocked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {isUnlocked ? 'Admin Access Active' : `Rs ${course.price} Only`}
+                      </span>
                       {!!course.oldPrice && <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>}
                     </div>
                   )}
@@ -2579,7 +3229,7 @@ const CoursesScreen = ({
                   }}
                   className={`${isAccessible ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
                 >
-                  {isFree ? 'Open Course' : isUnlocked ? 'View Details' : 'Buy Now'}
+                  {isFree ? 'Open Course' : isUnlocked ? 'Open Course' : 'Buy Now'}
                 </button>
               </div>
             </div>
@@ -2603,12 +3253,20 @@ const VideoPlayerScreen = ({
   onBack, 
   course, 
   onLessonSelect, 
-  onViewNotes 
+  onViewNotes,
+  protectedMode = false,
+  videoNotesEnabled = true,
+  videoDownloadEnabled = false,
+  watermark = 'RBS Academy'
 }: { 
   onBack: () => void, 
   course: Course | null,
   onLessonSelect: (lesson: Lesson) => void,
-  onViewNotes: (lesson: Lesson) => void
+  onViewNotes: (lesson: Lesson) => void,
+  protectedMode?: boolean,
+  videoNotesEnabled?: boolean,
+  videoDownloadEnabled?: boolean,
+  watermark?: string
 }) => {
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(course?.lessonList?.[0] || null);
 
@@ -2618,17 +3276,22 @@ const VideoPlayerScreen = ({
 
   if (!course) return null;
 
+  const isProtectedSurface = protectedMode;
   const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url);
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
   const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(activeVideoUrl);
+  const lessonDownloadUrl = currentLesson?.download_enabled === false ? '' : (currentLesson?.download_url || '').trim();
+  const lessonDownloadLabel = (currentLesson?.download_label || '').trim() || 'Open secure lesson download';
 
   return (
     <motion.div 
       initial={{ y: '100%' }} 
       animate={{ y: 0 }} 
       exit={{ y: '100%' }}
-      className="flex-1 bg-white flex flex-col z-50"
+      className={`flex-1 bg-white flex flex-col z-50 ${isProtectedSurface ? 'protected-learning-surface' : ''}`}
+      onContextMenu={isProtectedSurface ? (event) => event.preventDefault() : undefined}
     >
+      {isProtectedSurface && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
           <>
@@ -2659,6 +3322,8 @@ const VideoPlayerScreen = ({
             src={activeVideoUrl}
             className="w-full h-full object-cover"
             controls
+            controlsList={videoDownloadEnabled ? undefined : 'nodownload noremoteplayback'}
+            disablePictureInPicture={!videoDownloadEnabled}
             playsInline
             preload="metadata"
           >
@@ -2688,14 +3353,40 @@ const VideoPlayerScreen = ({
         </p>
         <p className="text-sm text-gray-500 mb-6">{course.title} • {currentLesson?.duration || '10:00'} mins</p>
 
+        {lessonDownloadUrl && (
+          <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white">
+                <Download size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-black text-blue-950">Secure video download</h3>
+                <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">
+                  Use this only for files added by the academy. YouTube videos remain embedded and protected.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openExternalResource(lessonDownloadUrl)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white"
+                >
+                  <Download size={15} />
+                  {lessonDownloadLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-4 mb-8">
-          <button 
-            onClick={() => currentLesson && onViewNotes(currentLesson)}
-            className="flex-1 bg-gray-100 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
-          >
-            <Eye size={18} />
-            View Notes
-          </button>
+          {videoNotesEnabled && (
+            <button 
+              onClick={() => currentLesson && onViewNotes(currentLesson)}
+              className="flex-1 bg-gray-100 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
+            >
+              <Eye size={18} />
+              View Notes
+            </button>
+          )}
           <button className="flex-1 bg-primary py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium text-white shadow-lg shadow-blue-100 transition-transform active:scale-95">
             <HelpCircle size={18} />
             Take Quiz
@@ -2735,16 +3426,19 @@ const CourseDetailsScreen = ({
   onStartLearning, 
   onViewNotes, 
   onTakeQuiz,
-  isUnlocked
+  isUnlocked,
+  videoNotesEnabled = true
 }: { 
   course: Course | null, 
   onBack: () => void,
   onStartLearning: () => void,
   onViewNotes: (lesson: Lesson) => void,
   onTakeQuiz: () => void,
-  isUnlocked: boolean
+  isUnlocked: boolean,
+  videoNotesEnabled?: boolean
 }) => {
   if (!course) return null;
+  const isPremiumCourse = !isCourseFree(course);
 
   return (
     <motion.div 
@@ -2782,6 +3476,12 @@ const CourseDetailsScreen = ({
           </button>
         </div>
 
+        {isUnlocked && isPremiumCourse && (
+          <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">
+            Admin ne is premium course ka access unlock kar diya hai.
+          </div>
+        )}
+
         <div className="space-y-8">
           <section>
             <SectionHeader title="Course Lessons" />
@@ -2798,7 +3498,7 @@ const CourseDetailsScreen = ({
                     <h4 className="text-sm font-bold text-gray-800">{lesson.title}</h4>
                     <p className="text-[10px] text-gray-500">{lesson.duration} mins</p>
                   </div>
-                  {isUnlocked && (
+                  {isUnlocked && videoNotesEnabled && (
                     <button 
                       onClick={() => onViewNotes(lesson)}
                       className="text-primary p-2 hover:bg-primary/5 rounded-full transition-colors"
@@ -2813,20 +3513,22 @@ const CourseDetailsScreen = ({
 
           <section>
             <SectionHeader title="Study Material & Quizzes" />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                <div className="w-10 h-10 bg-blue-500 text-white rounded-lg flex items-center justify-center mb-3">
-                  <FileText size={20} />
+            <div className={`grid gap-4 ${videoNotesEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {videoNotesEnabled && (
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                  <div className="w-10 h-10 bg-blue-500 text-white rounded-lg flex items-center justify-center mb-3">
+                    <FileText size={20} />
+                  </div>
+                  <h4 className="font-bold text-blue-900 text-sm mb-1">Course Notes</h4>
+                  <p className="text-[10px] text-blue-700 mb-3">PDF & Text materials</p>
+                  <button 
+                    onClick={() => course.lessonList?.[0] && onViewNotes(course.lessonList[0])}
+                    className="text-xs font-bold text-blue-600 flex items-center gap-1"
+                  >
+                    View All <ChevronRight size={12} />
+                  </button>
                 </div>
-                <h4 className="font-bold text-blue-900 text-sm mb-1">Course Notes</h4>
-                <p className="text-[10px] text-blue-700 mb-3">PDF & Text materials</p>
-                <button 
-                  onClick={() => course.lessonList?.[0] && onViewNotes(course.lessonList[0])}
-                  className="text-xs font-bold text-blue-600 flex items-center gap-1"
-                >
-                  View All <ChevronRight size={12} />
-                </button>
-              </div>
+              )}
               <div className="bg-red-50 p-4 rounded-xl border border-red-100">
                 <div className="w-10 h-10 bg-red-500 text-white rounded-lg flex items-center justify-center mb-3">
                   <HelpCircle size={20} />
@@ -3584,13 +4286,21 @@ const ProfileScreen = ({
 const SettingsScreen = ({
   user,
   darkModeEnabled,
+  notificationsEnabled,
+  notificationStatus,
+  pushToken,
   onToggleDarkMode,
+  onEnableNotifications,
   onOpenProfileInfo,
   onOpenHelpCenter
 }: {
   user: any,
   darkModeEnabled: boolean,
+  notificationsEnabled: boolean,
+  notificationStatus: string,
+  pushToken: string,
   onToggleDarkMode: () => void,
+  onEnableNotifications: () => void,
   onOpenProfileInfo: () => void,
   onOpenHelpCenter: () => void
 }) => {
@@ -3659,6 +4369,26 @@ const SettingsScreen = ({
           <div className="space-y-3">
             {toggleRow('Dark Mode', 'Switch the entire academy app to a darker reading theme.', darkModeEnabled, onToggleDarkMode)}
             {toggleRow('Download on Wi-Fi Only', 'Use Wi-Fi when downloading study material.', downloadOnWifi, () => setDownloadOnWifi(!downloadOnWifi))}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Push Notifications</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {notificationsEnabled ? 'Course alerts and live class reminders are enabled.' : `Permission: ${notificationStatus}`}
+                </p>
+                {pushToken && (
+                  <p className="mt-1 break-all text-[10px] font-bold text-slate-400">
+                    FCM: ...{pushToken.slice(-18)}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onEnableNotifications}
+                className={`shrink-0 rounded-xl px-4 py-2 text-xs font-black ${notificationsEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-primary text-white'}`}
+              >
+                {notificationsEnabled ? 'Enabled' : 'Enable'}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -4127,14 +4857,20 @@ const MyCoursesScreen = ({
   unlockedCourseIds: string[],
   onCourseSelect: (course: Course) => void
 }) => {
-  const visibleCourses = courses.filter((course) => isCourseAccessible(course, unlockedCourseIds));
+  const unlockedPremiumCourses = courses.filter((course) => !isCourseFree(course) && unlockedCourseIds.includes(course.id));
+  const freeCourses = courses.filter(isCourseFree);
+  const visibleCourses = [...unlockedPremiumCourses, ...freeCourses];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
       <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] rounded-[28px] p-5 text-white shadow-xl shadow-blue-100">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Chemistry Learning</p>
         <h2 className="text-2xl font-bold">My Courses</h2>
-        <p className="text-sm text-white/75 mt-2">Continue learning with the currently available courses.</p>
+        <p className="text-sm text-white/75 mt-2">
+          {unlockedPremiumCourses.length
+            ? `${unlockedPremiumCourses.length} premium course${unlockedPremiumCourses.length === 1 ? '' : 's'} unlocked by admin.`
+            : 'Free courses appear here. Premium access will show automatically after admin unlocks it.'}
+        </p>
       </div>
 
       <div className="mt-5 space-y-4">
@@ -4149,7 +4885,7 @@ const MyCoursesScreen = ({
               <div className="text-base font-bold text-gray-800">{course.title}</div>
               <div className="text-sm text-gray-500 mt-1">{course.category}</div>
               <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${isCourseFree(course) ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}>
-                {isCourseFree(course) ? 'Available Now' : 'Premium Unlocked'}
+                {isCourseFree(course) ? 'Available Now' : 'Admin Access Unlocked'}
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-300" />
@@ -4488,7 +5224,7 @@ const AdminLoginScreen = ({
     }, 120);
 
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await fetch(apiUrl('/api/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4653,6 +5389,10 @@ const AdminPanelScreen = ({
   liveClasses,
   users,
   authSession,
+  initialTab = 'dashboard',
+  appControlSettings,
+  appControlLastSynced,
+  onSaveAppControlSettings,
   onRefresh,
   onLogout
 }: {
@@ -4663,10 +5403,14 @@ const AdminPanelScreen = ({
   liveClasses: LiveClass[],
   users: AdminUser[],
   authSession: AdminSession,
+  initialTab?: AdminPanelTab,
+  appControlSettings: AppControlSettings,
+  appControlLastSynced: number,
+  onSaveAppControlSettings: (settings: AppControlSettings) => Promise<{ success: boolean; message?: string }>,
   onRefresh: () => Promise<void>,
   onLogout: () => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'slider' | 'course' | 'free-course' | 'lesson' | 'note' | 'quiz' | 'question' | 'live' | 'user' | 'access' | 'push-notification'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminPanelTab>(initialTab);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
@@ -4702,12 +5446,15 @@ const AdminPanelScreen = ({
     course_id: '',
     title: '',
     duration: '',
-    note_content: '',
-    note_url: '',
-    video_url: '',
-    thumbnail_url: '',
-    sort_order: '0',
-  });
+  note_content: '',
+  note_url: '',
+  video_url: '',
+  thumbnail_url: '',
+  download_url: '',
+  download_label: '',
+  download_enabled: true,
+  sort_order: '0',
+});
   const [courseThumbnailFile, setCourseThumbnailFile] = useState<File | null>(null);
   const [lessonThumbnailFile, setLessonThumbnailFile] = useState<File | null>(null);
   const [courseThumbnailPreviewUrl, setCourseThumbnailPreviewUrl] = useState('');
@@ -4776,9 +5523,20 @@ const AdminPanelScreen = ({
   const [accessCourseSearchQuery, setAccessCourseSearchQuery] = useState('');
   const [liveClassStudentSearchQuery, setLiveClassStudentSearchQuery] = useState('');
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [pushForm, setPushForm] = useState({
+    title: appControlSettings.notificationTitle,
+    body: appControlSettings.notificationBody,
+    audience: 'all' as 'all' | 'premium' | 'free' | 'selected',
+    userId: '',
+    screen: 'home',
+  });
+  const [notificationHistory, setNotificationHistory] = useState<NotificationHistoryItem[]>([]);
+  const [notificationHistoryLoading, setNotificationHistoryLoading] = useState(false);
+  const [appControlForm, setAppControlForm] = useState<AppControlSettings>(appControlSettings);
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <Home size={18} /> },
+    { id: 'app-control', label: 'App Control', icon: <Smartphone size={18} /> },
     { id: 'slider', label: 'Sliders', icon: <Eye size={18} /> },
     { id: 'course', label: 'Course Builder', icon: <BookOpen size={18} /> },
     { id: 'note', label: 'Notes', icon: <FileText size={18} /> },
@@ -4995,6 +5753,7 @@ const AdminPanelScreen = ({
     tone: string;
     icon: React.ReactNode;
   }> = [
+    { id: 'app-control', title: 'App Control', description: 'Control app status, welcome messages, update notices, protection, splash, offline page, and push defaults.', count: appControlForm.maintenanceMode ? 'Maintenance ON' : 'Live App', tone: 'cyan', icon: <Smartphone size={22} /> },
     { id: 'course', title: 'Course Builder', description: 'Create free or premium courses, upload thumbnails, and manage videos in one place.', count: `${courses.length} courses, ${lessons.length} lessons`, tone: 'blue', icon: <BookOpen size={22} /> },
     { id: 'access', title: 'Premium Access', description: 'Generate student-specific access codes for locked courses.', count: `${premiumCourses.length} premium`, tone: 'amber', icon: <Lock size={22} /> },
     { id: 'slider', title: 'Homepage Slider', description: 'Upload banners and control what appears first for students.', count: `${activeSliderCount} active`, tone: 'violet', icon: <Eye size={22} /> },
@@ -5072,6 +5831,27 @@ const AdminPanelScreen = ({
   };
 
   useEffect(() => {
+    setAppControlForm(appControlSettings);
+    setPushForm((current) => ({
+      ...current,
+      title: current.title || appControlSettings.notificationTitle,
+      body: current.body || appControlSettings.notificationBody,
+    }));
+  }, [appControlSettings]);
+
+  const updateAppControlForm = <K extends keyof AppControlSettings>(key: K, value: AppControlSettings[K]) => {
+    setAppControlForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const saveAppControlForm = async () => {
+    setLoading(true);
+    setMessage('');
+    const result = await onSaveAppControlSettings(normalizeAppControlSettings(appControlForm));
+    setLoading(false);
+    showNotice(result.message || (result.success ? 'App control settings saved' : 'Unable to save app control settings'), result.success ? 'success' : 'error');
+  };
+
+  useEffect(() => {
     if (sliderImageFile) {
       const objectUrl = URL.createObjectURL(sliderImageFile);
       setSliderPreviewUrl(objectUrl);
@@ -5103,7 +5883,7 @@ const AdminPanelScreen = ({
 
   const loadAdminAccounts = async () => {
     try {
-      const response = await fetchWithTimeout('/api/admin/accounts', {
+      const response = await fetchWithTimeout(apiUrl('/api/admin/accounts'), {
         headers: getAdminAuthHeaders(),
       });
       const data = await readJsonResponse(response);
@@ -5627,6 +6407,15 @@ const AdminPanelScreen = ({
       setStudentAccessCode(String(data.accessCode || ''));
       setSelectedStudent((current) => {
         if (!current) return current;
+        if (data.user && Array.isArray(data.user.grantedCourseIds)) {
+          return {
+            ...current,
+            ...data.user,
+            grantedCourseIds: data.user.grantedCourseIds || [],
+            blockedCourseIds: data.user.blockedCourseIds || [],
+            userCategory: data.user.userCategory || ((data.user.grantedCourseIds || []).length ? 'premium' : 'free'),
+          };
+        }
         const currentIds = current.grantedCourseIds || [];
         const currentBlockedIds = current.blockedCourseIds || [];
         if (action === 'grantCourseAccess') {
@@ -5653,7 +6442,7 @@ const AdminPanelScreen = ({
     }
   };
 
-  const runStudentPlatformAction = async (action: 'blockUser' | 'unblockUser') => {
+  const runStudentPlatformAction = async (action: 'blockUser' | 'unblockUser' | 'resetStudentDevice') => {
     if (!selectedStudent) {
       setMessage('Select a student first');
       return;
@@ -5670,8 +6459,21 @@ const AdminPanelScreen = ({
         return;
       }
 
-      const nextStatus = action === 'blockUser' ? 'blocked' : 'active';
-      setSelectedStudent((current) => current ? { ...current, status: nextStatus } : current);
+      setSelectedStudent((current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (data.user) {
+          return { ...current, ...normalizeAuthUser(data.user) };
+        }
+
+        if (action === 'resetStudentDevice') {
+          return { ...current, deviceId: '', deviceLabel: '', deviceBoundAt: '', deviceLocked: false };
+        }
+
+        return { ...current, status: action === 'blockUser' ? 'blocked' : 'active' };
+      });
       await onRefresh();
       setMessage(data.message || 'Student status updated');
     } catch {
@@ -5680,6 +6482,95 @@ const AdminPanelScreen = ({
       setLoading(false);
     }
   };
+
+  const fetchNotificationHistory = async () => {
+    setNotificationHistoryLoading(true);
+    try {
+      const response = await fetch(apiUrl('/api/notification-history'), {
+        headers: { Accept: 'application/json', ...getAdminAuthHeaders() },
+      });
+      const data = await readLenientJsonResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Unable to load notifications');
+      }
+      setNotificationHistory(Array.isArray(data.notifications) ? data.notifications : []);
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : 'Unable to load notifications',
+        tone: 'error',
+      });
+    } finally {
+      setNotificationHistoryLoading(false);
+    }
+  };
+
+  const sendPushNotificationFromPanel = async () => {
+    const title = pushForm.title.trim();
+    const body = pushForm.body.trim();
+
+    if (!title || !body) {
+      setMessage('Notification title and body are required');
+      setToast({ message: 'Notification title and body are required', tone: 'error' });
+      return;
+    }
+
+    if (pushForm.audience === 'selected' && !pushForm.userId) {
+      setMessage('Select a student for selected notification');
+      setToast({ message: 'Select a student first', tone: 'error' });
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const response = await apiPost('sendPushNotification', {
+        title,
+        body,
+        audience: pushForm.audience,
+        userIds: pushForm.audience === 'selected' ? [pushForm.userId] : [],
+        screen: pushForm.screen,
+      });
+      const data = await readLenientJsonResponse(response);
+      if (!response.ok || !data.success) {
+        const errorMessage = data.message || 'Unable to send push notification';
+        setMessage(errorMessage);
+        setToast({ message: errorMessage, tone: 'error' });
+        return;
+      }
+
+      setAppControlForm((current) => ({
+        ...current,
+        notificationTitle: title,
+        notificationBody: body,
+        notificationId: String(data.notificationId || Date.now()),
+        notificationSentAt: String(data.sentAt || new Date().toISOString()),
+      }));
+      if (data.notification) {
+        setNotificationHistory((current) => [data.notification as NotificationHistoryItem, ...current].slice(0, 50));
+      } else {
+        fetchNotificationHistory();
+      }
+      const deliveredText = Number(data.sent || 0) > 0
+        ? `Sent to ${Number(data.sent || 0)} device${Number(data.sent || 0) === 1 ? '' : 's'}`
+        : 'Saved as app broadcast';
+      const finalMessage = data.message || deliveredText;
+      setMessage(finalMessage);
+      setToast({ message: finalMessage, tone: Number(data.failed || 0) ? 'info' : 'success' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unable to send push notification';
+      setMessage(errorMessage);
+      setToast({ message: errorMessage, tone: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'push-notification') {
+      fetchNotificationHistory();
+    }
+  }, [activeTab]);
 
   const resetCourseForm = () => {
     setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'General' });
@@ -5774,8 +6665,8 @@ const AdminPanelScreen = ({
       return;
     }
 
-    if (!videoUrl || !/(youtube\.com\/watch\?v=|youtu\.be\/|youtube(-nocookie)?\.com\/embed\/)/i.test(videoUrl)) {
-      setMessage('Add a valid YouTube video link for this lesson');
+    if (!videoUrl || !/(youtube\.com\/watch\?v=|youtu\.be\/|youtube(-nocookie)?\.com\/embed\/|player\.vimeo\.com\/video\/|vimeo\.com\/|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$))/i.test(videoUrl)) {
+      setMessage('Add a valid YouTube, Vimeo, or direct video file link for this lesson');
       return;
     }
 
@@ -5792,6 +6683,9 @@ const AdminPanelScreen = ({
         note_url: lessonForm.note_url.trim(),
         note_content: lessonForm.note_content.trim(),
         thumbnail_url: lessonForm.thumbnail_url.trim(),
+        download_url: lessonForm.download_url.trim(),
+        download_label: lessonForm.download_label.trim(),
+        download_enabled: Boolean(lessonForm.download_enabled),
         video_url: normalizeVideoUrl(videoUrl),
       };
 
@@ -5809,7 +6703,7 @@ const AdminPanelScreen = ({
         return;
       }
 
-      setLessonForm({ course_id: selectedManagedCourseId || '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', sort_order: String(managedCourseLessons.length + 1) });
+      setLessonForm({ course_id: selectedManagedCourseId || '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', download_url: '', download_label: '', download_enabled: true, sort_order: String(managedCourseLessons.length + 1) });
       setLessonThumbnailFile(null);
       setEditingLessonId('');
       await onRefresh();
@@ -5970,6 +6864,244 @@ const AdminPanelScreen = ({
                 <p className="text-sm font-medium">{message}</p>
               </div>
             )}
+
+      {activeTab === 'app-control' && (
+        <div className="appcontrol-shell space-y-5">
+          <div className="admin-command-hero appcontrol-hero">
+            <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+              <div>
+                <p className="admin-control-eyebrow">AppCreator Style Control</p>
+                <h1>App Control Center</h1>
+                <span>Control the live Android app from one panel. Saved changes are pulled by installed apps every 5 seconds, so most switches apply without reinstall.</span>
+                <div className="appcontrol-live-row">
+                  <span className="appcontrol-live-dot" />
+                  <b>Live sync active</b>
+                  <em>Last sync {new Date(appControlLastSynced).toLocaleTimeString()}</em>
+                </div>
+                <div className="admin-command-actions mt-5">
+                  <button type="button" className="admin-primary-button px-4 py-3 text-sm font-black" disabled={loading} onClick={saveAppControlForm}>
+                    {loading ? 'Saving...' : 'Save App Control'}
+                  </button>
+                  <button type="button" className="admin-secondary-button px-4 py-3 text-sm font-black" onClick={() => setAppControlForm(appControlSettings)}>
+                    Reset Unsaved
+                  </button>
+                  <button type="button" className="admin-secondary-button px-4 py-3 text-sm font-black" onClick={() => setActiveTab('push-notification')}>
+                    Open Push Console
+                  </button>
+                </div>
+              </div>
+              <div className={`admin-hero-score-card appcontrol-status-card grid place-items-center p-5 text-white ${appControlForm.maintenanceMode || appControlForm.forceUpdate ? 'is-warning' : 'is-live'}`}>
+                <div className="text-center">
+                  <strong>{appControlForm.maintenanceMode ? 'STOP' : appControlForm.forceUpdate ? 'UPDATE' : 'LIVE'}</strong>
+                  <span className="block text-white/75">
+                    {appControlForm.maintenanceMode ? 'Maintenance mode' : appControlForm.forceUpdate ? 'Force update active' : 'Student app running'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-5">
+            {[
+              { label: 'Push', value: appControlForm.pushEnabled ? 'Enabled' : 'Disabled', icon: <Bell size={20} /> },
+              { label: 'Protection', value: appControlForm.screenProtection ? (appControlForm.screenProtectionScope === 'premium' ? 'Premium' : 'Global') : 'Off', icon: <ShieldCheck size={20} /> },
+              { label: 'Video', value: appControlForm.videoProtectionEnabled ? 'Secured' : 'Standard', icon: <Play size={20} /> },
+              { label: 'Splash', value: appControlForm.splashEnabled ? 'Active' : 'Hidden', icon: <Smartphone size={20} /> },
+              { label: 'Offline Page', value: appControlForm.offlinePage ? 'Custom' : 'Basic', icon: <WifiOff size={20} /> },
+            ].map((item) => (
+              <div key={item.label} className="admin-reference-kpi admin-reference-kpi--blue appcontrol-kpi">
+                <div className="admin-reference-kpi-top">
+                  <span>{item.icon}</span>
+                  <em>{item.label}</em>
+                </div>
+                <div className="admin-reference-kpi-value">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="admin-control-center">
+            <div className="admin-control-center-head">
+              <div>
+                <p className="admin-control-eyebrow">Video System Control</p>
+                <h2>One control for lesson video behavior</h2>
+                <span>These switches sync to the student app and control video security, notes access, and direct video downloads.</span>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {[
+                ['videoProtectionEnabled', 'Secure Video Player', 'Apply watermark, context blocking, and Android secure mode on video screens.'],
+                ['videoNotesEnabled', 'Show Video Notes', 'Allow students to open lesson notes from video and course detail screens.'],
+                ['videoDownloadEnabled', 'Allow Direct Downloads', 'Show download/remote playback controls for direct MP4 video links.'],
+              ].map(([key, label, description]) => (
+                <label key={key} className="admin-control-card flex items-center justify-between gap-3">
+                  <span className="admin-control-icon"><Play size={18} /></span>
+                  <span className="admin-control-copy min-w-0">
+                    <strong>{label}</strong>
+                    <em>{description}</em>
+                  </span>
+                  <button
+                    type="button"
+                    className={`appcontrol-switch ${Boolean(appControlForm[key as keyof AppControlSettings]) ? 'is-on' : ''}`}
+                    onClick={() => updateAppControlForm(key as keyof AppControlSettings, !Boolean(appControlForm[key as keyof AppControlSettings]) as never)}
+                    aria-pressed={Boolean(appControlForm[key as keyof AppControlSettings])}
+                  >
+                    <i />
+                  </button>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Global App Settings</h2>
+                  <span>These settings are saved to the backend and loaded by the student app.</span>
+                </div>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="admin-login-field">
+                  <span className="admin-login-label">App Name</span>
+                  <input value={appControlForm.appName} onChange={(e) => updateAppControlForm('appName', e.target.value)} />
+                </label>
+                <label className="admin-login-field">
+                  <span className="admin-login-label">Latest Version</span>
+                  <input value={appControlForm.latestVersion} onChange={(e) => updateAppControlForm('latestVersion', e.target.value)} />
+                </label>
+                <label className="admin-login-field lg:col-span-2">
+                  <span className="admin-login-label">Update URL</span>
+                  <input placeholder="APK / Play Store / website update link" value={appControlForm.updateUrl} onChange={(e) => updateAppControlForm('updateUrl', e.target.value)} />
+                </label>
+                <label className="admin-login-field lg:col-span-2">
+                  <span className="admin-login-label">Welcome Message</span>
+                  <textarea value={appControlForm.welcomeMessage} onChange={(e) => updateAppControlForm('welcomeMessage', e.target.value)} />
+                </label>
+                <label className="admin-login-field lg:col-span-2">
+                  <span className="admin-login-label">Maintenance Message</span>
+                  <textarea value={appControlForm.maintenanceMessage} onChange={(e) => updateAppControlForm('maintenanceMessage', e.target.value)} />
+                </label>
+              </div>
+            </div>
+
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Feature Switches</h2>
+                  <span>Turn app behaviors on/off.</span>
+                </div>
+              </div>
+              <div className="grid gap-3">
+                {[
+                  ['maintenanceMode', 'Maintenance Mode', 'Temporarily stop student access.'],
+                  ['forceUpdate', 'Force Update Prompt', 'Show required update screen.'],
+                  ['welcomeEnabled', 'Welcome Message', 'Show first-open welcome notice.'],
+                  ['pushEnabled', 'Push Notifications', 'Allow notification registration.'],
+                  ['screenProtection', 'Screenshot / Recording Block', appControlForm.screenProtectionScope === 'premium' ? 'Protect premium course screens only.' : 'Protect the entire student app.'],
+                  ['offlinePage', 'No Internet Page', 'Use custom offline screen.'],
+                  ['splashEnabled', 'Splash Image', 'Use branded app splash.'],
+                ].map(([key, label, description]) => (
+                  <label key={key} className="admin-control-card flex items-center justify-between gap-3">
+                    <span className="admin-control-icon">{key === 'screenProtection' ? <ShieldCheck size={18} /> : <Settings size={18} />}</span>
+                    <span className="admin-control-copy min-w-0">
+                      <strong>{label}</strong>
+                      <em>{description}</em>
+                    </span>
+                    <button
+                      type="button"
+                      className={`appcontrol-switch ${Boolean(appControlForm[key as keyof AppControlSettings]) ? 'is-on' : ''}`}
+                      onClick={() => updateAppControlForm(key as keyof AppControlSettings, !Boolean(appControlForm[key as keyof AppControlSettings]) as never)}
+                      aria-pressed={Boolean(appControlForm[key as keyof AppControlSettings])}
+                    >
+                      <i />
+                    </button>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                <span className="admin-login-label">Protection Scope</span>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[
+                    ['global', 'Entire App'],
+                    ['premium', 'Premium Only'],
+                  ].map(([scope, label]) => (
+                    <button
+                      key={scope}
+                      type="button"
+                      className={`admin-chip justify-center ${appControlForm.screenProtectionScope === scope ? 'is-active' : ''}`}
+                      onClick={() => {
+                        setAppControlForm((current) => ({
+                          ...current,
+                          screenProtection: true,
+                          screenProtectionScope: scope as AppControlSettings['screenProtectionScope'],
+                        }));
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs font-semibold text-gray-500">
+                  {appControlForm.screenProtectionScope === 'premium'
+                    ? 'Screenshots/recording block sirf premium course video, notes, details par lagega.'
+                    : 'Screenshots/recording block poore student app par lagega.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Push Notification Draft</h2>
+                  <span>Save default title/body, or send immediately from this control panel.</span>
+                </div>
+                <button type="button" className="admin-control-refresh" onClick={() => setActiveTab('push-notification')}>
+                  Send Push
+                </button>
+              </div>
+              <div className="grid gap-4">
+                <label className="admin-login-field">
+                  <span className="admin-login-label">Notification Title</span>
+                  <input value={appControlForm.notificationTitle} onChange={(e) => updateAppControlForm('notificationTitle', e.target.value)} />
+                </label>
+                <label className="admin-login-field">
+                  <span className="admin-login-label">Notification Body</span>
+                  <textarea value={appControlForm.notificationBody} onChange={(e) => updateAppControlForm('notificationBody', e.target.value)} />
+                </label>
+                <div className="admin-student-code">
+                  <span>Last Broadcast</span>
+                  <b>{appControlForm.notificationSentAt ? new Date(appControlForm.notificationSentAt).toLocaleString() : 'No notification sent yet'}</b>
+                </div>
+              </div>
+            </div>
+
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Quick Controls</h2>
+                  <span>Same surface as /superadmin, opened directly from /appcontrol.</span>
+                </div>
+              </div>
+              <div className="admin-chip-row">
+                {[
+                  ['slider', 'Homepage Slider'],
+                  ['course', 'Courses'],
+                  ['access', 'Premium Access'],
+                  ['live', 'Live Classes'],
+                  ['user', 'Users'],
+                  ['push-notification', 'Push Console'],
+                ].map(([tab, label]) => (
+                  <button key={tab} type="button" className="admin-chip" onClick={() => setActiveTab(tab as AdminPanelTab)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
@@ -6158,69 +7290,115 @@ const AdminPanelScreen = ({
           </div>
 
           {isSuperAdmin && (
-            <div className="grid xl:grid-cols-[0.95fr_1.05fr] gap-6">
-              <div className="admin-card p-5">
-                <div className="admin-section-head">
-                  <div>
-                    <h3 className="font-bold text-gray-800">Create Admin</h3>
-                    <p className="text-xs text-gray-500 mt-1">Admin credentials are stored in the academy database.</p>
-                  </div>
-                  <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
-                    Super Admin Only
-                  </div>
+            <div className="superadmin-console">
+              <div className="superadmin-head">
+                <div>
+                  <p className="admin-control-eyebrow">Super Admin</p>
+                  <h2>Admin access control</h2>
+                  <span>Create, review, and remove dashboard login accounts from one clean workspace.</span>
                 </div>
-                <div className="space-y-3">
-                  <input
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
-                    placeholder="Admin username"
-                    value={adminAccountForm.username}
-                    onChange={(e) => setAdminAccountForm((current) => ({ ...current, username: e.target.value }))}
-                  />
-                  <input
-                    type="password"
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
-                    placeholder="Admin password"
-                    value={adminAccountForm.password}
-                    onChange={(e) => setAdminAccountForm((current) => ({ ...current, password: e.target.value }))}
-                  />
-                  <button type="button" onClick={handleCreateAdminAccount} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                    Save Admin
-                  </button>
+                <div className="superadmin-badge">
+                  <ShieldCheck size={16} />
+                  Protected Area
                 </div>
               </div>
 
-              <div className="admin-card p-5">
-                <div className="admin-section-head">
-                  <div>
-                    <h3 className="font-bold text-gray-800">Manage Admin Accounts</h3>
-                    <p className="text-xs text-gray-500 mt-1">These accounts are fetched from the database for login.</p>
+              <div className="superadmin-summary">
+                <div>
+                  <span>Total Accounts</span>
+                  <strong>{adminAccounts.length}</strong>
+                </div>
+                <div>
+                  <span>Super Admins</span>
+                  <strong>{adminAccounts.filter((account) => account.role === 'superadmin').length}</strong>
+                </div>
+                <div>
+                  <span>Standard Admins</span>
+                  <strong>{adminAccounts.filter((account) => account.role !== 'superadmin').length}</strong>
+                </div>
+              </div>
+
+              <div className="grid xl:grid-cols-[0.92fr_1.08fr] gap-5">
+                <div className="superadmin-create-card">
+                  <div className="admin-section-head">
+                    <div>
+                      <h3>Create Admin</h3>
+                      <p>New credentials are saved to the academy database.</p>
+                    </div>
+                    <span className="superadmin-role-pill">Admin</span>
                   </div>
-                  <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
-                    {adminAccounts.length} admins
+                  <div className="superadmin-form">
+                    <label>
+                      <span>Username</span>
+                      <div className="superadmin-input-wrap">
+                        <User size={18} />
+                        <input
+                          placeholder="Admin username"
+                          value={adminAccountForm.username}
+                          onChange={(e) => setAdminAccountForm((current) => ({ ...current, username: e.target.value }))}
+                        />
+                      </div>
+                    </label>
+                    <label>
+                      <span>Password</span>
+                      <div className="superadmin-input-wrap">
+                        <Lock size={18} />
+                        <input
+                          type="password"
+                          placeholder="Admin password"
+                          value={adminAccountForm.password}
+                          onChange={(e) => setAdminAccountForm((current) => ({ ...current, password: e.target.value }))}
+                        />
+                      </div>
+                    </label>
+                    <button type="button" onClick={handleCreateAdminAccount} disabled={loading} className="admin-primary-button superadmin-save-button">
+                      <CheckCircle2 size={18} />
+                      {loading ? 'Saving...' : 'Save Admin'}
+                    </button>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  {adminAccounts.map((account) => (
-                    <div key={account.id} className="admin-list-card p-4 flex items-center justify-between gap-4">
-                      <div>
-                        <div className="font-bold text-slate-900">{account.username}</div>
-                        <div className="text-xs text-slate-500 mt-1">
-                          {account.role === 'superadmin' ? 'Super admin' : 'Admin'}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => confirmDelete(
-                          'Delete admin account?',
-                          `This will remove ${account.username} from admin access.`,
-                          () => handleDeleteAdminAccount(account.id)
-                        )}
-                        className="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold"
-                      >
-                        Delete
-                      </button>
+
+                <div className="superadmin-list-card">
+                  <div className="admin-section-head">
+                    <div>
+                      <h3>Manage Admin Accounts</h3>
+                      <p>Accounts listed here can access the admin dashboard.</p>
                     </div>
-                  ))}
+                    <span className="superadmin-count-pill">{adminAccounts.length} admins</span>
+                  </div>
+                  <div className="superadmin-account-list">
+                    {adminAccounts.map((account) => {
+                      const isProtectedAccount = account.role === 'superadmin';
+                      return (
+                        <div key={account.id} className={`superadmin-account-row ${isProtectedAccount ? 'is-protected' : ''}`}>
+                          <div className="superadmin-account-avatar">
+                            {(account.username || 'A').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="superadmin-account-copy">
+                            <strong>{account.username}</strong>
+                            <span>{isProtectedAccount ? 'Full dashboard and account control' : 'Dashboard management access'}</span>
+                          </div>
+                          <div className={`superadmin-role-chip ${isProtectedAccount ? 'is-super' : ''}`}>
+                            {isProtectedAccount ? 'Super Admin' : 'Admin'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => confirmDelete(
+                              'Delete admin account?',
+                              `This will remove ${account.username} from admin access.`,
+                              () => handleDeleteAdminAccount(account.id)
+                            )}
+                            className="superadmin-delete-button"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {!adminAccounts.length && (
+                      <div className="admin-empty-control">No admin accounts found. Create the first admin login here.</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -6333,24 +7511,170 @@ const AdminPanelScreen = ({
           <div className="admin-push-head">
             <div>
               <p className="admin-control-eyebrow">Push Notification</p>
-              <h2>Send app notifications from the admin panel</h2>
-              <span>E-Droid opens below in a protected dashboard frame, so your notification workflow stays inside RBS Academy admin.</span>
+              <h2>Send app notifications from the control panel</h2>
+              <span>Broadcast to all students, premium students, free users, or one selected student.</span>
             </div>
             <div className="admin-push-badge">
               <Bell size={18} />
-              Live Console
+              Control Panel
             </div>
           </div>
 
-          <div className="admin-push-frame-shell">
-            <iframe
-              src="https://www.e-droid.net/"
-              title="E-Droid push notification console"
-              className="admin-push-frame"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              allow="clipboard-read; clipboard-write; fullscreen"
-            />
+          <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className={cardClass}>
+              <div className="grid gap-4">
+                <label className="admin-login-field">
+                  <span className="admin-login-label">Title</span>
+                  <input
+                    value={pushForm.title}
+                    onChange={(event) => setPushForm((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="RBS Academy"
+                  />
+                </label>
+                <label className="admin-login-field">
+                  <span className="admin-login-label">Message</span>
+                  <textarea
+                    value={pushForm.body}
+                    onChange={(event) => setPushForm((current) => ({ ...current, body: event.target.value }))}
+                    placeholder="Write notification message"
+                  />
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="admin-login-field">
+                    <span className="admin-login-label">Audience</span>
+                    <select
+                      value={pushForm.audience}
+                      onChange={(event) => setPushForm((current) => ({ ...current, audience: event.target.value as typeof current.audience }))}
+                    >
+                      <option value="all">All students</option>
+                      <option value="premium">Premium students</option>
+                      <option value="free">Free students</option>
+                      <option value="selected">Selected student</option>
+                    </select>
+                  </label>
+                  <label className="admin-login-field">
+                    <span className="admin-login-label">Open Screen</span>
+                    <select
+                      value={pushForm.screen}
+                      onChange={(event) => setPushForm((current) => ({ ...current, screen: event.target.value }))}
+                    >
+                      <option value="home">Home</option>
+                      <option value="courses">Courses</option>
+                      <option value="my-courses">My Courses</option>
+                      <option value="live-classes">Live Classes</option>
+                      <option value="notes">Notes</option>
+                      <option value="quiz">Quiz</option>
+                    </select>
+                  </label>
+                </div>
+                {pushForm.audience === 'selected' && (
+                  <label className="admin-login-field">
+                    <span className="admin-login-label">Student</span>
+                    <select
+                      value={pushForm.userId}
+                      onChange={(event) => setPushForm((current) => ({ ...current, userId: event.target.value }))}
+                    >
+                      <option value="">Select student</option>
+                      {users.map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.name || student.email} - {student.email || student.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <button
+                  type="button"
+                  disabled={loading || !pushForm.title.trim() || !pushForm.body.trim()}
+                  className="admin-primary-button py-3"
+                  onClick={sendPushNotificationFromPanel}
+                >
+                  {loading ? 'Sending...' : 'Send Push Notification'}
+                </button>
+              </div>
+            </div>
+
+            <div className={cardClass}>
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Delivery Status</h2>
+                  <span>Students must allow notifications once from Settings.</span>
+                </div>
+              </div>
+              <div className="admin-student-code">
+                <span>Registered Students</span>
+                <b>{users.length.toLocaleString()}</b>
+              </div>
+              <div className="admin-student-code mt-3">
+                <span>Last Push</span>
+                <b>{appControlForm.notificationSentAt ? new Date(appControlForm.notificationSentAt).toLocaleString() : 'Not sent yet'}</b>
+              </div>
+              <div className="admin-student-code mt-3">
+                <span>Current Payload</span>
+                <b>{JSON.stringify({ title: pushForm.title, body: pushForm.body, data: { screen: pushForm.screen } })}</b>
+              </div>
+              <button type="button" className="admin-secondary-button mt-4 w-full py-3" onClick={() => openExternalResource('https://console.firebase.google.com/')}>
+                Open Firebase Console
+              </button>
+            </div>
+          </div>
+
+          <div className={cardClass}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">Notification Panel</h3>
+                <p className="text-xs text-gray-500 mt-1">All sent push and app-broadcast notifications are listed here.</p>
+              </div>
+              <button
+                type="button"
+                className="admin-secondary-button px-4 py-2 text-xs font-black"
+                onClick={fetchNotificationHistory}
+                disabled={notificationHistoryLoading}
+              >
+                {notificationHistoryLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            <div className="space-y-3">
+              {notificationHistory.length ? notificationHistory.map((item) => (
+                <div key={item.id} className="admin-list-card p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black uppercase text-primary">
+                          {item.audience || 'all'}
+                        </span>
+                        <span className="text-xs font-bold text-gray-400">
+                          {item.sentAt ? new Date(item.sentAt).toLocaleString() : 'Just now'}
+                        </span>
+                      </div>
+                      <h4 className="mt-2 text-sm font-black text-gray-900">{item.title}</h4>
+                      <p className="mt-1 text-sm leading-5 text-gray-600">{item.body}</p>
+                    </div>
+                    <div className="grid min-w-[180px] grid-cols-3 gap-2 text-center text-xs">
+                      <span className="rounded-xl bg-slate-50 px-2 py-2 font-bold text-slate-600">
+                        Total<br /><b className="text-slate-900">{item.totalDevices}</b>
+                      </span>
+                      <span className="rounded-xl bg-green-50 px-2 py-2 font-bold text-green-700">
+                        Sent<br /><b>{item.sent}</b>
+                      </span>
+                      <span className="rounded-xl bg-rose-50 px-2 py-2 font-bold text-rose-700">
+                        Failed<br /><b>{item.failed}</b>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-500">
+                    <span className="rounded-full bg-gray-100 px-2 py-1">Screen: {item.screen || 'home'}</span>
+                    <span className="rounded-full bg-gray-100 px-2 py-1">
+                      {item.credentialMissing ? 'App broadcast fallback' : 'Firebase push'}
+                    </span>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-bold text-gray-500">
+                  No notifications sent yet.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -6719,6 +8043,33 @@ const AdminPanelScreen = ({
                         onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, thumbnail_url: event.target.value })}
                         placeholder="Video thumbnail URL optional"
                       />
+                      <div className="admin-video-custom-control">
+                        <div className="admin-course-workspace-title">
+                          <Download size={18} />
+                          <div>
+                            <strong>Secure download section</strong>
+                            <span>Add your own downloadable file/resource URL for this lesson. YouTube links stay embedded and protected.</span>
+                          </div>
+                        </div>
+                        <input
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.download_label : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_label: event.target.value })}
+                          placeholder="Download button label e.g. Download lesson video"
+                        />
+                        <input
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.download_url : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_url: event.target.value })}
+                          placeholder="Secure download/resource URL optional"
+                        />
+                        <button
+                          type="button"
+                          className={`admin-video-toggle ${lessonForm.download_enabled ? 'is-on' : ''}`}
+                          onClick={() => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_enabled: !lessonForm.download_enabled })}
+                        >
+                          <span>{lessonForm.download_enabled ? 'Download section on' : 'Download section off'}</span>
+                          <i />
+                        </button>
+                      </div>
                       <label className="admin-slider-upload-box">
                         <span className="admin-slider-upload-title">Video thumbnail</span>
                         <span className="admin-slider-upload-button">
@@ -6805,6 +8156,9 @@ const AdminPanelScreen = ({
                                   note_url: lesson.note_url || '',
                                   video_url: lesson.video_url || '',
                                   thumbnail_url: lesson.thumbnail_url || '',
+                                  download_url: lesson.download_url || '',
+                                  download_label: lesson.download_label || '',
+                                  download_enabled: lesson.download_enabled !== false,
                                   sort_order: String(lesson.sort_order || index + 1),
                                 });
                                 setLessonThumbnailFile(null);
@@ -6977,6 +8331,21 @@ const AdminPanelScreen = ({
             </div>
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="YouTube URL e.g. https://youtu.be/video-id" value={lessonForm.video_url} onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })} />
             <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Video thumbnail URL (optional)" value={lessonForm.thumbnail_url} onChange={(e) => setLessonForm({ ...lessonForm, thumbnail_url: e.target.value })} />
+            <div className="admin-video-custom-control">
+              <div className="admin-course-workspace-title">
+                <Download size={18} />
+                <div>
+                  <strong>Secure download section</strong>
+                  <span>Add your own downloadable file/resource URL. YouTube links stay embedded and protected.</span>
+                </div>
+              </div>
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Download button label" value={lessonForm.download_label} onChange={(e) => setLessonForm({ ...lessonForm, download_label: e.target.value })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Secure download/resource URL optional" value={lessonForm.download_url} onChange={(e) => setLessonForm({ ...lessonForm, download_url: e.target.value })} />
+              <button type="button" className={`admin-video-toggle ${lessonForm.download_enabled ? 'is-on' : ''}`} onClick={() => setLessonForm({ ...lessonForm, download_enabled: !lessonForm.download_enabled })}>
+                <span>{lessonForm.download_enabled ? 'Download section on' : 'Download section off'}</span>
+                <i />
+              </button>
+            </div>
             <label className="admin-slider-upload-box">
               <span className="admin-slider-upload-title">Video thumbnail</span>
               <span className="admin-slider-upload-button">
@@ -7024,7 +8393,7 @@ const AdminPanelScreen = ({
               <button onClick={() => {
                 setEditingLessonId('');
                 setLessonThumbnailFile(null);
-                setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', sort_order: '0' });
+                setLessonForm({ course_id: '', title: '', duration: '', note_content: '', note_url: '', video_url: '', thumbnail_url: '', download_url: '', download_label: '', download_enabled: true, sort_order: '0' });
               }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
                 Cancel Edit
               </button>
@@ -7053,6 +8422,9 @@ const AdminPanelScreen = ({
                         note_url: lesson.note_url || '',
                         video_url: lesson.video_url || '',
                         thumbnail_url: lesson.thumbnail_url || '',
+                        download_url: lesson.download_url || '',
+                        download_label: lesson.download_label || '',
+                        download_enabled: lesson.download_enabled !== false,
                         sort_order: String(lesson.sort_order || 0),
                       });
                       setLessonThumbnailFile(null);
@@ -7730,7 +9102,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                   <option value="selected">Show to selected students</option>
                 </select>
               </div>
-              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Meeting link / Zoom / Google Meet URL" value={liveClassForm.meeting_url} onChange={(e) => setLiveClassForm({ ...liveClassForm, meeting_url: e.target.value })} />
+              <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Google Meet URL, for example https://meet.google.com/abc-defg-hij" value={liveClassForm.meeting_url} onChange={(e) => setLiveClassForm({ ...liveClassForm, meeting_url: e.target.value })} />
               <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" type="datetime-local" value={liveClassForm.scheduled_at} onChange={(e) => setLiveClassForm({ ...liveClassForm, scheduled_at: e.target.value })} />
 
               {liveClassForm.audience_type === 'course' && (
@@ -8144,6 +9516,33 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                     </button>
                   </div>
 
+                  <strong>Device Lock</strong>
+                  <div className="admin-student-course-list">
+                    {selectedStudent.deviceId ? (
+                      <span>
+                        <Smartphone size={14} /> {selectedStudent.deviceLabel || `Device ${selectedStudent.deviceId.slice(-8)}`}
+                        {selectedStudent.deviceBoundAt ? ` - ${new Date(selectedStudent.deviceBoundAt).toLocaleString()}` : ''}
+                      </span>
+                    ) : (
+                      <em>No mobile bound yet. First login will lock this ID to that mobile.</em>
+                    )}
+                  </div>
+                  <div className="admin-student-actions">
+                    <button
+                      type="button"
+                      disabled={loading || !selectedStudent.deviceId}
+                      className="admin-student-remove-button"
+                      onClick={() => confirmDelete(
+                        'Reset student mobile?',
+                        'Use this only when the student changes phone. After reset, the next login will lock the ID to the new mobile.',
+                        () => runStudentPlatformAction('resetStudentDevice'),
+                        'Reset Device'
+                      )}
+                    >
+                      Reset Device
+                    </button>
+                  </div>
+
                   <strong>Unlocked Courses</strong>
                   <div className="admin-student-course-list">
                     {(selectedStudent.grantedCourseIds || []).length ? (
@@ -8299,10 +9698,14 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
 
 const NoteViewerScreen = ({ 
   onBack, 
-  lesson 
+  lesson,
+  protectedMode = false,
+  watermark = 'RBS Academy'
 }: { 
   onBack: () => void, 
-  lesson: Lesson | null
+  lesson: Lesson | null,
+  protectedMode?: boolean,
+  watermark?: string
 }) => {
   if (!lesson) return null;
 
@@ -8314,8 +9717,10 @@ const NoteViewerScreen = ({
       initial={{ x: '100%' }} 
       animate={{ x: 0 }} 
       exit={{ x: '100%' }}
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#e9eef6]"
+      className={`fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#e9eef6] ${protectedMode ? 'protected-learning-surface' : ''}`}
+      onContextMenu={protectedMode ? (event) => event.preventDefault() : undefined}
     >
+      {protectedMode && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
       <div className="border-b border-slate-200/80 bg-[linear-gradient(135deg,#17304f_0%,#22486d_100%)] px-4 py-3 text-white shadow-lg shadow-slate-300/30">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -8406,12 +9811,14 @@ export default function App() {
   const pathname = typeof window !== 'undefined'
     ? window.location.pathname.replace(/\/+$/, '') || '/'
     : '';
-  const isSuperAdminRoute = pathname === '/adminlogin/adminsachin' || pathname === '/superadmin';
+  const isAppControlRoute = pathname === '/appcontrol';
+  const isSuperAdminRoute = pathname === '/adminlogin/adminsachin' || pathname === '/superadmin' || isAppControlRoute;
   const isAdminRoute = pathname === '/adminlogin' || pathname === '/admin';
   const isManagementRoute = isAdminRoute || isSuperAdminRoute;
   const initialSessionUser = getStoredSessionUser();
   const cachedAppData = getCachedAppData();
   const cachedAdminUsers = getCachedAdminUsers();
+  const cachedAppControlSettings = getCachedAppControlSettings();
   const [screen, setScreenState] = useState<Screen>('home');
   const screenRef = useRef<Screen>('home');
   const historyReadyRef = useRef(false);
@@ -8437,6 +9844,13 @@ export default function App() {
   }).quizzes);
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>(cachedAppData?.liveClasses || []);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>(cachedAdminUsers);
+  const [appControlSettings, setAppControlSettings] = useState<AppControlSettings>(cachedAppControlSettings);
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(() => {
+    if (typeof window === 'undefined' || isManagementRoute) return false;
+    return cachedAppControlSettings.welcomeEnabled && window.localStorage.getItem(APP_WELCOME_SEEN_KEY) !== cachedAppControlSettings.welcomeMessage;
+  });
+  const [showControlledSplash, setShowControlledSplash] = useState(() => !isManagementRoute && cachedAppControlSettings.splashEnabled);
+  const [appControlLastSynced, setAppControlLastSynced] = useState(() => Date.now());
   const [loading, setLoading] = useState(!cachedAppData);
   const [user, setUser] = useState<AuthUser | null>(() => initialSessionUser);
   const [blockedAccount, setBlockedAccount] = useState<{ user: AuthUser | null; message: string } | null>(() =>
@@ -8452,14 +9866,108 @@ export default function App() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark';
   });
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [notificationStatus, setNotificationStatus] = useState(() => getNotificationPermissionState());
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY) === 'true' || getNotificationPermissionState() === 'granted';
+  });
+  const [pushToken, setPushToken] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(PUSH_TOKEN_STORAGE_KEY) || '';
+  });
   const [coursesInitialTab, setCoursesInitialTab] = useState<'free' | 'premium'>('free');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [unlockedCourseIds, setUnlockedCourseIds] = useState<string[]>(() => initialSessionUser?.grantedCourseIds || []);
   const [selectedCourseForUnlock, setSelectedCourseForUnlock] = useState<Course | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [selectedLiveClass, setSelectedLiveClass] = useState<LiveClass | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [selectedQuizTopic, setSelectedQuizTopic] = useState<Quiz | null>(null);
   const [previousScreen, setPreviousScreen] = useState<Screen>('home');
+  const coursesRef = useRef<Course[]>(courses);
+  const unlockedCourseIdsRef = useRef<string[]>(initialSessionUser?.grantedCourseIds || []);
+  const notifiedCourseUnlockIdsRef = useRef<Set<string>>(new Set(initialSessionUser?.grantedCourseIds || []));
+  const accessSyncReadyRef = useRef(false);
+  const appControlNotificationKeyRef = useRef(`${cachedAppControlSettings.notificationId || ''}\n${cachedAppControlSettings.notificationTitle}\n${cachedAppControlSettings.notificationBody}`);
+  const appControlSyncReadyRef = useRef(false);
+  const isPremiumProtectionScreen = Boolean(
+    (
+      selectedCourse &&
+      !isCourseFree(selectedCourse) &&
+      ['video-player', 'note-viewer', 'course-details'].includes(screen)
+    ) ||
+    (
+      selectedLiveClass?.access_type === 'premium' &&
+      screen === 'live-class-viewer'
+    )
+  );
+  const screenProtectionActive = !isManagementRoute &&
+    appControlSettings.screenProtection &&
+    (
+      appControlSettings.screenProtectionScope !== 'premium' ||
+      isPremiumProtectionScreen
+    );
+  const videoPlayerProtectionActive = !isManagementRoute &&
+    appControlSettings.videoProtectionEnabled &&
+    screen === 'video-player';
+  const secureModeActive = screenProtectionActive || videoPlayerProtectionActive;
+  const premiumSurfaceProtectionActive = screenProtectionActive &&
+    appControlSettings.screenProtectionScope === 'premium';
+  const videoSurfaceProtectionActive = premiumSurfaceProtectionActive || videoPlayerProtectionActive;
+
+  const notifyCourseUnlocks = async (nextCourseIds: string[], previousCourseIds = unlockedCourseIdsRef.current) => {
+    if (!appControlSettings.pushEnabled) {
+      return;
+    }
+
+    const newlyUnlockedIds = nextCourseIds.filter((courseId) =>
+      !previousCourseIds.includes(courseId) && !notifiedCourseUnlockIdsRef.current.has(courseId)
+    );
+
+    if (!newlyUnlockedIds.length) {
+      return;
+    }
+
+    for (const courseId of newlyUnlockedIds) {
+      notifiedCourseUnlockIdsRef.current.add(courseId);
+      const unlockedCourse = coursesRef.current.find((course) => course.id === courseId);
+      const courseTitle = unlockedCourse?.title || 'Premium course';
+      const shown = await showAppNotification(
+        'Course unlocked',
+        `${courseTitle} is now available in your RBS Academy app.`,
+        {
+          type: 'course-unlocked',
+          screen: 'video-player',
+          courseId,
+        },
+        NOTIFICATION_CHANNEL_COURSE_ACCESS
+      );
+      if (shown) {
+        setNotificationStatus('course-unlocked');
+        setNotificationsEnabled(true);
+      }
+    }
+  };
+
+  const openNotificationTarget = (payload: Record<string, unknown> | undefined) => {
+    if (!payload) {
+      return;
+    }
+
+    const courseId = typeof payload.courseId === 'string' ? payload.courseId : '';
+    if (courseId) {
+      const notificationCourse = coursesRef.current.find((course) => course.id === courseId);
+      if (notificationCourse) {
+        setSelectedCourse(notificationCourse);
+      }
+    }
+
+    const targetScreen = typeof payload.screen === 'string' ? payload.screen as Screen : undefined;
+    if (targetScreen) {
+      setScreen(targetScreen);
+    }
+  };
 
   const blockCurrentStudentSession = (blockedUser: AuthUser | null, message = 'Your account is blocked. Contact academy admin.') => {
     const nextUser = blockedUser ? { ...normalizeAuthUser(blockedUser), status: 'blocked' } : null;
@@ -8467,6 +9975,9 @@ export default function App() {
     setUser(nextUser);
     saveSessionUser(nextUser);
     setUnlockedCourseIds([]);
+    unlockedCourseIdsRef.current = [];
+    notifiedCourseUnlockIdsRef.current = new Set();
+    accessSyncReadyRef.current = false;
     setSelectedCourseForUnlock(null);
     setSelectedCourse(null);
     setSelectedLesson(null);
@@ -8566,6 +10077,71 @@ export default function App() {
   }, [user?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const refreshAppControlSettings = async () => {
+      const settings = await fetchAppControlSettings(appControlSettings);
+      if (cancelled) {
+        return;
+      }
+
+      const nextNotificationKey = `${settings.notificationId || ''}\n${settings.notificationTitle}\n${settings.notificationBody}`;
+      const shouldShowAdminNotification =
+        !isManagementRoute &&
+        appControlSyncReadyRef.current &&
+        settings.pushEnabled &&
+        nextNotificationKey !== appControlNotificationKeyRef.current &&
+        Boolean(settings.notificationTitle || settings.notificationBody);
+
+      setAppControlSettings(settings);
+      setAppControlLastSynced(Date.now());
+      saveCachedAppControlSettings(settings);
+      if (!isManagementRoute && settings.welcomeEnabled && typeof window !== 'undefined') {
+        setShowWelcomeMessage(window.localStorage.getItem(APP_WELCOME_SEEN_KEY) !== settings.welcomeMessage);
+      }
+      if (!isManagementRoute && !settings.splashEnabled) {
+        setShowControlledSplash(false);
+      }
+      appControlNotificationKeyRef.current = nextNotificationKey;
+      appControlSyncReadyRef.current = true;
+
+      if (shouldShowAdminNotification) {
+        const shown = await showAppNotification(
+          settings.notificationTitle || 'RBS Academy',
+          settings.notificationBody || 'New academy update received.',
+          {
+            type: 'admin-broadcast',
+            screen: 'home',
+            notificationId: settings.notificationId || '',
+          },
+          NOTIFICATION_CHANNEL_UPDATES
+        );
+        if (shown) {
+          setNotificationStatus('admin-broadcast');
+          setNotificationsEnabled(true);
+        }
+      }
+    };
+
+    refreshAppControlSettings();
+    const intervalId = window.setInterval(refreshAppControlSettings, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isManagementRoute]);
+
+  useEffect(() => {
+    if (isManagementRoute || !appControlSettings.splashEnabled) {
+      setShowControlledSplash(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setShowControlledSplash(false), 1300);
+    return () => window.clearTimeout(timeoutId);
+  }, [isManagementRoute, appControlSettings.splashEnabled]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || isManagementRoute) {
       return;
     }
@@ -8633,6 +10209,216 @@ export default function App() {
   }, [darkModeEnabled]);
 
   useEffect(() => {
+    coursesRef.current = courses;
+  }, [courses]);
+
+  useEffect(() => {
+    unlockedCourseIdsRef.current = unlockedCourseIds;
+  }, [unlockedCourseIds]);
+
+  useEffect(() => {
+    if (!selectedCourseForUnlock || !isCourseAccessible(selectedCourseForUnlock, unlockedCourseIds)) {
+      return;
+    }
+
+    setSelectedCourse(selectedCourseForUnlock);
+    setSelectedCourseForUnlock(null);
+    setScreen('course-details');
+  }, [selectedCourseForUnlock?.id, unlockedCourseIds]);
+
+  useEffect(() => {
+    if (!isNativePushAvailable()) {
+      return;
+    }
+
+    let isMounted = true;
+    const handles: Array<{ remove: () => Promise<void> }> = [];
+
+    const addPushListeners = async () => {
+      handles.push(await PushNotifications.addListener('registration', (token) => {
+        if (!isMounted) return;
+        setPushToken(token.value);
+        setNotificationsEnabled(true);
+        setNotificationStatus('registered');
+        window.localStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token.value);
+        window.localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, 'true');
+        registerPushToken(token.value, getStoredSessionUser()?.id || '').catch(() => {});
+      }));
+
+      handles.push(await PushNotifications.addListener('registrationError', (error) => {
+        if (!isMounted) return;
+        setNotificationsEnabled(false);
+        setNotificationStatus(`error: ${error.error}`);
+        window.localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, 'false');
+      }));
+
+      handles.push(await PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+        if (!isMounted) return;
+        const title = notification.title || 'RBS Academy';
+        const body = notification.body || 'New academy update received.';
+        const payload = (notification.data || {}) as Record<string, unknown>;
+        setNotificationStatus('received');
+        window.localStorage.setItem(PUSH_LAST_MESSAGE_STORAGE_KEY, JSON.stringify({
+          title,
+          body,
+          receivedAt: Date.now(),
+          data: payload,
+        }));
+        await showAppNotification(title, body, payload, NOTIFICATION_CHANNEL_UPDATES);
+      }));
+
+      handles.push(await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        if (!isMounted) return;
+        openNotificationTarget(action.notification.data as Record<string, unknown> | undefined);
+      }));
+    };
+
+    addPushListeners().catch((error) => {
+      setNotificationStatus(error instanceof Error ? `error: ${error.message}` : 'error');
+    });
+
+    PushNotifications.checkPermissions()
+      .then((permission) => {
+        if (!isMounted) return;
+        setNotificationStatus(permission.receive);
+        setNotificationsEnabled(permission.receive === 'granted' || Boolean(window.localStorage.getItem(PUSH_TOKEN_STORAGE_KEY)));
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+      handles.forEach((handle) => {
+        handle.remove().catch(() => {});
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeLocalNotificationAvailable()) {
+      return;
+    }
+
+    let isMounted = true;
+    const handles: Array<{ remove: () => Promise<void> }> = [];
+
+    const addLocalNotificationListeners = async () => {
+      handles.push(await LocalNotifications.addListener('localNotificationReceived', (notification) => {
+        if (!isMounted) return;
+        setNotificationStatus('received');
+        window.localStorage.setItem(PUSH_LAST_MESSAGE_STORAGE_KEY, JSON.stringify({
+          title: notification.title,
+          body: notification.body,
+          receivedAt: Date.now(),
+          data: notification.extra || {},
+        }));
+      }));
+
+      handles.push(await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        if (!isMounted) return;
+        openNotificationTarget(action.notification.extra as Record<string, unknown> | undefined);
+      }));
+    };
+
+    addLocalNotificationListeners().catch((error) => {
+      setNotificationStatus(error instanceof Error ? `error: ${error.message}` : 'error');
+    });
+
+    LocalNotifications.checkPermissions()
+      .then((permission) => {
+        if (!isMounted) return;
+        if (permission.display === 'granted') {
+          setNotificationStatus('local-ready');
+          setNotificationsEnabled(true);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+      handles.forEach((handle) => {
+        handle.remove().catch(() => {});
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pushToken || !user?.id) {
+      return;
+    }
+
+    registerPushToken(pushToken, user.id).catch(() => {});
+  }, [pushToken, user?.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isManagementRoute) {
+      return;
+    }
+
+    if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('App')) {
+      return;
+    }
+
+    let removeBackButtonListener: (() => Promise<void>) | undefined;
+
+    CapacitorApp.addListener('backButton', () => {
+      if (isDrawerOpen) {
+        setIsDrawerOpen(false);
+        return;
+      }
+
+      if (screenRef.current !== 'home') {
+        setScreen(getBackScreen());
+        return;
+      }
+
+      const shouldExit = window.confirm('Exit RBS Academy?');
+      if (shouldExit) {
+        CapacitorApp.exitApp();
+      }
+    }).then((handle) => {
+      removeBackButtonListener = handle.remove;
+    }).catch(() => {});
+
+    return () => {
+      removeBackButtonListener?.();
+    };
+  }, [screen, isDrawerOpen, isManagementRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isManagementRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    setNativeSecureMode(Boolean(secureModeActive));
+    return () => setNativeSecureMode(false);
+  }, [secureModeActive]);
+
+  useEffect(() => {
     const loadUserAccess = async () => {
       if (!user) {
         setSessionChecking(false);
@@ -8649,6 +10435,12 @@ export default function App() {
         setSessionChecking(true);
         const freshUser = await fetchSessionUser(user.id);
         const nextGrantedCourseIds = freshUser.grantedCourseIds || [];
+        if (accessSyncReadyRef.current) {
+          await notifyCourseUnlocks(nextGrantedCourseIds, unlockedCourseIdsRef.current);
+        } else {
+          nextGrantedCourseIds.forEach((courseId) => notifiedCourseUnlockIdsRef.current.add(courseId));
+          accessSyncReadyRef.current = true;
+        }
         setUnlockedCourseIds(nextGrantedCourseIds);
         const nextUser = {
           ...normalizeAuthUser(user),
@@ -8686,6 +10478,7 @@ export default function App() {
           return;
         }
         const nextGrantedCourseIds = freshUser.grantedCourseIds || [];
+        await notifyCourseUnlocks(nextGrantedCourseIds, unlockedCourseIdsRef.current);
         setUnlockedCourseIds(nextGrantedCourseIds);
         const nextUser = {
           ...normalizeAuthUser(user),
@@ -8723,7 +10516,11 @@ export default function App() {
     setBlockedAccount(null);
     setUser(normalizedUser);
     saveSessionUser(normalizedUser);
-    setUnlockedCourseIds(normalizedUser.grantedCourseIds || []);
+    const grantedCourseIds = normalizedUser.grantedCourseIds || [];
+    setUnlockedCourseIds(grantedCourseIds);
+    unlockedCourseIdsRef.current = grantedCourseIds;
+    notifiedCourseUnlockIdsRef.current = new Set(grantedCourseIds);
+    accessSyncReadyRef.current = false;
     setSessionChecking(true);
     setScreen('home');
   };
@@ -8734,6 +10531,9 @@ export default function App() {
     setSessionChecking(false);
     saveSessionUser(null);
     setUnlockedCourseIds([]);
+    unlockedCourseIdsRef.current = [];
+    notifiedCourseUnlockIdsRef.current = new Set();
+    accessSyncReadyRef.current = false;
     setScreen('home');
     setIsDrawerOpen(false);
   };
@@ -8807,7 +10607,8 @@ export default function App() {
       const response = await apiPost('verifyCourseAccess', {
         courseId: selectedCourseForUnlock.id,
         accessCode: code,
-        userId: user?.id || ''
+        userId: user?.id || '',
+        ...getDevicePayload(),
       });
       const data = await response.json();
 
@@ -8818,10 +10619,12 @@ export default function App() {
         return { success: false, message: data.message || 'Invalid access code' };
       }
 
-      const nextUnlockedCourseIds = unlockedCourseIds.includes(selectedCourseForUnlock.id)
+      const unlockedCourse = selectedCourseForUnlock;
+      const nextUnlockedCourseIds = unlockedCourseIds.includes(unlockedCourse.id)
         ? unlockedCourseIds
-        : [...unlockedCourseIds, selectedCourseForUnlock.id];
+        : [...unlockedCourseIds, unlockedCourse.id];
       setUnlockedCourseIds(nextUnlockedCourseIds);
+      unlockedCourseIdsRef.current = nextUnlockedCourseIds;
       if (user) {
         const nextUser = {
           ...normalizeAuthUser(user),
@@ -8830,7 +10633,25 @@ export default function App() {
         setUser(nextUser);
         saveSessionUser(nextUser);
       }
+      notifiedCourseUnlockIdsRef.current.add(unlockedCourse.id);
+      if (appControlSettings.pushEnabled) {
+        const shown = await showAppNotification(
+          'Course unlocked',
+          `${unlockedCourse.title} is now available in your RBS Academy app.`,
+          {
+            type: 'course-unlocked',
+            screen: 'video-player',
+            courseId: unlockedCourse.id,
+          },
+          NOTIFICATION_CHANNEL_COURSE_ACCESS
+        );
+        if (shown) {
+          setNotificationStatus('course-unlocked');
+          setNotificationsEnabled(true);
+        }
+      }
       setSelectedCourseForUnlock(null);
+      setSelectedCourse(unlockedCourse);
       setScreen('video-player');
       return { success: true };
     } catch (error) {
@@ -8841,6 +10662,49 @@ export default function App() {
   const handleOpenCoursesTab = (tab: 'free' | 'premium') => {
     setCoursesInitialTab(tab);
     setScreen('courses');
+  };
+
+  const handleSaveAppControlSettings = async (settings: AppControlSettings) => {
+    try {
+      const response = await fetch(apiUrl('/api/app-control'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAdminAuthHeaders(),
+        },
+        body: JSON.stringify({ settings }),
+      });
+      const data = await readLenientJsonResponse(response);
+      if (!response.ok) {
+        return { success: false, message: data.message || `Unable to save app control settings (${response.status})` };
+      }
+      if (!data.success) {
+        return { success: false, message: data.message || 'Unable to save app control settings' };
+      }
+      const normalizedSettings = normalizeAppControlSettings(data.settings || settings);
+      setAppControlSettings(normalizedSettings);
+      setAppControlLastSynced(Date.now());
+      saveCachedAppControlSettings(normalizedSettings);
+      return { success: true, message: data.message || 'App control settings saved' };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unable to save app control settings',
+      };
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    if (!appControlSettings.pushEnabled) {
+      setNotificationStatus('disabled by app control');
+      setNotificationsEnabled(false);
+      return;
+    }
+
+    const result = await requestAppNotifications();
+    setNotificationStatus(result.status);
+    setNotificationsEnabled(result.success);
   };
 
   const handleRequestCourseUnlock = (course: Course) => {
@@ -8858,7 +10722,23 @@ export default function App() {
       if (!adminSession || adminSession.role !== requiredRole) {
         return <AdminLoginScreen mode={requiredRole} onLogin={handleAdminLogin} />;
       }
-      return <AdminPanelScreen courses={courses} notes={notes} quizzes={quizzes} sliders={sliders} liveClasses={liveClasses} users={adminUsers} authSession={adminSession} onRefresh={fetchAppData} onLogout={handleAdminLogout} />;
+      return (
+        <AdminPanelScreen
+          courses={courses}
+          notes={notes}
+          quizzes={quizzes}
+          sliders={sliders}
+          liveClasses={liveClasses}
+          users={adminUsers}
+          authSession={adminSession}
+          initialTab={isAppControlRoute ? 'app-control' : 'dashboard'}
+          appControlSettings={appControlSettings}
+          appControlLastSynced={appControlLastSynced}
+          onSaveAppControlSettings={handleSaveAppControlSettings}
+          onRefresh={fetchAppData}
+          onLogout={handleAdminLogout}
+        />
+      );
     }
 
     if (loading || sessionChecking) return <Loading />;
@@ -8889,7 +10769,22 @@ export default function App() {
           onCourseSelect={(course) => setSelectedCourse(course)}
         />
       );
-      case 'live-classes': return <LiveClassesScreen liveClasses={liveClasses} courses={courses} />;
+      case 'live-classes': return (
+        <LiveClassesScreen
+          liveClasses={liveClasses}
+          courses={courses}
+          onJoinClass={(liveClass) => {
+            setSelectedLiveClass(liveClass);
+            setScreen('live-class-viewer');
+          }}
+        />
+      );
+      case 'live-class-viewer': return (
+        <LiveClassViewerScreen
+          liveClass={selectedLiveClass}
+          onBack={() => setScreen('live-classes')}
+        />
+      );
       case 'binaural-beats': return <BinauralBeatsScreen />;
       case 'notes': return (
         <NotesScreen 
@@ -8927,7 +10822,11 @@ export default function App() {
         <SettingsScreen
           user={user}
           darkModeEnabled={darkModeEnabled}
+          notificationsEnabled={notificationsEnabled}
+          notificationStatus={notificationStatus}
+          pushToken={pushToken}
           onToggleDarkMode={() => setDarkModeEnabled((prev) => !prev)}
+          onEnableNotifications={handleEnableNotifications}
           onOpenProfileInfo={() => setScreen('profile-edit')}
           onOpenHelpCenter={() => setScreen('help-center')}
         />
@@ -8961,6 +10860,10 @@ export default function App() {
         <VideoPlayerScreen 
           onBack={() => setScreen('courses')} 
           course={selectedCourse}
+          protectedMode={videoSurfaceProtectionActive}
+          videoNotesEnabled={appControlSettings.videoNotesEnabled}
+          videoDownloadEnabled={appControlSettings.videoDownloadEnabled}
+          watermark={`${user?.name || 'Student'} - ${user?.email || 'RBS Academy'}`}
           onLessonSelect={(lesson) => setSelectedLesson(lesson)}
           onViewNotes={(lesson) => {
             setSelectedLesson(lesson);
@@ -8973,6 +10876,8 @@ export default function App() {
         <NoteViewerScreen 
           onBack={() => setScreen(previousScreen)} 
           lesson={selectedLesson} 
+          protectedMode={premiumSurfaceProtectionActive}
+          watermark={`${user?.name || 'Student'} - ${user?.email || 'RBS Academy'}`}
         />
       );
       case 'course-details': return (
@@ -8999,6 +10904,7 @@ export default function App() {
             setScreen('quiz');
           }}
           isUnlocked={isCourseAccessible(selectedCourse, unlockedCourseIds)}
+          videoNotesEnabled={appControlSettings.videoNotesEnabled}
         />
       );
       default: return (
@@ -9036,6 +10942,7 @@ export default function App() {
       case 'my-courses': return 'My Courses';
       case 'offline-notes': return 'Download Note Offline';
       case 'video-player': return 'Video Player';
+      case 'live-class-viewer': return 'Live Class';
       case 'course-details': return 'Course Details';
       case 'binaural-beats': return 'Binaural Beats';
       default: return 'RBS Academy';
@@ -9056,6 +10963,8 @@ export default function App() {
       case 'privacy-policy':
       case 'live-classes':
         return 'home';
+      case 'live-class-viewer':
+        return 'live-classes';
       case 'my-courses':
       case 'offline-notes':
         return 'profile';
@@ -9076,19 +10985,63 @@ export default function App() {
     );
   }
 
+  if (!isManagementRoute && appControlSettings.forceUpdate) {
+    return (
+      <div className={`mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
+        <AppControlStopScreen
+          title="Update required"
+          message={`Please update ${appControlSettings.appName} to version ${appControlSettings.latestVersion || 'latest'} to continue.`}
+          actionLabel="Update App"
+          actionUrl={appControlSettings.updateUrl}
+        />
+      </div>
+    );
+  }
+
+  if (!isManagementRoute && appControlSettings.maintenanceMode) {
+    return (
+      <div className={`mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
+        <AppControlStopScreen
+          title="App maintenance"
+          message={appControlSettings.maintenanceMessage}
+        />
+      </div>
+    );
+  }
+
+  if (!isManagementRoute && !isOnline && appControlSettings.offlinePage) {
+    return (
+      <div className={`mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
+        <NoInternetScreen
+          onRetry={() => {
+            setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+              fetchAppData();
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  const studentProtectionClass = !isManagementRoute && screenProtectionActive ? 'protected-learning-surface' : '';
+  const studentWatermark = `${user?.name || 'Student'} - ${user?.email || 'RBS Academy'}`;
+
   return (
-    <div className={isManagementRoute ? 'admin-shell' : `mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
-      {!isManagementRoute && screen !== 'video-player' && screen !== 'note-viewer' && screen !== 'course-details' && (
+    <div
+      className={isManagementRoute ? 'admin-shell' : `mobile-container ${darkModeEnabled ? 'dark-mode' : ''} ${studentProtectionClass}`}
+      onContextMenu={!isManagementRoute && screenProtectionActive ? (event) => event.preventDefault() : undefined}
+    >
+      {!isManagementRoute && screenProtectionActive && (
+        <div className="secure-watermark secure-watermark--app" aria-hidden="true">{studentWatermark}</div>
+      )}
+      {!isManagementRoute && screen !== 'video-player' && screen !== 'note-viewer' && screen !== 'course-details' && screen !== 'live-class-viewer' && (
         <Header 
           title={getTitle()} 
           showBack={screen !== 'home'} 
           onBack={() => setScreen(getBackScreen())} 
           onMenuClick={() => setIsDrawerOpen(true)}
-          onNotificationClick={() => {
-            if (typeof window !== 'undefined') {
-              window.location.href = 'http://action_notifications';
-            }
-          }}
+          onNotificationClick={handleEnableNotifications}
         />
       )}
       
@@ -9108,11 +11061,47 @@ export default function App() {
         courseTitle={selectedCourseForUnlock?.title || ''}
       />
 
+      {!isManagementRoute && showControlledSplash && (
+        <div className="controlled-splash" aria-hidden="true">
+          <div className="controlled-splash-mark">
+            <img src="/splash.svg" alt="" />
+          </div>
+          <strong>{appControlSettings.appName}</strong>
+          <span>Premium Chemistry Learning</span>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {renderScreen()}
       </AnimatePresence>
 
-      {!isManagementRoute && screen !== 'video-player' && screen !== 'note-viewer' && screen !== 'course-details' && (
+      {!isManagementRoute && showWelcomeMessage && (
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/55 p-5 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-sm rounded-[28px] bg-white p-5 text-center shadow-2xl"
+          >
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-primary">
+              <Smartphone size={28} />
+            </div>
+            <h2 className="text-xl font-black text-slate-900">{appControlSettings.appName}</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-500">{appControlSettings.welcomeMessage}</p>
+            <button
+              type="button"
+              className="mt-5 w-full rounded-2xl bg-primary py-3 text-sm font-black text-white"
+              onClick={() => {
+                window.localStorage.setItem(APP_WELCOME_SEEN_KEY, appControlSettings.welcomeMessage);
+                setShowWelcomeMessage(false);
+              }}
+            >
+              Continue
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {!isManagementRoute && screen !== 'video-player' && screen !== 'note-viewer' && screen !== 'course-details' && screen !== 'live-class-viewer' && (
         <BottomNav 
           activeScreen={screen} 
           setScreen={setScreen} 
