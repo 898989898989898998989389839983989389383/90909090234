@@ -1002,17 +1002,34 @@ const normalizePhoneNumber = (value: string) => value.replace(/\D/g, "");
 
 const readJsonResponse = async (response: Response) => {
   const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    const bodyText = await response.text();
-    const shortBody = bodyText.trim().slice(0, 180);
+  const bodyText = await response.text();
+  const trimmedBody = bodyText.trim();
+
+  if (!trimmedBody) {
+    if (response.ok) {
+      return { success: true };
+    }
+    throw new Error(`Server returned an empty response (${response.status}).`);
+  }
+
+  if (trimmedBody.startsWith('<')) {
     throw new Error(
-      bodyText.trim().startsWith('<')
-        ? 'Server returned HTML instead of JSON. Refresh the app and make sure the API/server is running.'
-        : shortBody || 'Server returned an unexpected response.'
+      response.url.includes('/api/')
+        ? 'API route returned the app HTML instead of JSON. Refresh after deploy and check the API route/server.'
+        : 'Server returned HTML instead of JSON. Refresh the app and make sure the API/server is running.'
     );
   }
 
-  return response.json();
+  try {
+    return JSON.parse(trimmedBody);
+  } catch {
+    const shortBody = trimmedBody.slice(0, 220);
+    throw new Error(
+      contentType.toLowerCase().includes('application/json')
+        ? `Invalid JSON from server: ${shortBody}`
+        : shortBody || 'Server returned an unexpected response.'
+    );
+  }
 };
 
 const readLenientJsonResponse = async (response: Response) => {

@@ -2216,6 +2216,13 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Profile updated", user: updatedUser ? await normalizeUser(updatedUser) : null });
   }));
 
+  app.use("/api", (req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      message: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
+    });
+  });
+
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error(error);
     const message = process.env.NODE_ENV === "production"
