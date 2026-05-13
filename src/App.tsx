@@ -752,6 +752,64 @@ const fullChemistryCoursePlaylistLessons: Lesson[] = [
 
 const dummyFullChemistryLessonIds = new Set(['l6', 'l7', 'l8']);
 
+const fallbackCourses: Course[] = [
+  {
+    id: '7',
+    title: 'Full Chemistry Course',
+    lessons: fullChemistryCoursePlaylistLessons.length,
+    image: 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiqmdaP81MD5lfSQVNyUCJHE9FIrXTOfUWnKCTUFxE45Jx9QoEf3diojYpuDZggIrin3HGuPMTBSzn2lZmU4bz_u5tAaIxqVtZaqmrcLzOVUG4ZNDPl916cIR1XekUjbegMk2HeRWejq6SMpfJr5ontaQhhmlN1NJ7yZBClkbchUrH9-ZH9xhOGkixzVQ/s1600/oneshot%20video.png',
+    price: 999,
+    oldPrice: 2999,
+    type: 'premium',
+    category: 'Chemistry',
+    lessonList: fullChemistryCoursePlaylistLessons,
+  },
+  {
+    id: 'fallback-organic',
+    title: 'Organic Chemistry Revision',
+    lessons: 1,
+    image: 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgwdYcwalrDhUUicjNzgFlihRBqyGSDR-6R-pzRt58tSxvGoFeBsvmcUV8VMx83zmnMeNne0R_LU0fjw5NLK1ryg-yVbzsWc0ye0h187vq09UR7Gph1PiHYeaggvkICuJ4fAzqk7KQqhd485SqYSKvhtxPfE7HLQBKCmUae9g3c0FIHYHW6e4_ur18X7Q/s1536/organic.png',
+    price: 0,
+    oldPrice: 0,
+    type: 'free',
+    category: 'Chemistry',
+    lessonList: [
+      {
+        id: 'fallback-organic-1',
+        course_id: 'fallback-organic',
+        title: 'Organic Chemistry Quick Revision',
+        duration: '22:00',
+        note_content: 'Use this starter lesson while the live course server syncs.',
+        note_url: '',
+        video_url: 'https://www.youtube.com/embed/l8f4e1_tWhE',
+        sort_order: 1,
+      },
+    ],
+  },
+  {
+    id: 'fallback-inorganic',
+    title: 'Inorganic Chemistry Revision',
+    lessons: 1,
+    image: 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjgbaKHm45THr1QiQ4mfh6oBypp8tS3_F1lV_f2fwVwgnZp54S2Vm7ZT-ch5ZBshKsc7AtiwJwwhjoMc3CZYFR8SvULf4BBgSwkjvn_JVTtOrJcJTRmF4uCUy284SVMSazNsVTLPf4lWUVSwRWIwT9Y6q9RAN01AY_MwcMYV0nCAcDrXaSVUcQf66UcTQ/s1536/inorganic.png',
+    price: 0,
+    oldPrice: 0,
+    type: 'free',
+    category: 'Chemistry',
+    lessonList: [
+      {
+        id: 'fallback-inorganic-1',
+        course_id: 'fallback-inorganic',
+        title: 'Inorganic Chemistry Quick Revision',
+        duration: '56:10',
+        note_content: 'Use this starter lesson while the live course server syncs.',
+        note_url: '',
+        video_url: 'https://www.youtube.com/embed/Go11beHIcDc',
+        sort_order: 1,
+      },
+    ],
+  },
+];
+
 const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((course) => {
   const isFullChemistryCourse =
     String(course.id) === '7' ||
@@ -1114,6 +1172,47 @@ const saveStoredUsers = (users: StoredUser[]) => {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(users));
   }
+};
+
+const runLocalStudentAuth = (
+  action: 'signup' | 'login',
+  payload: { name?: string; email: string; phone?: string; password: string }
+) => {
+  const normalizedEmail = String(payload.email || '').trim().toLowerCase();
+  const password = String(payload.password || '');
+  const storedUsers = getStoredUsers();
+
+  if (!normalizedEmail || !password) {
+    return { success: false, message: 'Email and password are required' };
+  }
+
+  if (action === 'signup') {
+    const existingUser = storedUsers.find((item) => String(item.email || '').trim().toLowerCase() === normalizedEmail);
+    if (existingUser) {
+      return { success: false, message: 'This email is already registered on this device. Please login.' };
+    }
+
+    const nextUser: StoredUser = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: String(payload.name || normalizedEmail).trim() || 'Student',
+      email: normalizedEmail,
+      phone: String(payload.phone || ''),
+      password,
+      status: 'active',
+      userCategory: 'free',
+      grantedCourseIds: [],
+      blockedCourseIds: [],
+    };
+    saveStoredUsers([...storedUsers, nextUser]);
+    return { success: true, user: nextUser };
+  }
+
+  const user = storedUsers.find((item) => String(item.email || '').trim().toLowerCase() === normalizedEmail);
+  if (!user || user.password !== password) {
+    return { success: false, message: 'Invalid local login. If this account was created online, connect internet and try again.' };
+  }
+
+  return { success: true, user };
 };
 
 const updateStoredUser = (updatedUser: AuthUser) => {
@@ -1921,14 +2020,31 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         : { email, password, ...devicePayload };
 
       const res = await apiAuthPost(isSignup ? 'signup' : 'login', payload);
-      const data = await res.json();
+      const data = await readLenientJsonResponse(res);
       if (data.success) {
-        onLogin(normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone }));
+        const normalizedUser = normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone });
+        if (isSignup) {
+          const storedUsers = getStoredUsers();
+          const storedUser: StoredUser = { ...normalizedUser, password };
+          const withoutDuplicate = storedUsers.filter((item) => String(item.email || '').toLowerCase() !== String(normalizedUser.email || '').toLowerCase());
+          saveStoredUsers([...withoutDuplicate, storedUser]);
+        }
+        onLogin(normalizedUser);
       } else {
         setError(data.message || (isSignup ? 'Signup failed' : 'Login failed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Internet is required to verify this mobile. Please try again.');
+      const localResult = runLocalStudentAuth(isSignup ? 'signup' : 'login', {
+        name: trimmedName,
+        email,
+        phone: normalizedPhone,
+        password,
+      });
+      if (localResult.success) {
+        onLogin(normalizeAuthUser(localResult.user, { name: trimmedName, email, phone: normalizedPhone }));
+      } else {
+        setError(localResult.message || (err instanceof Error ? err.message : 'Internet is required to verify this mobile. Please try again.'));
+      }
     } finally {
       setLoading(false);
     }
@@ -9845,7 +9961,7 @@ export default function App() {
   };
   const [sliders, setSliders] = useState<SliderItem[]>(normalizeSliders(cachedAppData?.sliders));
   const [courses, setCourses] = useState<Course[]>(filterChemistryAppData({
-    courses: cachedAppData?.courses || [],
+    courses: cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses,
     notes: [],
     quizzes: [],
   }).courses);
@@ -10011,8 +10127,8 @@ export default function App() {
           sliders.length ? sliders : fallbackSliders
         ),
         withTimeout(
-          loadJsonResource<Course[]>('courses', cachedAppData?.courses || []),
-          courses.length ? courses : (cachedAppData?.courses || [])
+          loadJsonResource<Course[]>('courses', cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses),
+          courses.length ? courses : (cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses)
         ),
         withTimeout(
           loadJsonResource<Note[]>('notes', cachedAppData?.notes || []),
@@ -10039,7 +10155,7 @@ export default function App() {
         ? coursesData
         : courses.length
           ? courses
-          : (cachedAppData?.courses || []);
+          : (cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses);
       const nextNotes = Array.isArray(notesData) && notesData.length
         ? notesData
         : notes.length
@@ -10080,9 +10196,10 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error fetching data:", error);
-      setSliders(fallbackSliders);
-      setCourses([]);
-      setNotes([]);
+      const preservedCourses = courses.length ? courses : (cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses);
+      setSliders(sliders.length ? sliders : fallbackSliders);
+      setCourses(filterChemistryAppData({ courses: preservedCourses, notes: [], quizzes: [] }).courses);
+      setNotes(notes.length ? notes : (cachedAppData?.notes || []));
       setQuizzes(filterChemistryAppData({ courses: [], notes: [], quizzes: fallbackQuizzes }).quizzes);
     } finally {
       setLoading(false);
