@@ -1017,6 +1017,16 @@ export const createApiApp = async () => {
   app.use(express.json({ limit: "12mb" }));
   app.use("/uploads", express.static(uploadRoot));
 
+  app.get("/api/health", asyncHandler(async (_req, res) => {
+    const courseCount = await queryOne<RowDataPacket & { count: number }>("SELECT COUNT(*)::int AS count FROM courses");
+    res.json({
+      success: true,
+      database: "connected",
+      courses: Number(courseCount?.count || 0),
+      appControl: await getAppControlSettings(),
+    });
+  }));
+
   app.post("/api/admin/login", asyncHandler(async (req, res) => {
     if (!checkLoginRateLimit(req, res)) {
       return;

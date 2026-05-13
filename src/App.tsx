@@ -257,8 +257,12 @@ const DEFAULT_APP_CONTROL_SETTINGS: AppControlSettings = {
   notificationSentAt: '',
 };
 const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec';
+const DEFAULT_NATIVE_API_BASE_URL = 'https://rbs-academy-current.vercel.app';
 const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL).trim();
-const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const API_BASE_URL = String(
+  import.meta.env.VITE_API_BASE_URL ||
+  (Capacitor.isNativePlatform() ? DEFAULT_NATIVE_API_BASE_URL : '')
+).trim().replace(/\/+$/, '');
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
