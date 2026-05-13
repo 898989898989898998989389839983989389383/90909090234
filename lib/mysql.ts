@@ -1050,6 +1050,7 @@ const createSchema = async (client: Pool | PoolClient) => {
       email TEXT NOT NULL UNIQUE,
       phone TEXT NOT NULL DEFAULT '',
       password TEXT NOT NULL,
+      avatar_url TEXT DEFAULT '',
       status TEXT DEFAULT 'active',
       user_category TEXT DEFAULT 'free',
       device_id TEXT DEFAULT '',
@@ -1059,6 +1060,7 @@ const createSchema = async (client: Pool | PoolClient) => {
   `);
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_category TEXT DEFAULT 'free'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`);

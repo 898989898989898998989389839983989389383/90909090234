@@ -59,6 +59,7 @@ type DbUser = RowDataPacket & {
   email: string;
   phone: string;
   password: string;
+  avatar_url?: string;
   status?: string;
   user_category?: string;
   device_id?: string;
@@ -670,6 +671,7 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
     name: String(user.name || ""),
     email: String(user.email || ""),
     phone: String(user.phone || ""),
+    avatarUrl: String(user.avatar_url || ""),
     status: String((user as Partial<DbUser>).status || "active"),
     userCategory: getComputedUserCategory(user, grantedCourseIds),
     grantedCourseIds,
@@ -2197,8 +2199,9 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateProfile", asyncHandler(async (req, res) => {
-    const { id, name, password } = req.body || {};
+    const { id, name, avatarUrl, password } = req.body || {};
     const trimmedName = String(name || "").trim();
+    const trimmedAvatarUrl = String(avatarUrl || "").trim();
     if (!id || !trimmedName) {
       res.status(400).json({ success: false, message: "User id and name are required" });
       return;
@@ -2221,7 +2224,7 @@ export const createApiApp = async () => {
     }
 
     const nextPassword = password ? hashPassword(String(password)) : current.password;
-    await execute("UPDATE users SET name = ?, password = ? WHERE id = ?", [trimmedName, nextPassword, id]);
+    await execute("UPDATE users SET name = ?, avatar_url = ?, password = ? WHERE id = ?", [trimmedName, trimmedAvatarUrl, nextPassword, id]);
     const updatedUser = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [id]);
     res.json({ success: true, message: "Profile updated", user: updatedUser ? await normalizeUser(updatedUser) : null });
   }));

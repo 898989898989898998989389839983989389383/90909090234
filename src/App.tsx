@@ -142,6 +142,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone: string;
+  avatarUrl?: string;
   status?: string;
   userCategory?: 'free' | 'premium';
   grantedCourseIds?: string[];
@@ -1242,12 +1243,13 @@ const readLenientJsonResponse = async (response: Response) => {
 
 const normalizeAuthUser = (
   user: any,
-  fallback: { name?: string; email?: string; phone?: string } = {}
+  fallback: { name?: string; email?: string; phone?: string; avatarUrl?: string } = {}
 ): AuthUser => ({
   id: String(user?.id || `u${Date.now()}`),
   name: String(user?.name || fallback.name || 'Student'),
   email: String(user?.email || fallback.email || ''),
   phone: String(user?.phone || fallback.phone || ''),
+  avatarUrl: String(user?.avatarUrl || user?.avatar_url || fallback.avatarUrl || ''),
   status: String(user?.status || 'active'),
   userCategory: String(user?.userCategory || user?.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
   grantedCourseIds: Array.isArray(user?.grantedCourseIds)
@@ -1344,20 +1346,21 @@ const updateStoredUser = (updatedUser: AuthUser) => {
   const storedUsers = getStoredUsers();
   const nextUsers = storedUsers.map((storedUser) =>
     storedUser.id === updatedUser.id
-      ? { ...storedUser, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone }
+      ? { ...storedUser, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone, avatarUrl: updatedUser.avatarUrl || '' }
       : storedUser
   );
 
   saveStoredUsers(nextUsers);
 };
 
-const updateStoredUserCredentials = (payload: { id: string; name: string; password?: string }) => {
+const updateStoredUserCredentials = (payload: { id: string; name: string; avatarUrl?: string; password?: string }) => {
   const storedUsers = getStoredUsers();
   const nextUsers = storedUsers.map((storedUser) =>
     storedUser.id === payload.id
       ? {
           ...storedUser,
           name: payload.name,
+          avatarUrl: payload.avatarUrl || '',
           ...(payload.password ? { password: payload.password } : {})
         }
       : storedUser
@@ -1394,6 +1397,15 @@ const saveSessionUser = (user: AuthUser | null) => {
   }
 
   window.localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+};
+
+const getUserAvatarUrl = (user?: Partial<AuthUser> | null) => {
+  const avatarUrl = String(user?.avatarUrl || '').trim();
+  if (avatarUrl) {
+    return avatarUrl;
+  }
+
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user?.name || 'Student')}`;
 };
 
 const fetchSessionUser = async (userId: string): Promise<AuthUser> => {
@@ -2569,7 +2581,7 @@ const BottomNav = ({ activeScreen, setScreen, onQuizClick }: { activeScreen: Scr
   </nav>
 );
 
-const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick, notificationCount = 0 }: { title: string, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, notificationCount?: number }) => (
+const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
       {showBack ? (
@@ -2605,7 +2617,7 @@ const Header = ({ title, showBack, onBack, onMenuClick, onNotificationClick, not
         <MessageSquare size={20} />
       </button>
       <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border border-white/30">
-        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=RBSAcademy" alt="Avatar" referrerPolicy="no-referrer" />
+        <img src={getUserAvatarUrl(user || { name: 'RBS Academy' })} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
       </div>
     </div>
   </header>
@@ -3112,7 +3124,7 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
               <div className="relative z-10">
                 <div className="w-16 h-16 rounded-full border-2 border-white/30 p-1 mb-4">
                   <img 
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'Student'}`} 
+                    src={getUserAvatarUrl(user)}
                     alt="Profile" 
                     className="w-full h-full rounded-full bg-white" 
                     referrerPolicy="no-referrer" 
@@ -4741,7 +4753,7 @@ const ProfileScreen = ({
       >
         <div className="relative z-10 flex flex-col items-center">
           <div className="w-24 h-24 rounded-full border-4 border-white/30 p-1 mb-4">
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'Student'}`} alt="Profile" className="w-full h-full rounded-full bg-white" referrerPolicy="no-referrer" />
+            <img src={getUserAvatarUrl(user)} alt="Profile" className="w-full h-full rounded-full bg-white object-cover" referrerPolicy="no-referrer" />
           </div>
           <h2 className="text-xl font-bold text-white">{user?.name || 'Student'}</h2>
           <p className="text-white/70 text-sm">{user?.email || 'rahul.sharma@gmail.com'}</p>
@@ -4856,7 +4868,7 @@ const SettingsScreen = ({
 
         <div className="mt-5 bg-white/10 rounded-2xl p-4 flex items-center gap-3">
           <div className="w-12 h-12 rounded-full overflow-hidden border border-white/30 bg-white/10">
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'Student'}`} alt="Profile" className="w-full h-full" referrerPolicy="no-referrer" />
+            <img src={getUserAvatarUrl(user)} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div>
             <div className="font-bold">{user?.name || 'Student'}</div>
@@ -4921,14 +4933,52 @@ const ProfileEditScreen = ({
   onSave
 }: {
   user: AuthUser,
-  onSave: (payload: { name: string; password?: string }) => Promise<{ success: boolean; message?: string }>
+  onSave: (payload: { name: string; avatarUrl?: string; password?: string }) => Promise<{ success: boolean; message?: string }>
 }) => {
   const [name, setName] = useState(user?.name || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const avatarPreviewUrl = avatarUrl.trim() || getUserAvatarUrl({ ...user, name });
+  const avatarPresets = [
+    { label: 'Classic', seed: user?.name || 'Student' },
+    { label: 'Focus', seed: `${user?.id || user?.name}-focus` },
+    { label: 'Scholar', seed: `${user?.id || user?.name}-scholar` },
+    { label: 'Bright', seed: `${user?.id || user?.name}-bright` },
+  ];
+
+  const handleAvatarFileChange = (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose a valid image file');
+      setMessage('');
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      setError('Avatar image must be 1 MB or smaller');
+      setMessage('');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatarUrl(String(reader.result || ''));
+      setError('');
+      setMessage('');
+    };
+    reader.onerror = () => {
+      setError('Unable to read selected avatar image');
+      setMessage('');
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4958,6 +5008,7 @@ const ProfileEditScreen = ({
 
     const result = await onSave({
       name: trimmedName,
+      avatarUrl: avatarUrl.trim(),
       password: password || undefined
     });
 
@@ -4982,10 +5033,71 @@ const ProfileEditScreen = ({
         <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] rounded-[24px] p-5 text-white">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 mb-2">Account</p>
           <h2 className="text-2xl font-bold">Profile Information</h2>
-          <p className="text-sm text-white/75 mt-2">Update the student name and password. The account email stays locked and cannot be changed.</p>
+          <p className="text-sm text-white/75 mt-2">Update the student name, avatar, and password. The account email stays locked and cannot be changed.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <div className="rounded-[24px] border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-white shadow-md">
+                <img src={avatarPreviewUrl} alt="Avatar preview" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-black text-gray-900">Student Avatar</h3>
+                <p className="mt-1 text-xs leading-5 text-gray-500">Choose a preset, paste an image URL, or upload a small picture.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-4 gap-2">
+              {avatarPresets.map((preset) => {
+                const presetUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(preset.seed)}`;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setAvatarUrl(presetUrl)}
+                    className="rounded-2xl border border-gray-200 bg-white p-2 text-center transition active:scale-95"
+                    aria-label={`Use ${preset.label} avatar`}
+                  >
+                    <img src={presetUrl} alt="" className="mx-auto h-10 w-10 rounded-full bg-gray-50" referrerPolicy="no-referrer" />
+                    <span className="mt-1 block truncate text-[10px] font-bold text-gray-500">{preset.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm font-bold text-gray-800 mb-2">Avatar Image URL</label>
+                <input
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                  placeholder="https://example.com/avatar.png"
+                />
+              </div>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-xs font-black text-gray-700">
+                <Upload size={16} />
+                Upload Avatar
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => handleAvatarFileChange(e.target.files?.[0] || null)}
+                />
+              </label>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl('')}
+                  className="w-full rounded-2xl bg-white px-4 py-3 text-xs font-black text-gray-500"
+                >
+                  Use name-based default avatar
+                </button>
+              )}
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-bold text-gray-800 mb-2">Student Name</label>
             <input
@@ -11116,17 +11228,18 @@ export default function App() {
     setIsDrawerOpen(false);
   };
 
-  const handleProfileUpdate = async ({ name, password }: { name: string; password?: string }) => {
+  const handleProfileUpdate = async ({ name, avatarUrl, password }: { name: string; avatarUrl?: string; password?: string }) => {
     if (!user) {
       return { success: false, message: 'User not found' };
     }
 
-    const updatedUser = { ...user, name };
+    const updatedUser = { ...user, name, avatarUrl: avatarUrl || '' };
 
     try {
       const response = await apiPost('updateProfile', {
         id: user.id,
         name,
+        avatarUrl: avatarUrl || '',
         password
       });
       const data = await response.json();
@@ -11144,6 +11257,7 @@ export default function App() {
       updateStoredUserCredentials({
         id: normalizedUser.id,
         name: normalizedUser.name,
+        avatarUrl: normalizedUser.avatarUrl || '',
         password
       });
       return { success: true, message: 'Profile updated successfully' };
@@ -11151,6 +11265,7 @@ export default function App() {
       updateStoredUserCredentials({
         id: updatedUser.id,
         name: updatedUser.name,
+        avatarUrl: updatedUser.avatarUrl || '',
         password
       });
       setUser(updatedUser);
@@ -11634,6 +11749,7 @@ export default function App() {
       {!isManagementRoute && screen !== 'video-player' && screen !== 'note-viewer' && screen !== 'course-details' && screen !== 'live-class-viewer' && (
         <Header 
           title={getTitle()} 
+          user={user}
           showBack={screen !== 'home'} 
           onBack={() => setScreen(getBackScreen())} 
           onMenuClick={() => setIsDrawerOpen(true)}
