@@ -509,6 +509,8 @@ body {
   height: 42px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
+  transform: scaleY(0.28);
+  transform-origin: center;
 }
 
 .course-video-player {
@@ -660,10 +662,6 @@ body {
 
 .course-video-poster:hover {
   cursor: pointer;
-}
-
-  transform: scaleY(0.28);
-  transform-origin: center;
 }
 
 .binaural-wave--playing span {
