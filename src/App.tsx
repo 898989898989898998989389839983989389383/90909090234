@@ -43,7 +43,10 @@ import {
   Smartphone
   ,Upload,
   Phone,
-  FlaskConical
+  FlaskConical,
+  RotateCcw,
+  Maximize,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -1648,32 +1651,41 @@ const normalizeVideoUrl = (url?: string) => {
   return trimmedUrl;
 };
 
-const getProtectedEmbedUrl = (url?: string) => {
+const getProtectedEmbedUrl = (url?: string, autoplay = false) => {
   const normalizedUrl = normalizeVideoUrl(url);
   if (!normalizedUrl) {
     return '';
   }
 
   if (/youtube(-nocookie)?\.com\/embed\//i.test(normalizedUrl)) {
-    return appendQueryParams(normalizedUrl, {
-      autoplay: '0',
+    const params: Record<string, string> = {
+      autoplay: autoplay ? '1' : '0',
+      enablejsapi: '1',
       rel: '0',
       modestbranding: '1',
       playsinline: '1',
-      controls: '1',
+      controls: '0',
       fs: '0',
+      showinfo: '0',
       iv_load_policy: '3',
-      disablekb: '1',
-      origin: window.location.origin
-    });
+      disablekb: '1'
+    };
+
+    if (typeof window !== 'undefined') {
+      params.origin = window.location.origin;
+    }
+
+    return appendQueryParams(normalizedUrl, params);
   }
 
   if (/player\.vimeo\.com\/video\//i.test(normalizedUrl)) {
     return appendQueryParams(normalizedUrl, {
+      autoplay: autoplay ? '1' : '0',
       autopause: '1',
       title: '0',
       byline: '0',
-      portrait: '0'
+      portrait: '0',
+      controls: '0'
     });
   }
 
@@ -3406,19 +3418,75 @@ const VideoPlayerScreen = ({
   watermark?: string
 }) => {
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(course?.lessonList?.[0] || null);
+  const [customEmbedStarted, setCustomEmbedStarted] = useState(false);
+  const [customEmbedPlaying, setCustomEmbedPlaying] = useState(false);
+  const [customEmbedMuted, setCustomEmbedMuted] = useState(false);
+  const embedFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const playerShellRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setCurrentLesson(course?.lessonList?.[0] || null);
+    setCustomEmbedStarted(false);
+    setCustomEmbedPlaying(false);
+    setCustomEmbedMuted(false);
   }, [course]);
+
+  useEffect(() => {
+    setCustomEmbedStarted(false);
+    setCustomEmbedPlaying(false);
+    setCustomEmbedMuted(false);
+  }, [currentLesson?.id]);
 
   if (!course) return null;
 
   const isProtectedSurface = protectedMode;
-  const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url);
+  const normalizedVideoUrl = normalizeVideoUrl(currentLesson?.video_url);
+  const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(normalizedVideoUrl);
+  const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url, isProtectedYoutubeEmbed && customEmbedStarted);
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
-  const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(activeVideoUrl);
+  const lessonPosterUrl = (currentLesson?.thumbnail_url || course.image || '').trim();
   const lessonDownloadUrl = currentLesson?.download_enabled === false ? '' : (currentLesson?.download_url || '').trim();
   const lessonDownloadLabel = (currentLesson?.download_label || '').trim() || 'Open secure lesson download';
+  const postYoutubeCommand = (func: string, args: unknown[] = []) => {
+    embedFrameRef.current?.contentWindow?.postMessage(
+      JSON.stringify({
+        event: 'command',
+        func,
+        args
+      }),
+      '*'
+    );
+  };
+  const startCustomEmbed = () => {
+    setCustomEmbedStarted(true);
+    setCustomEmbedPlaying(true);
+  };
+  const toggleCustomEmbedPlayback = () => {
+    if (!customEmbedStarted) {
+      startCustomEmbed();
+      return;
+    }
+
+    postYoutubeCommand(customEmbedPlaying ? 'pauseVideo' : 'playVideo');
+    setCustomEmbedPlaying((isPlaying) => !isPlaying);
+  };
+  const toggleCustomEmbedMute = () => {
+    postYoutubeCommand(customEmbedMuted ? 'unMute' : 'mute');
+    setCustomEmbedMuted((isMuted) => !isMuted);
+  };
+  const restartCustomEmbed = () => {
+    if (!customEmbedStarted) {
+      startCustomEmbed();
+      return;
+    }
+
+    postYoutubeCommand('seekTo', [0, true]);
+    postYoutubeCommand('playVideo');
+    setCustomEmbedPlaying(true);
+  };
+  const openCustomEmbedFullscreen = () => {
+    playerShellRef.current?.requestFullscreen?.();
+  };
 
   return (
     <motion.div 
@@ -3431,28 +3499,78 @@ const VideoPlayerScreen = ({
       {isProtectedSurface && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
-          <>
+          <div className="course-video-player" ref={playerShellRef}>
             <iframe
+              ref={embedFrameRef}
               src={activeVideoUrl}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
+              className={`course-video-frame ${isProtectedYoutubeEmbed && !customEmbedStarted ? 'is-waiting' : ''}`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+              allowFullScreen={!isProtectedYoutubeEmbed}
               referrerPolicy="strict-origin-when-cross-origin"
               title={currentLesson?.title || course.title}
             ></iframe>
-            {isProtectedYoutubeEmbed ? (
+            {isProtectedYoutubeEmbed && !customEmbedStarted ? (
+              <button
+                type="button"
+                className="course-video-poster"
+                onClick={startCustomEmbed}
+                aria-label={`Play ${currentLesson?.title || course.title}`}
+              >
+                {lessonPosterUrl && (
+                  <img src={lessonPosterUrl} alt="" draggable={false} />
+                )}
+                <span className="course-video-shade" aria-hidden="true" />
+                <span className="course-video-brand">RBS Academy Player</span>
+                <span className="course-video-play">
+                  <Play size={30} fill="currentColor" />
+                </span>
+                <span className="course-video-title">{currentLesson?.title || course.title}</span>
+              </button>
+            ) : null}
+            {isProtectedYoutubeEmbed && customEmbedStarted ? (
               <>
                 <div
-                  className="absolute inset-x-0 top-0 z-10 h-14 bg-transparent"
+                  className="course-video-guard course-video-guard-top"
                   aria-hidden="true"
                 />
                 <div
-                  className="absolute inset-x-0 bottom-0 z-10 h-16 bg-transparent"
+                  className="course-video-guard course-video-guard-bottom"
                   aria-hidden="true"
                 />
+                <div className="course-video-mini-brand" aria-hidden="true">RBS Academy</div>
+                <div className="course-video-controls" aria-label="Custom video controls">
+                  <button
+                    type="button"
+                    onClick={toggleCustomEmbedPlayback}
+                    aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}
+                  >
+                    {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={restartCustomEmbed}
+                    aria-label="Restart video"
+                  >
+                    <RotateCcw size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleCustomEmbedMute}
+                    aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}
+                  >
+                    {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCustomEmbedFullscreen}
+                    aria-label="Fullscreen video"
+                  >
+                    <Maximize size={17} />
+                  </button>
+                </div>
               </>
             ) : null}
-          </>
+          </div>
         ) : activeVideoUrl ? (
           <video
             key={activeVideoUrl}
@@ -3535,10 +3653,11 @@ const VideoPlayerScreen = ({
           {course.lessonList?.map((lesson, idx) => (
             <button 
               key={lesson.id} 
-              onClick={() => {
-                setCurrentLesson(lesson);
-                onLessonSelect(lesson);
-              }}
+                  onClick={() => {
+                    setCurrentLesson(lesson);
+                    setCustomEmbedStarted(false);
+                    onLessonSelect(lesson);
+                  }}
               className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-colors text-left group ${currentLesson?.id === lesson.id ? 'border-primary bg-primary/5' : 'border-gray-100 hover:bg-gray-50'}`}
             >
               <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${currentLesson?.id === lesson.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400 group-hover:bg-primary/10 group-hover:text-primary'}`}>
