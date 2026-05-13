@@ -3504,8 +3504,8 @@ const VideoPlayerScreen = ({
               ref={embedFrameRef}
               src={activeVideoUrl}
               className={`course-video-frame ${isProtectedYoutubeEmbed && !customEmbedStarted ? 'is-waiting' : ''}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-              allowFullScreen={!isProtectedYoutubeEmbed}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen={false}
               referrerPolicy="strict-origin-when-cross-origin"
               title={currentLesson?.title || course.title}
             ></iframe>
