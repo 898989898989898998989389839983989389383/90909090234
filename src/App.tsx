@@ -47,7 +47,9 @@ import {
   RotateCcw,
   Maximize,
   VolumeX,
-  Share2
+  Share2,
+  SkipBack,
+  SkipForward
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -1839,6 +1841,25 @@ const normalizeVideoUrl = (url?: string) => {
   }
 
   return trimmedUrl;
+};
+
+const getYoutubeVideoId = (url?: string) => {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  const watchMatch = value.match(/[?&]v=([^&]+)/i);
+  if (watchMatch?.[1]) return watchMatch[1];
+  const shortMatch = value.match(/youtu\.be\/([^?&/]+)/i);
+  if (shortMatch?.[1]) return shortMatch[1];
+  const embedMatch = value.match(/youtube(?:-nocookie)?\.com\/embed\/([^?&/]+)/i);
+  if (embedMatch?.[1]) return embedMatch[1];
+  return '';
+};
+
+const formatVideoClock = (seconds: number) => {
+  const safeSeconds = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
 };
 
 const getProtectedEmbedUrl = (url?: string, autoplay = false) => {
@@ -4015,6 +4036,9 @@ const VideoPlayerScreen = ({
   const [customEmbedStarted, setCustomEmbedStarted] = useState(false);
   const [customEmbedPlaying, setCustomEmbedPlaying] = useState(false);
   const [customEmbedMuted, setCustomEmbedMuted] = useState(false);
+  const [customEmbedTime, setCustomEmbedTime] = useState(0);
+  const [customEmbedDuration, setCustomEmbedDuration] = useState(0);
+  const [customEmbedSpeed, setCustomEmbedSpeed] = useState(1);
   const embedFrameRef = useRef<HTMLIFrameElement | null>(null);
   const playerShellRef = useRef<HTMLDivElement | null>(null);
 
@@ -4023,19 +4047,69 @@ const VideoPlayerScreen = ({
     setCustomEmbedStarted(false);
     setCustomEmbedPlaying(false);
     setCustomEmbedMuted(false);
+    setCustomEmbedTime(0);
+    setCustomEmbedDuration(0);
+    setCustomEmbedSpeed(1);
   }, [course]);
 
   useEffect(() => {
     setCustomEmbedStarted(false);
     setCustomEmbedPlaying(false);
     setCustomEmbedMuted(false);
+    setCustomEmbedTime(0);
+    setCustomEmbedDuration(0);
+    setCustomEmbedSpeed(1);
   }, [currentLesson?.id]);
+
+  useEffect(() => {
+    const handleYoutubeMessage = (event: MessageEvent) => {
+      if (typeof event.data !== 'string') {
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.event !== 'infoDelivery' || !payload.info) {
+          return;
+        }
+        if (typeof payload.info.currentTime === 'number') {
+          setCustomEmbedTime(payload.info.currentTime);
+        }
+        if (typeof payload.info.duration === 'number') {
+          setCustomEmbedDuration(payload.info.duration);
+        }
+        if (typeof payload.info.playerState === 'number') {
+          setCustomEmbedPlaying(payload.info.playerState === 1);
+        }
+      } catch {
+        // Ignore non-YouTube postMessage payloads.
+      }
+    };
+
+    window.addEventListener('message', handleYoutubeMessage);
+    return () => window.removeEventListener('message', handleYoutubeMessage);
+  }, []);
+
+  useEffect(() => {
+    if (!customEmbedStarted) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      postYoutubeCommand('getCurrentTime');
+      postYoutubeCommand('getDuration');
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [customEmbedStarted, currentLesson?.id]);
 
   if (!course) return null;
 
   const isProtectedSurface = protectedMode;
   const normalizedVideoUrl = normalizeVideoUrl(currentLesson?.video_url);
   const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(normalizedVideoUrl);
+  const youtubeVideoId = getYoutubeVideoId(currentLesson?.video_url);
+  const youtubePosterUrl = currentLesson?.thumbnail_url || (youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : '');
   const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url);
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
   const lessonDownloadUrl = currentLesson?.download_enabled === false ? '' : (currentLesson?.download_url || '').trim();
@@ -4067,6 +4141,17 @@ const VideoPlayerScreen = ({
   const toggleCustomEmbedMute = () => {
     postYoutubeCommand(customEmbedMuted ? 'unMute' : 'mute');
     setCustomEmbedMuted((isMuted) => !isMuted);
+  };
+  const seekCustomEmbed = (seconds: number) => {
+    const nextTime = Math.max(0, Math.min(customEmbedDuration || Number.MAX_SAFE_INTEGER, customEmbedTime + seconds));
+    setCustomEmbedTime(nextTime);
+    postYoutubeCommand('seekTo', [nextTime, true]);
+  };
+  const changeCustomEmbedSpeed = () => {
+    const speeds = [1, 1.25, 1.5, 2, 0.75];
+    const nextSpeed = speeds[(speeds.indexOf(customEmbedSpeed) + 1) % speeds.length] || 1;
+    setCustomEmbedSpeed(nextSpeed);
+    postYoutubeCommand('setPlaybackRate', [nextSpeed]);
   };
   const restartCustomEmbed = () => {
     if (!customEmbedStarted) {
@@ -4104,36 +4189,59 @@ const VideoPlayerScreen = ({
               title={currentLesson?.title || course.title}
             ></iframe>
             {isProtectedYoutubeEmbed ? (
-              <div className="course-video-controls" aria-label="Custom video controls">
-                <button
-                  type="button"
-                  onClick={toggleCustomEmbedPlayback}
-                  aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}
-                >
-                  {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={restartCustomEmbed}
-                  aria-label="Restart video"
-                >
-                  <RotateCcw size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleCustomEmbedMute}
-                  aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}
-                >
-                  {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                </button>
-                <button
-                  type="button"
-                  onClick={openCustomEmbedFullscreen}
-                  aria-label="Fullscreen video"
-                >
-                  <Maximize size={17} />
-                </button>
-              </div>
+              <>
+                {!customEmbedStarted && (
+                  <button type="button" className="course-video-poster" onClick={startCustomEmbed} aria-label="Play YouTube lesson">
+                    {youtubePosterUrl && <img src={youtubePosterUrl} alt="" referrerPolicy="no-referrer" />}
+                    <span className="course-video-shade" />
+                    <span className="course-video-brand">RBS Academy</span>
+                    <span className="course-video-play"><Play size={30} fill="currentColor" /></span>
+                    <span className="course-video-title">{currentLesson?.title || course.title}</span>
+                  </button>
+                )}
+                <div className="course-video-mini-brand">YouTube Lesson</div>
+                <div className="course-video-controls course-video-controls--pod" aria-label="Custom YouTube video controls">
+                  <div className="course-video-progress">
+                    <span>{formatVideoClock(customEmbedTime)}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(1, Math.floor(customEmbedDuration || 1))}
+                      value={Math.min(Math.floor(customEmbedTime), Math.max(1, Math.floor(customEmbedDuration || 1)))}
+                      onChange={(event) => {
+                        const nextTime = Number(event.target.value);
+                        setCustomEmbedTime(nextTime);
+                        postYoutubeCommand('seekTo', [nextTime, true]);
+                      }}
+                      aria-label="Seek video"
+                    />
+                    <span>{formatVideoClock(customEmbedDuration)}</span>
+                  </div>
+                  <div className="course-video-control-row">
+                    <button type="button" onClick={() => seekCustomEmbed(-10)} aria-label="Seek backward 10 seconds">
+                      <SkipBack size={17} />
+                    </button>
+                    <button type="button" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}>
+                      {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+                    </button>
+                    <button type="button" onClick={() => seekCustomEmbed(10)} aria-label="Seek forward 10 seconds">
+                      <SkipForward size={17} />
+                    </button>
+                    <button type="button" onClick={restartCustomEmbed} aria-label="Restart video">
+                      <RotateCcw size={17} />
+                    </button>
+                    <button type="button" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}>
+                      {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                    </button>
+                    <button type="button" onClick={changeCustomEmbedSpeed} aria-label="Change playback speed" className="course-video-speed">
+                      {customEmbedSpeed}x
+                    </button>
+                    <button type="button" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
+                      <Maximize size={17} />
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : null}
           </div>
         ) : activeVideoUrl ? (

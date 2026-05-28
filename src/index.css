@@ -701,6 +701,68 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.course-video-player .course-video-poster {
+  display: grid !important;
+  border: 0;
+}
+
+.course-video-player .course-video-poster img,
+.course-video-player .course-video-shade,
+.course-video-player .course-video-brand,
+.course-video-player .course-video-title,
+.course-video-player .course-video-mini-brand {
+  display: block !important;
+}
+
+.course-video-player .course-video-play {
+  display: grid !important;
+}
+
+.course-video-controls--pod {
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  transform: none;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 1rem;
+  padding: 0.55rem;
+}
+
+.course-video-progress,
+.course-video-control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.course-video-progress span {
+  width: 2.5rem;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.course-video-progress input {
+  min-width: 0;
+  flex: 1;
+  accent-color: #ffffff;
+}
+
+.course-video-control-row {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.course-video-controls .course-video-speed {
+  width: auto;
+  min-width: 2.35rem;
+  padding-inline: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .binaural-wave--playing span {
   animation: binauralPulse 900ms ease-in-out infinite;
 }
