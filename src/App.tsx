@@ -97,6 +97,8 @@ type YoutubeWindow = Window & {
     lockLandscape?: () => void;
     lockPortrait?: () => void;
     unlockOrientation?: () => void;
+    enterVideoFullscreen?: () => void;
+    exitVideoFullscreen?: () => void;
   };
 };
 
@@ -4195,16 +4197,21 @@ const VideoPlayerScreen = ({
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (document.fullscreenElement === playerShellRef.current) {
+        const nativeWindow = window as YoutubeWindow;
+        nativeWindow.Android?.enterVideoFullscreen?.();
         return;
       }
 
       const nativeWindow = window as YoutubeWindow;
-      nativeWindow.Android?.lockPortrait?.();
+      nativeWindow.Android?.exitVideoFullscreen?.();
       void lockWebOrientation('portrait');
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => {
+      const nativeWindow = window as YoutubeWindow;
+      nativeWindow.Android?.exitVideoFullscreen?.();
+      void lockWebOrientation('portrait');
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
@@ -4266,7 +4273,7 @@ const VideoPlayerScreen = ({
   };
   const openCustomEmbedFullscreen = async () => {
     const nativeWindow = window as YoutubeWindow;
-    nativeWindow.Android?.lockLandscape?.();
+    nativeWindow.Android?.enterVideoFullscreen?.();
     await lockWebOrientation('landscape');
     await playerShellRef.current?.requestFullscreen?.().catch(() => undefined);
   };
@@ -11204,6 +11211,12 @@ export default function App() {
     if (document.fullscreenElement) {
       void document.exitFullscreen?.();
       return;
+    }
+
+    if (screenRef.current === 'video-player') {
+      const nativeWindow = window as YoutubeWindow;
+      nativeWindow.Android?.exitVideoFullscreen?.();
+      void lockWebOrientation('portrait');
     }
 
     if (typeof window !== 'undefined' && window.history.length > 1) {
