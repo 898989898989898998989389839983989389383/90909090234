@@ -12,8 +12,9 @@ This app now targets a Supabase Postgres database.
 SUPABASE_DB_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
 SUPABASE_URL=https://[YOUR-PROJECT-REF].supabase.co
 SUPABASE_SERVICE_ROLE_KEY=[YOUR-SERVICE-ROLE-KEY]
-SUPABASE_STORAGE_BUCKET=uploads
-VITE_APPS_SCRIPT_URL=
+CLOUDINARY_URL=cloudinary://[API-KEY]:[API-SECRET]@[CLOUD-NAME]
+CLOUDINARY_PDF_URL=cloudinary://[PDF-API-KEY]:[PDF-API-SECRET]@[PDF-CLOUD-NAME]
+CLOUDINARY_FOLDER=rbs-academy
 ```
 
 4. Start the app:
@@ -28,4 +29,5 @@ On first boot, the server creates the tables it needs and seeds starter data aut
 
 - `lib/mysql.ts` is still the shared database adapter file name, but it now uses Postgres so the existing API layer keeps working.
 - Supabase SSL is enabled by default. Set `SUPABASE_SSL=false` only for a local Postgres instance.
-- Create a public Supabase Storage bucket named `uploads` or set `SUPABASE_STORAGE_BUCKET` to your bucket name.
+- New image uploads are stored in the primary Cloudinary account, while uploaded PDF notes use `CLOUDINARY_PDF_URL`.
+- Existing externally hosted URLs continue to load; re-upload old media through the admin panel to migrate it to Cloudinary.

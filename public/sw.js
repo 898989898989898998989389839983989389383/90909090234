@@ -1,11 +1,12 @@
-const CACHE_NAME = 'rbs-academy-app-v12';
+const CACHE_NAME = 'rbs-academy-app-v13';
 const OFFLINE_URL = '/offline.html';
 const CORE_ASSETS = [
   OFFLINE_URL,
   '/manifest.webmanifest',
-  '/splash.svg',
-  '/icons/icon-192.svg',
-  '/icons/icon-512.svg'
+  '/logo.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -57,8 +58,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'RBS Academy';
   const options = {
     body: data.body || 'You have a new academy update.',
-    icon: '/icons/icon-192.svg',
-    badge: '/icons/icon-192.svg',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
     data: {
       url: data.url || '/'
     }

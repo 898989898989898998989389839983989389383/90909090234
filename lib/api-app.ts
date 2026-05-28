@@ -10,6 +10,37 @@ import { execute, initDatabase, queryOne, queryRows, withTransaction } from "./m
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "uploads";
+type CloudinaryConfig = { cloudName: string; apiKey: string; apiSecret: string };
+const parseCloudinaryUrl = (configuredUrl: string): CloudinaryConfig | null => {
+  if (!configuredUrl) {
+    return null;
+  }
+  try {
+    const value = new URL(configuredUrl);
+    if (value.protocol !== "cloudinary:") {
+      return null;
+    }
+    return {
+      cloudName: value.hostname,
+      apiKey: decodeURIComponent(value.username),
+      apiSecret: decodeURIComponent(value.password),
+    };
+  } catch {
+    return null;
+  }
+};
+const cloudinaryUrlConfig = parseCloudinaryUrl(process.env.CLOUDINARY_URL?.trim() || "");
+const CLOUDINARY_CONFIG: CloudinaryConfig = {
+  cloudName: process.env.CLOUDINARY_CLOUD_NAME?.trim() || cloudinaryUrlConfig?.cloudName || "",
+  apiKey: process.env.CLOUDINARY_API_KEY?.trim() || cloudinaryUrlConfig?.apiKey || "",
+  apiSecret: process.env.CLOUDINARY_API_SECRET?.trim() || cloudinaryUrlConfig?.apiSecret || "",
+};
+const CLOUDINARY_PDF_CONFIG: CloudinaryConfig = parseCloudinaryUrl(process.env.CLOUDINARY_PDF_URL?.trim() || "") || {
+  cloudName: "",
+  apiKey: "",
+  apiSecret: "",
+};
+const CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER?.trim().replace(/^\/+|\/+$/g, "") || "rbs-academy";
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME?.trim() || "";
@@ -44,14 +75,25 @@ const DEFAULT_APP_CONTROL_SETTINGS = {
 };
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_NOTE_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "text/plain",
+  "text/markdown",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+const MAX_NOTE_BYTES = 15 * 1024 * 1024;
 const uploadRoot = process.env.VERCEL
   ? path.join(os.tmpdir(), "rbs-academy-uploads")
   : path.join(process.cwd(), "uploads");
-const sliderUploadDir = path.join(uploadRoot, "sliders");
-const questionUploadDir = path.join(uploadRoot, "questions");
-
-fs.mkdirSync(sliderUploadDir, { recursive: true });
-fs.mkdirSync(questionUploadDir, { recursive: true });
 
 type DbUser = RowDataPacket & {
   id: string;
@@ -163,6 +205,24 @@ const parseJsonArray = (value: unknown) => {
     return JSON.parse(String(value || "[]"));
   } catch {
     return [];
+  }
+};
+
+const normalizeMeetingUrl = (value: unknown) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
+const isValidMeetingUrl = (value: unknown) => {
+  try {
+    const parsedUrl = new URL(normalizeMeetingUrl(value));
+    return ["http:", "https:"].includes(parsedUrl.protocol) && parsedUrl.hostname.includes(".");
+  } catch {
+    return false;
   }
 };
 
@@ -375,26 +435,11 @@ const sendFirebasePushToToken = async (
 
 const hasFirebasePushCredentials = () => Boolean(getFirebaseServiceAccount() || process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY);
 
-const getDriveFileIdFromUrl = (url?: string) => {
-  const value = String(url || "");
-  return value.match(/[?&]id=([^&]+)/)?.[1]
-    || value.match(/\/d\/([^/?]+)/)?.[1]
-    || "";
-};
-
-const getDriveImageUrls = (fileId: string) => [
-  `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600`,
-  `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`,
-  `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`,
-];
-
 const normalizeSliderForClient = (slider: Partial<DbSlider>) => {
   const normalized = normalizeSlider(slider);
-  const driveFileId = String(normalized.drive_file_id || getDriveFileIdFromUrl(normalized.image_url)).trim();
   return {
     ...normalized,
-    drive_file_id: driveFileId,
-    image_url: driveFileId ? `/api/drive-image/${encodeURIComponent(driveFileId)}` : String(normalized.image_url || ""),
+    image_url: String(normalized.image_url || ""),
   };
 };
 
@@ -454,53 +499,71 @@ const assertValidImagePayload = (imageData: string, mimeType: string) => {
   }
 };
 
-const getImageExtension = (mimeType: string) =>
-  mimeType === "image/png" ? ".png"
-  : mimeType === "image/webp" ? ".webp"
-  : mimeType === "image/gif" ? ".gif"
-  : ".jpg";
-
-const getSupabasePublicUrl = (objectPath: string) =>
-  `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${objectPath}`;
-
-const uploadToSupabaseStorage = async (
-  folder: string,
-  prefix: string,
-  imageData: string,
-  mimeType: string,
-) => {
-  assertValidImagePayload(imageData, mimeType);
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    if (process.env.VERCEL) {
-      throw new Error("Supabase Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+const assertCloudinaryConfigured = (config: CloudinaryConfig, mediaType = "media") => {
+  if (!config.cloudName || !config.apiKey || !config.apiSecret) {
+    if (mediaType === "PDF") {
+      throw new Error("PDF Cloudinary storage is not configured. Set CLOUDINARY_PDF_URL.");
     }
-
-    return "";
+    throw new Error("Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.");
   }
+};
 
-  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${getImageExtension(mimeType)}`;
-  const objectPath = `${folder}/${fileName}`;
+const optimizeCloudinaryImageUrl = (url: string) =>
+  url.replace("/image/upload/", "/image/upload/f_auto,q_auto/");
+
+const getCloudinaryConfigForUpload = (mimeType: string) => {
+  if (mimeType === "application/pdf") {
+    assertCloudinaryConfigured(CLOUDINARY_PDF_CONFIG, "PDF");
+    return CLOUDINARY_PDF_CONFIG;
+  }
+  assertCloudinaryConfigured(CLOUDINARY_CONFIG);
+  return CLOUDINARY_CONFIG;
+};
+
+const createCloudinaryUploadAuthorization = (
+  assetFolder: string,
+  prefix: string,
+  resourceType: "image" | "raw",
+  fileName = "",
+  config = CLOUDINARY_CONFIG,
+) => {
+  assertCloudinaryConfigured(config);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const extension = resourceType === "raw" ? (fileName.match(/\.[A-Za-z0-9]{1,8}$/)?.[0] || "") : "";
+  const publicId = `${CLOUDINARY_FOLDER}/${assetFolder}/${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}${extension}`;
+  const signature = createHash("sha1")
+    .update(`public_id=${publicId}&timestamp=${timestamp}${config.apiSecret}`)
+    .digest("hex");
+  return { timestamp, publicId, signature, resourceType };
+};
+
+const uploadToCloudinary = async (
+  assetFolder: string,
+  prefix: string,
+  data: string,
+  mimeType: string,
+  resourceType: "image" | "raw",
+  fileName = "",
+  config = CLOUDINARY_CONFIG,
+) => {
+  const { timestamp, publicId, signature } = createCloudinaryUploadAuthorization(assetFolder, prefix, resourceType, fileName, config);
+  const form = new FormData();
+  form.append("file", `data:${mimeType};base64,${data}`);
+  form.append("api_key", config.apiKey);
+  form.append("timestamp", String(timestamp));
+  form.append("public_id", publicId);
+  form.append("signature", signature);
+
   const response = await fetch(
-    `${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${objectPath}`,
-    {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": mimeType,
-        "x-upsert": "true",
-      },
-      body: Buffer.from(imageData, "base64"),
-    },
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/${resourceType}/upload`,
+    { method: "POST", body: form },
   );
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Supabase Storage upload failed: ${message || response.statusText}`);
+  const result = await response.json() as { secure_url?: string; error?: { message?: string } };
+  if (!response.ok || !result.secure_url) {
+    throw new Error(`Cloudinary upload failed: ${result.error?.message || response.statusText}`);
   }
 
-  return getSupabasePublicUrl(objectPath);
+  return resourceType === "image" ? optimizeCloudinaryImageUrl(result.secure_url) : result.secure_url;
 };
 
 const getSupabaseObjectPath = (imageUrl?: string) => {
@@ -519,27 +582,14 @@ const getSupabaseObjectPath = (imageUrl?: string) => {
   return "";
 };
 
-const saveImageLocally = (dir: string, prefix: string, imageData: string, mimeType: string) => {
-  assertValidImagePayload(imageData, mimeType);
-  const extension = getImageExtension(mimeType);
-  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`;
-  const filePath = path.join(dir, fileName);
-  fs.writeFileSync(filePath, Buffer.from(imageData, "base64"));
-  return `/uploads/${path.basename(dir)}/${fileName}`;
-};
-
 const saveSliderImage = async (payload: Record<string, unknown>) => {
   const { imageData, imageUrl, mimeType } = parseImagePayload(payload);
   if (!imageData) {
     return imageUrl;
   }
 
-  const uploadedUrl = await uploadToSupabaseStorage("sliders", "slider", imageData, mimeType);
-  if (uploadedUrl) {
-    return uploadedUrl;
-  }
-
-  return saveImageLocally(sliderUploadDir, "slider", imageData, mimeType);
+  assertValidImagePayload(imageData, mimeType);
+  return uploadToCloudinary("sliders", "slider", imageData, mimeType, "image");
 };
 
 const saveQuestionImage = async (payload: Record<string, unknown>) => {
@@ -552,16 +602,84 @@ const saveQuestionImage = async (payload: Record<string, unknown>) => {
     return imageUrl;
   }
 
-  const uploadedUrl = await uploadToSupabaseStorage("questions", "question", imageData, mimeType);
-  if (uploadedUrl) {
-    return uploadedUrl;
+  assertValidImagePayload(imageData, mimeType);
+  return uploadToCloudinary("questions", "question", imageData, mimeType, "image");
+};
+
+const saveContentImage = async (
+  payload: Record<string, unknown>,
+  assetFolder: string,
+  prefix: string,
+  urlKey: string,
+) => {
+  const { imageData, imageUrl, mimeType } = parseImagePayload(payload, { urlKeys: [urlKey] });
+  if (!imageData) {
+    return imageUrl;
   }
 
-  return saveImageLocally(questionUploadDir, "question", imageData, mimeType);
+  assertValidImagePayload(imageData, mimeType);
+  return uploadToCloudinary(assetFolder, prefix, imageData, mimeType, "image");
+};
+
+const saveNoteFile = async (payload: Record<string, unknown>) => {
+  const fileUrl = typeof payload.url === "string" ? payload.url.trim() : "";
+  const fileData = typeof payload.fileData === "string" ? payload.fileData.trim() : "";
+  if (!fileData) {
+    return fileUrl;
+  }
+
+  const matches = fileData.match(/^data:([^;,]+);base64,(.+)$/);
+  const mimeType = String(payload.mimeType || matches?.[1] || "").toLowerCase();
+  const data = matches?.[2] || "";
+  if (!data || !ALLOWED_NOTE_MIME_TYPES.has(mimeType)) {
+    throw new Error("Only PDF, image, DOC, PPT, XLS, TXT, and MD note files are supported");
+  }
+  const byteLength = Buffer.byteLength(data, "base64");
+  if (!byteLength || byteLength > MAX_NOTE_BYTES) {
+    throw new Error("Note file must be 15 MB or smaller");
+  }
+
+  return uploadToCloudinary(
+    "notes",
+    "note",
+    data,
+    mimeType,
+    "raw",
+    String(payload.fileName || ""),
+    getCloudinaryConfigForUpload(mimeType),
+  );
 };
 
 const deleteStoredImage = async (imageUrl?: string, localPrefix = "/uploads/") => {
   if (!imageUrl) {
+    return;
+  }
+
+  const cloudinaryMatch = String(imageUrl).match(
+    /^https:\/\/res\.cloudinary\.com\/([^/]+)\/(image|raw)\/upload\/(?:[^/]+\/)*v\d+\/(.+)$/,
+  );
+  const cloudinaryConfig = [CLOUDINARY_CONFIG, CLOUDINARY_PDF_CONFIG]
+    .find((config) => config.cloudName && config.cloudName === cloudinaryMatch?.[1]);
+  if (cloudinaryMatch && cloudinaryConfig?.apiKey && cloudinaryConfig.apiSecret) {
+    const resourceType = cloudinaryMatch[2];
+    const publicId = resourceType === "image"
+      ? cloudinaryMatch[3].replace(/\.[^/.?]+(?:\?.*)?$/, "")
+      : cloudinaryMatch[3].split("?")[0];
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = createHash("sha1")
+      .update(`public_id=${publicId}&timestamp=${timestamp}${cloudinaryConfig.apiSecret}`)
+      .digest("hex");
+    const form = new FormData();
+    form.append("public_id", publicId);
+    form.append("api_key", cloudinaryConfig.apiKey);
+    form.append("timestamp", String(timestamp));
+    form.append("signature", signature);
+    try {
+      await fetch(
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudinaryConfig.cloudName)}/${resourceType}/destroy`,
+        { method: "POST", body: form },
+      );
+    } catch {}
     return;
   }
 
@@ -1016,7 +1134,7 @@ export const createApiApp = async () => {
     res.setHeader("Content-Security-Policy", `default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src 'self' https: ws:; frame-src https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://youtu.be; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`);
     next();
   });
-  app.use(express.json({ limit: "12mb" }));
+  app.use(express.json({ limit: "22mb" }));
   app.use("/uploads", express.static(uploadRoot));
 
   app.get("/api/health", asyncHandler(async (_req, res) => {
@@ -1516,47 +1634,52 @@ export const createApiApp = async () => {
     res.json(liveClasses.map(normalizeLiveClass));
   }));
 
-  app.get("/api/drive-image/:fileId", asyncHandler(async (req, res) => {
-    const fileId = getDriveFileIdFromUrl(req.params.fileId) || String(req.params.fileId || "").trim();
-    if (!/^[A-Za-z0-9_-]{10,}$/.test(fileId)) {
-      res.status(400).json({ success: false, message: "Invalid Drive file id" });
+  app.post("/api/media-upload-signature", requireAdmin(), asyncHandler(async (req, res) => {
+    const uploadKinds: Record<string, { folder: string; prefix: string; resourceType: "image" | "raw" }> = {
+      slider: { folder: "sliders", prefix: "slider", resourceType: "image" },
+      course: { folder: "courses", prefix: "course-thumbnail", resourceType: "image" },
+      lesson: { folder: "lessons", prefix: "video-thumbnail", resourceType: "image" },
+      question: { folder: "questions", prefix: "question", resourceType: "image" },
+      note: { folder: "notes", prefix: "note", resourceType: "raw" },
+    };
+    const uploadKind = uploadKinds[String(req.body?.kind || "").trim().toLowerCase()];
+    if (!uploadKind) {
+      res.status(400).json({ success: false, message: "Unsupported upload kind" });
+      return;
+    }
+    const mimeType = String(req.body?.mimeType || "").trim().toLowerCase();
+    const size = Number(req.body?.size || 0);
+    const allowedTypes = uploadKind.resourceType === "image" ? ALLOWED_IMAGE_MIME_TYPES : ALLOWED_NOTE_MIME_TYPES;
+    const maxSize = uploadKind.resourceType === "image" ? MAX_IMAGE_BYTES : MAX_NOTE_BYTES;
+    if (!allowedTypes.has(mimeType) || !Number.isFinite(size) || size <= 0 || size > maxSize) {
+      res.status(400).json({ success: false, message: "Unsupported file type or file is too large" });
       return;
     }
 
-    let lastStatus = 0;
-    for (const url of getDriveImageUrls(fileId)) {
-      try {
-        const response = await fetch(url, {
-          redirect: "follow",
-          headers: {
-            "User-Agent": "Mozilla/5.0 RBS Academy Slider Loader",
-            Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-          },
-        });
-        lastStatus = response.status;
-        const contentType = response.headers.get("content-type") || "";
-        if (!response.ok || !contentType.toLowerCase().startsWith("image/")) {
-          continue;
-        }
-
-        const imageBuffer = Buffer.from(await response.arrayBuffer());
-        res.setHeader("Content-Type", contentType);
-        res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-        res.send(imageBuffer);
-        return;
-      } catch {}
-    }
-
-    res.status(lastStatus || 502).json({ success: false, message: "Unable to load Drive image" });
+    const cloudinaryConfig = getCloudinaryConfigForUpload(mimeType);
+    const authorization = createCloudinaryUploadAuthorization(
+      uploadKind.folder,
+      uploadKind.prefix,
+      uploadKind.resourceType,
+      String(req.body?.fileName || ""),
+      cloudinaryConfig,
+    );
+    res.json({
+      success: true,
+      cloudName: cloudinaryConfig.cloudName,
+      apiKey: cloudinaryConfig.apiKey,
+      uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudinaryConfig.cloudName)}/${authorization.resourceType}/upload`,
+      ...authorization,
+    });
   }));
 
   app.post("/api/createSlider", requireAdmin(), asyncHandler(async (req, res) => {
-    const { title, subtitle, sort_order, is_active, drive_file_id } = req.body || {};
-    const imageUrl = await saveSliderImage(req.body || {});
+    const { title, subtitle, sort_order, is_active } = req.body || {};
     if (!title || !subtitle) {
       res.status(400).json({ success: false, message: "Title and subtitle are required" });
       return;
     }
+    const imageUrl = await saveSliderImage(req.body || {});
     if (!imageUrl) {
       res.status(400).json({ success: false, message: "Slider image is required" });
       return;
@@ -1565,7 +1688,7 @@ export const createApiApp = async () => {
     const id = `sl${Date.now()}`;
     await execute(
       "INSERT INTO sliders (id, title, subtitle, image_url, drive_file_id, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, title, subtitle, imageUrl, String(drive_file_id || ""), Number(sort_order || 0), String(is_active) === "false" ? 0 : 1],
+      [id, title, subtitle, imageUrl, "", Number(sort_order || 0), String(is_active) === "false" ? 0 : 1],
     );
 
     const slider = await queryOne<DbSlider>("SELECT * FROM sliders WHERE id = ?", [id]);
@@ -1573,7 +1696,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateSlider", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, title, subtitle, sort_order, is_active, drive_file_id } = req.body || {};
+    const { id, title, subtitle, sort_order, is_active } = req.body || {};
     if (!id || !title || !subtitle) {
       res.status(400).json({ success: false, message: "Id, title and subtitle are required" });
       return;
@@ -1592,7 +1715,7 @@ export const createApiApp = async () => {
 
     await execute(
       "UPDATE sliders SET title = ?, subtitle = ?, image_url = ?, drive_file_id = ?, sort_order = ?, is_active = ? WHERE id = ?",
-      [title, subtitle, imageUrl, String(drive_file_id || current.drive_file_id || ""), Number(sort_order || 0), String(is_active) === "false" ? 0 : 1, id],
+      [title, subtitle, imageUrl, "", Number(sort_order || 0), String(is_active) === "false" ? 0 : 1, id],
     );
 
     const slider = await queryOne<DbSlider>("SELECT * FROM sliders WHERE id = ?", [id]);
@@ -1629,6 +1752,12 @@ export const createApiApp = async () => {
       return;
     }
 
+    const normalizedMeetingUrl = normalizeMeetingUrl(meeting_url);
+    if (!isValidMeetingUrl(normalizedMeetingUrl)) {
+      res.status(400).json({ success: false, message: "Enter a valid live class meeting link" });
+      return;
+    }
+
     const normalizedAudienceType = ["course", "selected"].includes(String(audience_type || "").toLowerCase())
       ? String(audience_type).toLowerCase()
       : "all";
@@ -1642,7 +1771,7 @@ export const createApiApp = async () => {
         id,
         String(title).trim(),
         String(description || "").trim(),
-        String(meeting_url).trim(),
+        normalizedMeetingUrl,
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
@@ -1674,6 +1803,12 @@ export const createApiApp = async () => {
       return;
     }
 
+    const normalizedMeetingUrl = normalizeMeetingUrl(meeting_url);
+    if (!isValidMeetingUrl(normalizedMeetingUrl)) {
+      res.status(400).json({ success: false, message: "Enter a valid live class meeting link" });
+      return;
+    }
+
     const current = await queryOne<DbLiveClass>("SELECT * FROM live_classes WHERE id = ?", [id]);
     if (!current) {
       res.status(404).json({ success: false, message: "Live class not found" });
@@ -1691,7 +1826,7 @@ export const createApiApp = async () => {
       [
         String(title).trim(),
         String(description || "").trim(),
-        String(meeting_url).trim(),
+        normalizedMeetingUrl,
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
@@ -1717,9 +1852,14 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/createCourse", requireAdmin(), asyncHandler(async (req, res) => {
-    const { title, lessons, image, price, oldPrice, type, category, access_code } = req.body || {};
-    if (!title || !image || !type || !category) {
+    const { title, lessons, price, oldPrice, type, category, access_code } = req.body || {};
+    if (!title || !type || !category) {
       res.status(400).json({ success: false, message: "Title, image, type, and category are required" });
+      return;
+    }
+    const image = await saveContentImage(req.body || {}, "courses", "course-thumbnail", "image");
+    if (!image) {
+      res.status(400).json({ success: false, message: "Course image is required" });
       return;
     }
 
@@ -1734,8 +1874,8 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateCourse", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, title, lessons, image, price, oldPrice, type, category, access_code } = req.body || {};
-    if (!id || !title || !image || !type || !category) {
+    const { id, title, lessons, price, oldPrice, type, category, access_code } = req.body || {};
+    if (!id || !title || !type || !category) {
       res.status(400).json({ success: false, message: "Id, title, image, type, and category are required" });
       return;
     }
@@ -1744,6 +1884,15 @@ export const createApiApp = async () => {
     if (!current) {
       res.status(404).json({ success: false, message: "Course not found" });
       return;
+    }
+
+    const image = (await saveContentImage(req.body || {}, "courses", "course-thumbnail", "image")) || current.image;
+    if (!image) {
+      res.status(400).json({ success: false, message: "Course image is required" });
+      return;
+    }
+    if (image !== current.image) {
+      await deleteStoredImage(current.image);
     }
 
     await execute(
@@ -1761,17 +1910,20 @@ export const createApiApp = async () => {
       return;
     }
 
-    const current = await queryOne<DbCourse>("SELECT id FROM courses WHERE id = ?", [id]);
+    const current = await queryOne<DbCourse>("SELECT * FROM courses WHERE id = ?", [id]);
     if (!current) {
       res.status(404).json({ success: false, message: "Course not found" });
       return;
     }
 
+    const courseLessons = await queryRows<DbLesson>("SELECT * FROM lessons WHERE course_id = ?", [id]);
     await withTransaction(async (connection) => {
       await connection.execute("DELETE FROM lessons WHERE course_id = ?", [id]);
       await connection.execute("DELETE FROM enrollments WHERE course_id = ?", [id]);
       await connection.execute("DELETE FROM courses WHERE id = ?", [id]);
     });
+    await deleteStoredImage(current.image);
+    await Promise.all(courseLessons.map((lesson) => deleteStoredImage(lesson.thumbnail_url)));
 
     res.json({ success: true, message: "Course deleted" });
   }));
@@ -1971,12 +2123,13 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/createLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
+    const { course_id, title, duration, note_content, note_url, video_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
     if (!course_id || !title) {
       res.status(400).json({ success: false, message: "Course and lesson title are required" });
       return;
     }
 
+    const thumbnail_url = await saveContentImage(req.body || {}, "lessons", "video-thumbnail", "thumbnail_url");
     const id = createId("l");
     await execute(
       "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1986,7 +2139,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateLesson", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
+    const { id, course_id, title, duration, note_content, note_url, video_url, download_url, download_label, download_enabled, sort_order } = req.body || {};
     if (!id || !course_id || !title) {
       res.status(400).json({ success: false, message: "Id, course, and lesson title are required" });
       return;
@@ -1996,6 +2149,11 @@ export const createApiApp = async () => {
     if (!current) {
       res.status(404).json({ success: false, message: "Lesson not found" });
       return;
+    }
+
+    const thumbnail_url = await saveContentImage(req.body || {}, "lessons", "video-thumbnail", "thumbnail_url");
+    if (thumbnail_url !== current.thumbnail_url) {
+      await deleteStoredImage(current.thumbnail_url);
     }
 
     await execute(
@@ -2011,17 +2169,20 @@ export const createApiApp = async () => {
       res.status(400).json({ success: false, message: "Lesson id is required" });
       return;
     }
+    const current = await queryOne<DbLesson>("SELECT * FROM lessons WHERE id = ?", [id]);
     await execute("DELETE FROM lessons WHERE id = ?", [id]);
+    await deleteStoredImage(current?.thumbnail_url);
     res.json({ success: true, message: "Lesson deleted" });
   }));
 
   app.post("/api/createNote", requireAdmin(), asyncHandler(async (req, res) => {
-    const { title, lessons, category, type, url, content } = req.body || {};
+    const { title, lessons, category, type, content } = req.body || {};
     if (!title || !category) {
       res.status(400).json({ success: false, message: "Title and category are required" });
       return;
     }
 
+    const url = await saveNoteFile(req.body || {});
     const id = createId("n");
     await execute(
       "INSERT INTO notes (id, title, lessons, category, type, url, content) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -2031,7 +2192,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateNote", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, title, lessons, category, type, url, content } = req.body || {};
+    const { id, title, lessons, category, type, content } = req.body || {};
     if (!id || !title || !category) {
       res.status(400).json({ success: false, message: "Id, title, and category are required" });
       return;
@@ -2041,6 +2202,11 @@ export const createApiApp = async () => {
     if (!current) {
       res.status(404).json({ success: false, message: "Note not found" });
       return;
+    }
+
+    const url = await saveNoteFile(req.body || {});
+    if (url !== current.url) {
+      await deleteStoredImage(current.url);
     }
 
     await execute(
@@ -2056,7 +2222,9 @@ export const createApiApp = async () => {
       res.status(400).json({ success: false, message: "Note id is required" });
       return;
     }
+    const current = await queryOne<DbNote>("SELECT * FROM notes WHERE id = ?", [id]);
     await execute("DELETE FROM notes WHERE id = ?", [id]);
+    await deleteStoredImage(current?.url);
     res.json({ success: true, message: "Note deleted" });
   }));
 

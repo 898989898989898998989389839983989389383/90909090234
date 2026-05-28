@@ -879,6 +879,9 @@ export const getPool = () => {
       ...getConnectionConfig(),
       max: Number(process.env.POSTGRES_POOL_MAX || 1),
     });
+    pool.on("error", (error) => {
+      console.error("Unexpected idle Postgres connection error", error.message);
+    });
   }
 
   return pool;

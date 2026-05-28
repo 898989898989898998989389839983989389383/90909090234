@@ -46,18 +46,23 @@ import {
   FlaskConical,
   RotateCcw,
   Maximize,
-  VolumeX
+  VolumeX,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import ReactMarkdown from 'react-markdown';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 // --- Types ---
 type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
+
+const APP_SHARE_URL = 'https://play.google.com/store/apps/details?id=com.rbs.academy';
+const APP_SHARE_TEXT = 'Download RBS Academy for premium chemistry learning, notes, quizzes, and live classes.';
 
 interface Lesson {
   id: string;
@@ -118,7 +123,6 @@ interface SliderItem {
   title: string;
   subtitle: string;
   image_url: string;
-  drive_file_id?: string;
   sort_order: number;
   is_active: boolean;
 }
@@ -271,9 +275,7 @@ const DEFAULT_APP_CONTROL_SETTINGS: AppControlSettings = {
   notificationId: '',
   notificationSentAt: '',
 };
-const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGQY9Z0ij1_ydX39sv5Z4rl4muYTD1y7ehglAlQhepRL0Z2_5IXhEoPQdtyjYwBaRH/exec';
 const DEFAULT_NATIVE_API_BASE_URL = 'https://rbs-academy-current.vercel.app';
-const APPS_SCRIPT_URL = (import.meta.env.VITE_APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL).trim();
 const API_BASE_URL = String(
   import.meta.env.VITE_API_BASE_URL ||
   (Capacitor.isNativePlatform() ? DEFAULT_NATIVE_API_BASE_URL : '')
@@ -281,15 +283,6 @@ const API_BASE_URL = String(
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
-};
-
-const getAppsScriptActionUrl = (action: string) => {
-  if (!APPS_SCRIPT_URL) {
-    return '';
-  }
-
-  const separator = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
-  return `${APPS_SCRIPT_URL}${separator}action=${encodeURIComponent(action)}`;
 };
 
 const apiUrl = (path: string) => {
@@ -1095,94 +1088,111 @@ const registerPushToken = async (token: string, userId = '') => {
   }
 };
 
-const apiPostToAppsScript = async (action: string, payload: Record<string, unknown>) => {
-  if (!APPS_SCRIPT_URL) {
-    throw new Error('Google Apps Script is not configured');
-  }
-
-  return fetch(getAppsScriptActionUrl(action), {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload })
-  });
-};
-
-const readAppsScriptUploadPayload = async (response: Response) => {
-  const payload = await readLenientJsonResponse(response);
-  if (!response.ok || payload?.success === false) {
-    throw new Error(String(payload?.message || 'Apps Script upload failed'));
-  }
-  return payload as Record<string, any>;
-};
-
-const stripUploadFields = (payload: Record<string, unknown>) => {
-  const nextPayload = { ...payload };
-  delete nextPayload.imageData;
-  delete nextPayload.fileData;
-  delete nextPayload.fileName;
-  delete nextPayload.mimeType;
-  delete nextPayload.uploadKind;
-  return nextPayload;
-};
-
-const uploadViaAppsScriptThenSaveToSupabase = async (
-  action: 'createSlider' | 'updateSlider' | 'createNote' | 'updateNote' | 'createCourse' | 'updateCourse' | 'createLesson' | 'updateLesson',
-  payload: Record<string, unknown>
-) => {
-  const uploadResponse = await apiPostToAppsScript(action, payload);
-  const uploadPayload = await readAppsScriptUploadPayload(uploadResponse);
-  const localPayload = stripUploadFields(payload);
-
-  const uploadedSlider = uploadPayload.slider || {};
-  const uploadedNote = uploadPayload.note || {};
-  const uploadedCourse = uploadPayload.course || {};
-  const uploadedLesson = uploadPayload.lesson || {};
-
-  if (uploadedSlider.image_url || uploadPayload.image_url || uploadPayload.imageUrl) {
-    localPayload.image_url = uploadedSlider.image_url || uploadPayload.image_url || uploadPayload.imageUrl;
-  }
-  if (uploadedSlider.drive_file_id || uploadPayload.drive_file_id || uploadPayload.driveFileId) {
-    localPayload.drive_file_id = uploadedSlider.drive_file_id || uploadPayload.drive_file_id || uploadPayload.driveFileId;
-  }
-  if (uploadedNote.url || uploadPayload.fileUrl || uploadPayload.url) {
-    localPayload.url = uploadedNote.url || uploadPayload.fileUrl || uploadPayload.url;
-  }
-  if (uploadedCourse.image || uploadPayload.imageUrl || uploadPayload.image) {
-    localPayload.image = uploadedCourse.image || uploadPayload.imageUrl || uploadPayload.image;
-  }
-  if (uploadedLesson.thumbnail_url || uploadPayload.thumbnail_url || uploadPayload.imageUrl) {
-    localPayload.thumbnail_url = uploadedLesson.thumbnail_url || uploadPayload.thumbnail_url || uploadPayload.imageUrl;
-  }
-
-  return apiPost(action, localPayload);
-};
-
 const apiSliderPost = async (action: 'createSlider' | 'updateSlider' | 'deleteSlider', payload: Record<string, unknown>) => {
-  if (payload.imageData && action !== 'deleteSlider') {
-    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
-  }
-
   return apiPost(action, payload);
 };
 
 const apiNotePost = async (action: 'createNote' | 'updateNote', payload: Record<string, unknown>) => {
-  if (payload.fileData) {
-    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
-  }
-
   return apiPost(action, payload);
 };
 
 const apiMediaPost = async (action: 'createCourse' | 'updateCourse' | 'createLesson' | 'updateLesson', payload: Record<string, unknown>) => {
-  if (payload.imageData) {
-    return uploadViaAppsScriptThenSaveToSupabase(action, payload);
+  return apiPost(action, payload);
+};
+
+type CloudinaryUploadKind = 'slider' | 'course' | 'lesson' | 'question' | 'note';
+
+const getUploadMimeType = (file: File) => {
+  if (file.type) {
+    return file.type;
   }
 
-  return apiPost(action, payload);
+  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
+  return ({
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    pdf: 'application/pdf',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  } as Record<string, string>)[extension] || 'application/octet-stream';
+};
+
+const uploadFileToCloudinary = async (file: File, kind: CloudinaryUploadKind) => {
+  const signatureResponse = await apiPost('media-upload-signature', {
+    kind,
+    mimeType: getUploadMimeType(file),
+    fileName: file.name,
+    size: file.size,
+  });
+  const signature = await readLenientJsonResponse(signatureResponse);
+  if (!signatureResponse.ok || !signature.success) {
+    throw new Error(String(signature.message || 'Unable to prepare Cloudinary upload'));
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+  form.append('api_key', String(signature.apiKey));
+  form.append('timestamp', String(signature.timestamp));
+  form.append('public_id', String(signature.publicId));
+  form.append('signature', String(signature.signature));
+  const uploadResponse = await fetch(String(signature.uploadUrl), { method: 'POST', body: form });
+  const uploadResult = await uploadResponse.json() as { secure_url?: string; error?: { message?: string } };
+  if (!uploadResponse.ok || !uploadResult.secure_url) {
+    throw new Error(uploadResult.error?.message || 'Cloudinary upload failed');
+  }
+
+  return signature.resourceType === 'image'
+    ? uploadResult.secure_url.replace('/image/upload/', '/image/upload/f_auto,q_auto/')
+    : uploadResult.secure_url;
 };
 
 const isValidStudentName = (value: string) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
 const normalizePhoneNumber = (value: string) => value.replace(/\D/g, "");
+
+const normalizeMeetingUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
+const isValidMeetingUrl = (value: string) => {
+  try {
+    const parsedUrl = new URL(normalizeMeetingUrl(value));
+    return ['http:', 'https:'].includes(parsedUrl.protocol) && parsedUrl.hostname.includes('.');
+  } catch {
+    return false;
+  }
+};
+
+const openMeetingUrl = async (value: string) => {
+  const url = normalizeMeetingUrl(value);
+  if (!url || !isValidMeetingUrl(url)) {
+    return false;
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url, presentationStyle: 'fullscreen' });
+    return true;
+  }
+
+  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!openedWindow) {
+    window.location.href = url;
+  }
+  return true;
+};
 
 const readJsonResponse = async (response: Response) => {
   const contentType = response.headers.get('content-type') || '';
@@ -1972,8 +1982,8 @@ const showLocalNotification = async (title: string, options: NotificationOptions
   }
 
   const notificationOptions: NotificationOptions = {
-    badge: '/icons/icon-192.svg',
-    icon: '/icons/icon-192.svg',
+    badge: '/icons/icon-192.png',
+    icon: '/icons/icon-192.png',
     ...options,
   };
 
@@ -2204,6 +2214,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
     >
       <div className="auth-scenic-card auth-login-card px-6 py-6 sm:px-8 sm:py-8">
       <div className="auth-login-brand">
+        <img className="auth-login-logo" src="/logo.png" alt="RBS Academy logo" />
         <div className="auth-login-badge">RBS Academy</div>
         <div className="auth-login-copy">
           <h1 className="auth-login-title">{isSignup ? 'Create account' : 'Welcome back'}</h1>
@@ -2967,55 +2978,21 @@ const BinauralBeatsScreen = () => {
   );
 };
 
-const getDriveFileIdFromUrl = (url?: string) => {
-  const value = String(url || '');
-  return value.match(/[?&]id=([^&]+)/)?.[1]
-    || value.match(/\/d\/([^/?]+)/)?.[1]
-    || '';
-};
-
-const getImageSourceCandidates = (imageUrl?: string, driveFileId?: string) => {
-  const fileId = String(driveFileId || getDriveFileIdFromUrl(imageUrl)).trim();
-  const candidates = [
-    fileId ? apiUrl(`/api/drive-image/${encodeURIComponent(fileId)}`) : '',
-    String(imageUrl || '').trim(),
-    fileId ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600` : '',
-    fileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600` : '',
-    fileId ? `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}` : '',
-  ].filter(Boolean);
-
-  return Array.from(new Set(candidates));
-};
-
 const SmartImage = ({
   src,
-  driveFileId,
   alt,
   className,
 }: {
   src?: string;
-  driveFileId?: string;
   alt: string;
   className?: string;
 }) => {
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const sources = getImageSourceCandidates(src, driveFileId);
-
-  useEffect(() => {
-    setSourceIndex(0);
-  }, [src, driveFileId]);
-
   return (
     <img
-      src={sources[sourceIndex] || src || ''}
+      src={src || ''}
       alt={alt}
       className={className}
       referrerPolicy="no-referrer"
-      onError={() => {
-        setSourceIndex((current) => (
-          current + 1 < sources.length ? current + 1 : current
-        ));
-      }}
     />
   );
 };
@@ -3042,30 +3019,19 @@ const ImageSlider = ({ sliders }: { sliders: SliderItem[] }) => {
   }, [slides.length]);
 
   const currentSlide = slides[currentIndex] || fallbackSliders[0];
-  const [imageSourceIndex, setImageSourceIndex] = useState(0);
-  const currentImageSources = getImageSourceCandidates(currentSlide.image_url, currentSlide.drive_file_id);
-
-  useEffect(() => {
-    setImageSourceIndex(0);
-  }, [currentSlide.id, currentSlide.image_url, currentSlide.drive_file_id]);
 
   return (
     <div className="relative w-full h-52 overflow-hidden mb-6 shadow-xl shadow-slate-200/60">
       <AnimatePresence mode="wait">
         <motion.img
-          key={`${currentSlide.id}-${imageSourceIndex}`}
-          src={currentImageSources[imageSourceIndex] || currentSlide.image_url}
+          key={currentSlide.id}
+          src={currentSlide.image_url}
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -50 }}
           transition={{ duration: 0.5 }}
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
-          onError={() => {
-            setImageSourceIndex((current) => (
-              current + 1 < currentImageSources.length ? current + 1 : current
-            ));
-          }}
         />
       </AnimatePresence>
       <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
@@ -3091,6 +3057,7 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
   const menuItems = [
     { icon: <ShieldCheck size={20} />, label: 'Privacy Policy' },
     { icon: <MessageSquare size={20} />, label: 'Support Chat' },
+    { icon: <Share2 size={20} />, label: 'Share App' },
     { icon: <Info size={20} />, label: 'About Us' },
     { icon: <User size={20} />, label: 'About Developer' },
     { icon: <Settings size={20} />, label: 'Settings' },
@@ -3144,7 +3111,7 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
                 <button 
                   key={idx} 
                   className="w-full flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors text-gray-700"
-                  onClick={() => {
+                  onClick={async () => {
                     if (item.label === 'Settings') {
                       setScreen('settings');
                     }
@@ -3159,6 +3126,9 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
                     }
                     if (item.label === 'Support Chat') {
                       setScreen('support-chat');
+                    }
+                    if (item.label === 'Share App') {
+                      await shareAcademyApp();
                     }
                     onClose();
                   }}
@@ -3437,21 +3407,19 @@ const LiveClassViewerScreen = ({
   liveClass: LiveClass | null;
   onBack: () => void;
 }) => {
-  const [showFallback, setShowFallback] = useState(false);
-
-  useEffect(() => {
-    setShowFallback(false);
-    const timer = window.setTimeout(() => setShowFallback(true), 4500);
-    return () => window.clearTimeout(timer);
-  }, [liveClass?.id]);
+  const [openError, setOpenError] = useState('');
 
   if (!liveClass) {
     return null;
   }
 
-  const openMeetInCurrentWebView = () => {
-    if (liveClass.meeting_url) {
-      window.location.assign(liveClass.meeting_url);
+  const meetingUrlIsValid = isValidMeetingUrl(liveClass.meeting_url);
+  const handleOpenClass = async () => {
+    setOpenError('');
+    try {
+      await openMeetingUrl(liveClass.meeting_url);
+    } catch {
+      setOpenError('Unable to open the meeting. Please check your connection and try again.');
     }
   };
 
@@ -3471,35 +3439,61 @@ const LiveClassViewerScreen = ({
           <p className="truncate text-[11px] font-semibold text-white/55">{formatLiveClassDate(liveClass.scheduled_at)}</p>
         </div>
         <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
-          In App
+          Ready
         </span>
       </div>
 
-      <div className="relative min-h-0 flex-1 bg-black">
-        <iframe
-          title={liveClass.title}
-          src={liveClass.meeting_url}
-          className="h-full w-full border-0 bg-black"
-          allow="camera; microphone; fullscreen; display-capture; autoplay; encrypted-media"
-          referrerPolicy="no-referrer"
-        />
-        {showFallback && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/85 to-transparent p-4 pt-16">
-            <div className="pointer-events-auto rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-              <div className="text-sm font-black">Google Meet loading issue?</div>
-              <p className="mt-1 text-xs leading-5 text-white/70">
-                Some Google accounts block iframe mode. This button opens the same Meet inside the app WebView without showing a shareable link.
-              </p>
-              <button
-                type="button"
-                onClick={openMeetInCurrentWebView}
-                className="mt-3 w-full rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-950"
-              >
-                Open Meet In App
-              </button>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,#1e40af_0%,#020617_46%,#020617_100%)] px-5 py-6">
+        <div className="mx-auto flex min-h-full w-full max-w-xl flex-col justify-center">
+          <div className="rounded-[32px] border border-white/10 bg-white/10 p-6 shadow-2xl shadow-black/30 backdrop-blur">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/30">
+              <Play size={28} fill="currentColor" />
             </div>
+            <div className="mt-5 text-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Live class lobby</p>
+              <h1 className="mt-2 text-2xl font-black leading-tight">{liveClass.title}</h1>
+              <p className="mt-3 text-sm leading-6 text-white/68">
+                {liveClass.description || 'Your live session is ready. Tap join to open the meeting with camera and microphone support.'}
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3">
+              <div className="rounded-2xl bg-white/10 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Schedule</div>
+                <div className="mt-1 text-sm font-bold text-white">{formatLiveClassDate(liveClass.scheduled_at)}</div>
+              </div>
+              <div className="rounded-2xl bg-white/10 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Access</div>
+                <div className="mt-1 text-sm font-bold capitalize text-white">{liveClass.access_type} class</div>
+              </div>
+            </div>
+
+            {!meetingUrlIsValid && (
+              <div className="mt-5 rounded-2xl border border-red-300/20 bg-red-500/15 px-4 py-3 text-sm font-semibold leading-6 text-red-100">
+                This live class has an invalid meeting link. Ask the admin to edit the class and paste a valid Google Meet, Zoom, or YouTube Live URL.
+              </div>
+            )}
+            {openError && (
+              <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-400/15 px-4 py-3 text-sm font-semibold leading-6 text-amber-100">
+                {openError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!meetingUrlIsValid}
+              onClick={handleOpenClass}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-black text-slate-950 shadow-xl shadow-black/20 disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-white/45"
+            >
+              Join Live Class
+              <ExternalLink size={17} />
+            </button>
+
+            <p className="mt-4 text-center text-xs leading-5 text-white/45">
+              The class opens in a new secure tab or meeting app so camera, microphone, and screen sharing work correctly.
+            </p>
           </div>
-        )}
+        </div>
       </div>
     </motion.div>
   );
@@ -5613,14 +5607,6 @@ const SupportChatScreen = () => (
   </motion.div>
 );
 
-const fileToDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Unable to read file'));
-    reader.readAsDataURL(file);
-  });
-
 const fileToText = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -5776,14 +5762,44 @@ const openExternalResource = (url?: string) => {
   return true;
 };
 
+const shareAcademyApp = async () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const shareData = {
+    title: 'RBS Academy',
+    text: APP_SHARE_TEXT,
+    url: APP_SHARE_URL,
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch {
+      return;
+    }
+  }
+
+  try {
+    await navigator.clipboard?.writeText(APP_SHARE_URL);
+  } catch {}
+
+  openExternalResource(APP_SHARE_URL);
+};
+
 const getNoteFileExtension = (url?: string, title?: string) => {
   const value = `${title || ''} ${url || ''}`.toLowerCase().split('?')[0];
   const match = value.match(/\.([a-z0-9]+)(?:\s|$)/i);
   return match?.[1] || '';
 };
 
-const getDrivePreviewUrl = (url?: string) => {
-  const fileId = getDriveFileIdFromUrl(url);
+const getLegacyDrivePreviewUrl = (url?: string) => {
+  const value = String(url || '');
+  const fileId = value.match(/[?&]id=([^&]+)/)?.[1]
+    || value.match(/\/d\/([^/?]+)/)?.[1]
+    || '';
   return fileId ? `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview` : '';
 };
 
@@ -5793,7 +5809,7 @@ const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
     return '';
   }
 
-  const drivePreviewUrl = getDrivePreviewUrl(value);
+  const drivePreviewUrl = getLegacyDrivePreviewUrl(value);
   if (drivePreviewUrl) {
     return drivePreviewUrl;
   }
@@ -6601,9 +6617,7 @@ const AdminPanelScreen = ({
       };
 
       if (sliderImageFile) {
-        payload.imageData = await fileToDataUrl(sliderImageFile);
-        payload.fileName = sliderImageFile.name;
-        payload.mimeType = sliderImageFile.type || 'image/jpeg';
+        payload.image_url = await uploadFileToCloudinary(sliderImageFile, 'slider');
       }
 
       const action = editingSliderId ? 'updateSlider' : 'createSlider';
@@ -6625,8 +6639,8 @@ const AdminPanelScreen = ({
       setMessage(
         sliderImageFile
           ? error instanceof Error
-            ? `Drive upload failed: ${error.message}`
-            : 'Drive upload failed. Check Apps Script deployment and Drive permission.'
+            ? `Cloudinary upload failed: ${error.message}`
+            : 'Cloudinary upload failed. Check server media configuration.'
           : 'Unable to upload slider image'
       );
     } finally {
@@ -6652,9 +6666,7 @@ const AdminPanelScreen = ({
       };
 
       if (noteFile) {
-        payload.fileData = await fileToDataUrl(noteFile);
-        payload.fileName = noteFile.name;
-        payload.mimeType = noteFile.type || 'application/octet-stream';
+        payload.url = await uploadFileToCloudinary(noteFile, 'note');
       }
 
       const action = editingNoteId ? 'updateNote' : 'createNote';
@@ -6676,7 +6688,7 @@ const AdminPanelScreen = ({
         noteFile
           ? error instanceof Error
             ? `Note upload failed: ${error.message}`
-            : 'Note upload failed. Check Apps Script deployment and Drive permission.'
+            : 'Note upload failed. Check Cloudinary configuration.'
           : 'Unable to save note'
       );
     } finally {
@@ -6779,7 +6791,7 @@ const AdminPanelScreen = ({
       };
 
       if (questionImageFile) {
-        payload.questionImageData = await fileToDataUrl(questionImageFile);
+        payload.image_url = await uploadFileToCloudinary(questionImageFile, 'question');
       }
 
       const response = await apiPost(editingQuestionId ? 'updateQuestion' : 'createQuestion', payload);
@@ -6906,6 +6918,11 @@ const AdminPanelScreen = ({
       return;
     }
 
+    if (!isValidMeetingUrl(liveClassForm.meeting_url)) {
+      setMessage('Enter a valid meeting link, for example https://meet.google.com/abc-defg-hij');
+      return;
+    }
+
     if (liveClassForm.audience_type === 'course' && !liveClassForm.course_id) {
       setMessage('Choose a course for course-based live class visibility');
       return;
@@ -6922,6 +6939,7 @@ const AdminPanelScreen = ({
       const response = await apiPost(editingLiveClassId ? 'updateLiveClass' : 'createLiveClass', {
         ...(editingLiveClassId ? { id: editingLiveClassId } : {}),
         ...liveClassForm,
+        meeting_url: normalizeMeetingUrl(liveClassForm.meeting_url),
         course_id: liveClassForm.audience_type === 'course' ? liveClassForm.course_id : '',
         selected_user_ids: liveClassForm.audience_type === 'selected' ? liveClassForm.selected_user_ids : [],
       });
@@ -7242,10 +7260,7 @@ const AdminPanelScreen = ({
       };
 
       if (courseThumbnailFile) {
-        payload.imageData = await fileToDataUrl(courseThumbnailFile);
-        payload.fileName = courseThumbnailFile.name;
-        payload.mimeType = courseThumbnailFile.type || 'image/jpeg';
-        payload.uploadKind = 'course';
+        payload.image = await uploadFileToCloudinary(courseThumbnailFile, 'course');
       }
 
       const response = await apiMediaPost(editingCourseId ? 'updateCourse' : 'createCourse', payload);
@@ -7263,7 +7278,7 @@ const AdminPanelScreen = ({
         courseThumbnailFile
           ? error instanceof Error
             ? `Course thumbnail upload failed: ${error.message}`
-            : 'Course thumbnail upload failed. Check Apps Script Drive permission.'
+            : 'Course thumbnail upload failed. Check Cloudinary configuration.'
           : 'Unable to save course'
       );
     } finally {
@@ -7304,10 +7319,7 @@ const AdminPanelScreen = ({
       };
 
       if (lessonThumbnailFile) {
-        payload.imageData = await fileToDataUrl(lessonThumbnailFile);
-        payload.fileName = lessonThumbnailFile.name;
-        payload.mimeType = lessonThumbnailFile.type || 'image/jpeg';
-        payload.uploadKind = 'video';
+        payload.thumbnail_url = await uploadFileToCloudinary(lessonThumbnailFile, 'lesson');
       }
 
       const response = await apiMediaPost(editingLessonId ? 'updateLesson' : 'createLesson', payload);
@@ -7327,7 +7339,7 @@ const AdminPanelScreen = ({
         lessonThumbnailFile
           ? error instanceof Error
             ? `Video thumbnail upload failed: ${error.message}`
-            : 'Video thumbnail upload failed. Check Apps Script Drive permission.'
+            : 'Video thumbnail upload failed. Check Cloudinary configuration.'
           : 'Unable to save lesson'
       );
     } finally {
@@ -7394,7 +7406,7 @@ const AdminPanelScreen = ({
             <div className="admin-sidebar-brand">
               <div className="admin-sidebar-brand-mark">
                 <img
-                  src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjDh7QBYsTfWZc9MtN5tZ_FEnWodgeXDaFBjqKF0GIY1DOzOep5NC76_GJgqLSTfkllAZD20jOiwm-5FSABCZnbT7vXx8xBzWNaKIfXPZQIlsRuzxSB8c7MNBixJTQHq2skFedwBf8wRyuG6aS-qk1rrL9C-Vl0mmMScZQMGddoMKaGGdiR4FePzprpKQ/s1600/Untitled_design-removebg-preview.png"
+                  src="/logo.png"
                   alt="RBS Academy logo"
                   referrerPolicy="no-referrer"
                 />
@@ -8299,10 +8311,10 @@ const AdminPanelScreen = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-gray-800">{editingSliderId ? 'Edit Slider' : 'Create Slider'}</h3>
-                <p className="text-xs text-gray-500 mt-1">Upload image here. It will save in Google Drive, store the Drive file id, and load on the home slider from Drive.</p>
+                <p className="text-xs text-gray-500 mt-1">Upload image here. It will be optimized and served from Cloudinary CDN on the home slider.</p>
               </div>
               <div className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-primary">
-                Drive Sync
+                Cloudinary CDN
               </div>
             </div>
             <div className="space-y-3">
@@ -8388,7 +8400,6 @@ const AdminPanelScreen = ({
                   <div className="flex items-center gap-4 min-w-0">
                     <SmartImage
                       src={slider.image_url}
-                      driveFileId={slider.drive_file_id}
                       alt={slider.title}
                       className="w-28 h-20 rounded-2xl object-cover bg-gray-100"
                     />
@@ -8400,8 +8411,8 @@ const AdminPanelScreen = ({
                         <span className={`rounded-full px-2 py-1 font-bold ${slider.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {slider.is_active ? 'Active' : 'Hidden'}
                         </span>
-                        <span className={`rounded-full px-2 py-1 font-bold ${slider.drive_file_id ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
-                          {slider.drive_file_id ? 'Drive saved' : 'External URL'}
+                        <span className={`rounded-full px-2 py-1 font-bold ${slider.image_url.includes('res.cloudinary.com') ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {slider.image_url.includes('res.cloudinary.com') ? 'Cloudinary' : 'External URL'}
                         </span>
                       </div>
                     </div>
@@ -11074,10 +11085,7 @@ export default function App() {
         return;
       }
 
-      const shouldExit = window.confirm('Exit RBS Academy?');
-      if (shouldExit) {
-        CapacitorApp.exitApp();
-      }
+      CapacitorApp.exitApp();
     }).then((handle) => {
       removeBackButtonListener = handle.remove;
     }).catch(() => {});
@@ -11086,20 +11094,6 @@ export default function App() {
       removeBackButtonListener?.();
     };
   }, [screen, isDrawerOpen, isManagementRoute]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || isManagementRoute) {
-      return;
-    }
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isManagementRoute]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -11736,11 +11730,12 @@ export default function App() {
   }
 
   const studentProtectionClass = !isManagementRoute && screenProtectionActive ? 'protected-learning-surface' : '';
+  const studentPolishClass = !isManagementRoute && !['video-player', 'note-viewer'].includes(screen) ? 'student-ui-polish' : '';
   const studentWatermark = `${user?.name || 'Student'} - ${user?.email || 'RBS Academy'}`;
 
   return (
     <div
-      className={isManagementRoute ? 'admin-shell' : `mobile-container ${darkModeEnabled ? 'dark-mode' : ''} ${studentProtectionClass}`}
+      className={isManagementRoute ? 'admin-shell' : `mobile-container ${darkModeEnabled ? 'dark-mode' : ''} ${studentProtectionClass} ${studentPolishClass}`}
       onContextMenu={!isManagementRoute && screenProtectionActive ? (event) => event.preventDefault() : undefined}
     >
       {!isManagementRoute && screenProtectionActive && (
@@ -11790,7 +11785,7 @@ export default function App() {
       {!isManagementRoute && showControlledSplash && (
         <div className="controlled-splash" aria-hidden="true">
           <div className="controlled-splash-mark">
-            <img src="/splash.svg" alt="" />
+            <img src="/logo.png" alt="" />
           </div>
           <strong>{appControlSettings.appName}</strong>
           <span>Premium Chemistry Learning</span>

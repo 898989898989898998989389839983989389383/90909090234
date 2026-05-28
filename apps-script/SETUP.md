@@ -1,5 +1,7 @@
 # Google Apps Script Setup
 
+> Legacy setup only: the current app no longer sends new media uploads through Google Apps Script or Google Drive. New admin uploads are handled by the Node API and stored in Cloudinary. Keep this script only while existing sheet or Drive-backed content still needs migration.
+
 ## 1. Open Apps Script from your Google Sheet
 
 1. Open the Google Sheet
@@ -40,9 +42,9 @@ If you already have old mixed quiz data in the `Questions` sheet, run `migrateQu
 ## Sheet meaning
 
 - `Sliders.image_url`:
-  - this is automatically filled when admin uploads a slider image
+  - legacy sheet value for older Apps Script deployments
 - `Sliders.drive_file_id`:
-  - stores the Google Drive file ID for cleanup/update tracking
+  - legacy Google Drive value; the current Cloudinary upload path does not write this field
 - `Sliders.sort_order`:
   - lower number shows first in the home slider
 - `Sliders.is_active`:
@@ -72,29 +74,13 @@ If you already have old mixed quiz data in the `Questions` sheet, run `migrateQu
 4. Who has access: `Anyone`
 5. Deploy and copy the web app URL
 
-## 3.1 Google Drive folder for slider uploads
+## 3.1 Historical Drive uploads
 
-Slider images uploaded from the admin panel are saved to Google Drive by Apps Script. By default, the script creates or reuses a folder named `RBS Academy Slider Uploads`.
+Old Apps Script deployments could save media to Google Drive. Do not configure that upload route for the current app. Re-upload old media in the current admin panel to store it in Cloudinary.
 
-If you want slider images stored in a specific Google Drive folder:
+## 4. Current frontend
 
-1. Create a folder in Google Drive
-2. In Apps Script open `Project Settings`
-3. Add a script property:
-
-`SLIDER_UPLOAD_FOLDER_ID=your_google_drive_folder_id`
-
-If this property is not set, slider images are uploaded to the auto-created `RBS Academy Slider Uploads` folder.
-
-## 4. Connect frontend
-
-Create a `.env` file in the project root:
-
-```env
-VITE_APPS_SCRIPT_URL=https://script.google.com/macros/s/your-web-app-id/exec
-```
-
-Then restart the frontend/dev server.
+The current frontend connects to the Node API and does not need `VITE_APPS_SCRIPT_URL`. Configure Cloudinary server variables as described in the root `README.md`.
 
 ## 5. Supported actions
 
