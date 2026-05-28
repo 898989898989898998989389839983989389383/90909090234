@@ -4074,7 +4074,6 @@ const VideoPlayerScreen = ({
   const [customEmbedSpeed, setCustomEmbedSpeed] = useState(1);
   const [youtubeControlsHidden, setYoutubeControlsHidden] = useState(false);
   const [youtubeSpeedMenuOpen, setYoutubeSpeedMenuOpen] = useState(false);
-  const embedFrameRef = useRef<HTMLIFrameElement | null>(null);
   const youtubeHostRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<YoutubePlayerApi | null>(null);
   const playerShellRef = useRef<HTMLDivElement | null>(null);
@@ -4102,48 +4101,6 @@ const VideoPlayerScreen = ({
     setYoutubeControlsHidden(false);
     setYoutubeSpeedMenuOpen(false);
   }, [currentLesson?.id]);
-
-  useEffect(() => {
-    const handleYoutubeMessage = (event: MessageEvent) => {
-      if (typeof event.data !== 'string') {
-        return;
-      }
-
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload?.event !== 'infoDelivery' || !payload.info) {
-          return;
-        }
-        if (typeof payload.info.currentTime === 'number') {
-          setCustomEmbedTime(payload.info.currentTime);
-        }
-        if (typeof payload.info.duration === 'number') {
-          setCustomEmbedDuration(payload.info.duration);
-        }
-        if (typeof payload.info.playerState === 'number') {
-          setCustomEmbedPlaying(payload.info.playerState === 1);
-        }
-      } catch {
-        // Ignore non-YouTube postMessage payloads.
-      }
-    };
-
-    window.addEventListener('message', handleYoutubeMessage);
-    return () => window.removeEventListener('message', handleYoutubeMessage);
-  }, []);
-
-  useEffect(() => {
-    if (!customEmbedStarted) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      postYoutubeCommand('getCurrentTime');
-      postYoutubeCommand('getDuration');
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [customEmbedStarted, currentLesson?.id]);
 
   useEffect(() => {
     const videoId = getYoutubeVideoId(currentLesson?.video_url);
@@ -4233,16 +4190,6 @@ const VideoPlayerScreen = ({
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
   const lessonDownloadUrl = currentLesson?.download_enabled === false ? '' : (currentLesson?.download_url || '').trim();
   const lessonDownloadLabel = (currentLesson?.download_label || '').trim() || 'Open secure lesson download';
-  const postYoutubeCommand = (func: string, args: unknown[] = []) => {
-    embedFrameRef.current?.contentWindow?.postMessage(
-      JSON.stringify({
-        event: 'command',
-        func,
-        args
-      }),
-      '*'
-    );
-  };
   const startYoutubeAutoHide = () => {
     if (youtubeHideTimeoutRef.current) {
       window.clearTimeout(youtubeHideTimeoutRef.current);
@@ -4261,9 +4208,7 @@ const VideoPlayerScreen = ({
     if (youtubePlayerRef.current) {
       youtubePlayerRef.current.playVideo();
       startYoutubeAutoHide();
-      return;
     }
-    postYoutubeCommand('playVideo');
   };
   const toggleCustomEmbedPlayback = () => {
     if (!customEmbedStarted) {
@@ -4274,8 +4219,6 @@ const VideoPlayerScreen = ({
     if (youtubePlayerRef.current) {
       customEmbedPlaying ? youtubePlayerRef.current.pauseVideo() : youtubePlayerRef.current.playVideo();
       startYoutubeAutoHide();
-    } else {
-      postYoutubeCommand(customEmbedPlaying ? 'pauseVideo' : 'playVideo');
     }
     setCustomEmbedPlaying((isPlaying) => !isPlaying);
   };
@@ -4283,21 +4226,19 @@ const VideoPlayerScreen = ({
     if (youtubePlayerRef.current) {
       customEmbedMuted ? youtubePlayerRef.current.unMute() : youtubePlayerRef.current.mute();
       startYoutubeAutoHide();
-    } else {
-      postYoutubeCommand(customEmbedMuted ? 'unMute' : 'mute');
     }
     setCustomEmbedMuted((isMuted) => !isMuted);
   };
   const seekCustomEmbed = (seconds: number) => {
     const nextTime = Math.max(0, Math.min(customEmbedDuration || Number.MAX_SAFE_INTEGER, customEmbedTime + seconds));
     setCustomEmbedTime(nextTime);
-    youtubePlayerRef.current ? youtubePlayerRef.current.seekTo(nextTime, true) : postYoutubeCommand('seekTo', [nextTime, true]);
+    youtubePlayerRef.current?.seekTo(nextTime, true);
     startYoutubeAutoHide();
   };
   const setYoutubePlaybackSpeed = (speed: number) => {
     setCustomEmbedSpeed(speed);
     setYoutubeSpeedMenuOpen(false);
-    youtubePlayerRef.current ? youtubePlayerRef.current.setPlaybackRate(speed) : postYoutubeCommand('setPlaybackRate', [speed]);
+    youtubePlayerRef.current?.setPlaybackRate(speed);
     startYoutubeAutoHide();
   };
   const restartCustomEmbed = () => {
@@ -4310,9 +4251,6 @@ const VideoPlayerScreen = ({
       youtubePlayerRef.current.seekTo(0, true);
       youtubePlayerRef.current.playVideo();
       startYoutubeAutoHide();
-    } else {
-      postYoutubeCommand('seekTo', [0, true]);
-      postYoutubeCommand('playVideo');
     }
     setCustomEmbedPlaying(true);
   };
@@ -4331,9 +4269,9 @@ const VideoPlayerScreen = ({
           onChange={(event) => {
             const nextTime = Number(event.target.value);
             setCustomEmbedTime(nextTime);
-                        youtubePlayerRef.current ? youtubePlayerRef.current.seekTo(nextTime, true) : postYoutubeCommand('seekTo', [nextTime, true]);
-                        startYoutubeAutoHide();
-                      }}
+            youtubePlayerRef.current?.seekTo(nextTime, true);
+            startYoutubeAutoHide();
+          }}
           aria-label="Seek video"
         />
         <span>{formatVideoClock(customEmbedDuration)}</span>
@@ -4385,7 +4323,6 @@ const VideoPlayerScreen = ({
               <div className="course-youtube-host" ref={youtubeHostRef} />
             ) : (
               <iframe
-                ref={embedFrameRef}
                 src={activeVideoUrl}
                 className="course-video-frame"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
