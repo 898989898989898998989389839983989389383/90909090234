@@ -51,7 +51,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import ReactMarkdown from 'react-markdown';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
@@ -1115,6 +1114,8 @@ const getUploadMimeType = (file: File) => {
     webp: 'image/webp',
     gif: 'image/gif',
     pdf: 'application/pdf',
+    html: 'text/html',
+    htm: 'text/html',
     txt: 'text/plain',
     md: 'text/markdown',
     doc: 'application/msword',
@@ -2567,30 +2568,44 @@ const AccessCodeModal = ({
   );
 };
 
-const BottomNav = ({ activeScreen, setScreen, onQuizClick }: { activeScreen: Screen, setScreen: (s: Screen) => void, onQuizClick?: () => void }) => (
-  <nav className="nav-bottom">
-    <button onClick={() => setScreen('home')} className={`nav-item ${activeScreen === 'home' ? 'active' : ''}`}>
-      <Home size={24} />
-      <span className="text-[10px] font-medium">Home</span>
-    </button>
-    <button onClick={() => setScreen('courses')} className={`nav-item ${activeScreen === 'courses' ? 'active' : ''}`}>
-      <BookOpen size={24} />
-      <span className="text-[10px] font-medium">Courses</span>
-    </button>
-    <button onClick={() => setScreen('notes')} className={`nav-item ${activeScreen === 'notes' ? 'active' : ''}`}>
-      <FileText size={24} />
-      <span className="text-[10px] font-medium">Notes</span>
-    </button>
-    <button onClick={() => onQuizClick ? onQuizClick() : setScreen('quiz')} className={`nav-item ${activeScreen === 'quiz' ? 'active' : ''}`}>
-      <HelpCircle size={24} />
-      <span className="text-[10px] font-medium">Quiz</span>
-    </button>
-    <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
-      <User size={24} />
-      <span className="text-[10px] font-medium">Profile</span>
-    </button>
-  </nav>
-);
+const BottomNav = ({
+  activeScreen,
+  setScreen,
+  onCoursesClick,
+  onQuizClick,
+}: {
+  activeScreen: Screen,
+  setScreen: (s: Screen) => void,
+  onCoursesClick?: () => void,
+  onQuizClick?: () => void
+}) => {
+  const coursesActive = activeScreen === 'courses' || activeScreen === 'my-courses';
+
+  return (
+    <nav className="nav-bottom">
+      <button onClick={() => setScreen('home')} className={`nav-item ${activeScreen === 'home' ? 'active' : ''}`}>
+        <Home size={24} />
+        <span className="text-[10px] font-medium">Home</span>
+      </button>
+      <button onClick={() => onCoursesClick ? onCoursesClick() : setScreen('courses')} className={`nav-item ${coursesActive ? 'active' : ''}`}>
+        <BookOpen size={24} />
+        <span className="text-[10px] font-medium">Courses</span>
+      </button>
+      <button onClick={() => setScreen('notes')} className={`nav-item ${activeScreen === 'notes' ? 'active' : ''}`}>
+        <FileText size={24} />
+        <span className="text-[10px] font-medium">Notes</span>
+      </button>
+      <button onClick={() => onQuizClick ? onQuizClick() : setScreen('quiz')} className={`nav-item ${activeScreen === 'quiz' ? 'active' : ''}`}>
+        <HelpCircle size={24} />
+        <span className="text-[10px] font-medium">Quiz</span>
+      </button>
+      <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
+        <User size={24} />
+        <span className="text-[10px] font-medium">Profile</span>
+      </button>
+    </nav>
+  );
+};
 
 const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
@@ -2602,9 +2617,19 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
       )}
       <div>
         {title !== 'RBS Academy' && (
-          <div className="text-[10px] uppercase tracking-[0.18em] text-white/60 font-bold">RBS Academy</div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-white/60 font-bold">RBS Academy</div>
+            <div className="max-w-[180px] truncate text-[11px] font-semibold text-white/75">
+              {user?.name ? `Hi, ${user.name}` : 'Student'}
+            </div>
+          </div>
         )}
         <h1 className="text-lg font-bold">{title}</h1>
+        {title === 'RBS Academy' && (
+          <p className="max-w-[190px] truncate text-xs font-semibold text-white/75">
+            {user?.name ? `Hi, ${user.name}` : 'Welcome, Student'}
+          </p>
+        )}
       </div>
     </div>
     <div className="flex items-center gap-4">
@@ -3054,6 +3079,7 @@ const ImageSlider = ({ sliders }: { sliders: SliderItem[] }) => {
 };
 
 const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onClose: () => void, user: any, setScreen: (s: Screen) => void }) => {
+  const [shareSheetOpen, setShareSheetOpen] = useState(false);
   const menuItems = [
     { icon: <ShieldCheck size={20} />, label: 'Privacy Policy' },
     { icon: <MessageSquare size={20} />, label: 'Support Chat' },
@@ -3128,7 +3154,8 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
                       setScreen('support-chat');
                     }
                     if (item.label === 'Share App') {
-                      await shareAcademyApp();
+                      setShareSheetOpen(true);
+                      return;
                     }
                     onClose();
                   }}
@@ -3139,6 +3166,94 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
               ))}
             </div>
           </motion.div>
+          {shareSheetOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[90] grid place-items-end bg-slate-950/55 px-4 pb-4 backdrop-blur-sm"
+              onClick={() => setShareSheetOpen(false)}
+            >
+              <motion.div
+                initial={{ y: 30, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 30, opacity: 0, scale: 0.98 }}
+                className="share-sheet w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary">Share App</p>
+                    <h2 className="mt-1 text-xl font-black text-slate-900">Where do you want to share?</h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Share RBS Academy with students using WhatsApp, Facebook, or any app.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShareSheetOpen(false)}
+                    className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100 text-slate-500"
+                    aria-label="Close share options"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await shareAcademyAppTo('whatsapp');
+                      setShareSheetOpen(false);
+                      onClose();
+                    }}
+                    className="share-option share-option--whatsapp"
+                  >
+                    <MessageSquare size={22} />
+                    <span>WhatsApp</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await shareAcademyAppTo('facebook');
+                      setShareSheetOpen(false);
+                      onClose();
+                    }}
+                    className="share-option share-option--facebook"
+                  >
+                    <Share2 size={22} />
+                    <span>Facebook</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await shareAcademyAppTo('system');
+                      setShareSheetOpen(false);
+                      onClose();
+                    }}
+                    className="share-option share-option--system"
+                  >
+                    <Share2 size={22} />
+                    <span>More Apps</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await shareAcademyAppTo('copy');
+                      setShareSheetOpen(false);
+                      onClose();
+                    }}
+                    className="share-option share-option--copy"
+                  >
+                    <ExternalLink size={22} />
+                    <span>Copy Link</span>
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500">
+                  {APP_SHARE_URL}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
         </>
       )}
     </AnimatePresence>
@@ -3694,9 +3809,8 @@ const VideoPlayerScreen = ({
   const isProtectedSurface = protectedMode;
   const normalizedVideoUrl = normalizeVideoUrl(currentLesson?.video_url);
   const isProtectedYoutubeEmbed = /youtube(-nocookie)?\.com\/embed\//i.test(normalizedVideoUrl);
-  const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url, isProtectedYoutubeEmbed && customEmbedStarted);
+  const activeVideoUrl = getProtectedEmbedUrl(currentLesson?.video_url);
   const usesEmbedPlayer = isEmbeddableVideoUrl(activeVideoUrl);
-  const lessonPosterUrl = (currentLesson?.thumbnail_url || course.image || '').trim();
   const lessonDownloadUrl = currentLesson?.download_enabled === false ? '' : (currentLesson?.download_url || '').trim();
   const lessonDownloadLabel = (currentLesson?.download_label || '').trim() || 'Open secure lesson download';
   const postYoutubeCommand = (func: string, args: unknown[] = []) => {
@@ -3712,6 +3826,7 @@ const VideoPlayerScreen = ({
   const startCustomEmbed = () => {
     setCustomEmbedStarted(true);
     setCustomEmbedPlaying(true);
+    postYoutubeCommand('playVideo');
   };
   const toggleCustomEmbedPlayback = () => {
     if (!customEmbedStarted) {
@@ -3755,72 +3870,43 @@ const VideoPlayerScreen = ({
             <iframe
               ref={embedFrameRef}
               src={activeVideoUrl}
-              className={`course-video-frame ${isProtectedYoutubeEmbed && !customEmbedStarted ? 'is-waiting' : ''}`}
+              className="course-video-frame"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen={false}
               referrerPolicy="strict-origin-when-cross-origin"
               title={currentLesson?.title || course.title}
             ></iframe>
-            {isProtectedYoutubeEmbed && !customEmbedStarted ? (
-              <button
-                type="button"
-                className="course-video-poster"
-                onClick={startCustomEmbed}
-                aria-label={`Play ${currentLesson?.title || course.title}`}
-              >
-                {lessonPosterUrl && (
-                  <img src={lessonPosterUrl} alt="" draggable={false} />
-                )}
-                <span className="course-video-shade" aria-hidden="true" />
-                <span className="course-video-brand">RBS Academy Player</span>
-                <span className="course-video-play">
-                  <Play size={30} fill="currentColor" />
-                </span>
-                <span className="course-video-title">{currentLesson?.title || course.title}</span>
-              </button>
-            ) : null}
-            {isProtectedYoutubeEmbed && customEmbedStarted ? (
-              <>
-                <div
-                  className="course-video-guard course-video-guard-top"
-                  aria-hidden="true"
-                />
-                <div
-                  className="course-video-guard course-video-guard-bottom"
-                  aria-hidden="true"
-                />
-                <div className="course-video-mini-brand" aria-hidden="true">RBS Academy</div>
-                <div className="course-video-controls" aria-label="Custom video controls">
-                  <button
-                    type="button"
-                    onClick={toggleCustomEmbedPlayback}
-                    aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}
-                  >
-                    {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={restartCustomEmbed}
-                    aria-label="Restart video"
-                  >
-                    <RotateCcw size={17} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleCustomEmbedMute}
-                    aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}
-                  >
-                    {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openCustomEmbedFullscreen}
-                    aria-label="Fullscreen video"
-                  >
-                    <Maximize size={17} />
-                  </button>
-                </div>
-              </>
+            {isProtectedYoutubeEmbed ? (
+              <div className="course-video-controls" aria-label="Custom video controls">
+                <button
+                  type="button"
+                  onClick={toggleCustomEmbedPlayback}
+                  aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}
+                >
+                  {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={restartCustomEmbed}
+                  aria-label="Restart video"
+                >
+                  <RotateCcw size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCustomEmbedMute}
+                  aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}
+                >
+                  {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={openCustomEmbedFullscreen}
+                  aria-label="Fullscreen video"
+                >
+                  <Maximize size={17} />
+                </button>
+              </div>
             ) : null}
           </div>
         ) : activeVideoUrl ? (
@@ -4028,7 +4114,7 @@ const CourseDetailsScreen = ({
                     <FileText size={20} />
                   </div>
                   <h4 className="font-bold text-blue-900 text-sm mb-1">Course Notes</h4>
-                  <p className="text-[10px] text-blue-700 mb-3">PDF & Text materials</p>
+                  <p className="text-[10px] text-blue-700 mb-3">HTML notes & web resources</p>
                   <button 
                     onClick={() => course.lessonList?.[0] && onViewNotes(course.lessonList[0])}
                     className="text-xs font-bold text-blue-600 flex items-center gap-1"
@@ -4171,7 +4257,7 @@ const NotesScreen = ({
   const formatNoteTitle = (title: string) => {
     const normalized = String(title || 'Untitled Note').replace(/\s+/g, ' ').trim();
     const extensionMatch = normalized.match(/(\.[a-z0-9]+)$/i);
-    const extension = extensionMatch ? extensionMatch[1].toUpperCase().replace('.', '') : 'PDF';
+    const extension = extensionMatch ? extensionMatch[1].toUpperCase().replace('.', '') : 'HTML';
     const base = extensionMatch ? normalized.slice(0, -extensionMatch[1].length) : normalized;
     return {
       title: base.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase()),
@@ -4238,7 +4324,7 @@ const NotesScreen = ({
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Study Library</p>
             <h2 className="mt-2 text-3xl font-black tracking-tight">Notes</h2>
-            <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-white/72">Organized chemistry PDFs and chapter resources for fast revision.</p>
+            <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-white/72">Organized chemistry HTML notes and web resources for fast revision.</p>
           </div>
           <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-white/14 text-white">
             <FileText size={26} />
@@ -5165,8 +5251,8 @@ const HelpCenterScreen = () => {
       description: 'Premium courses unlock after the correct access code is verified or granted by admin.'
     },
     {
-      title: 'Notes & PDFs',
-      description: 'Notes open directly inside the app or from the hosted note URL added in the admin panel.'
+      title: 'HTML Notes',
+      description: 'Notes open full screen from the hosted HTML URL or pasted HTML added in the admin panel.'
     },
     {
       title: 'Quizzes',
@@ -5789,6 +5875,30 @@ const shareAcademyApp = async () => {
   openExternalResource(APP_SHARE_URL);
 };
 
+const shareAcademyAppTo = async (target: 'whatsapp' | 'facebook' | 'system' | 'copy') => {
+  const encodedUrl = encodeURIComponent(APP_SHARE_URL);
+  const encodedText = encodeURIComponent(`${APP_SHARE_TEXT}\n${APP_SHARE_URL}`);
+
+  if (target === 'whatsapp') {
+    openExternalResource(`https://wa.me/?text=${encodedText}`);
+    return;
+  }
+
+  if (target === 'facebook') {
+    openExternalResource(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`);
+    return;
+  }
+
+  if (target === 'copy') {
+    try {
+      await navigator.clipboard?.writeText(APP_SHARE_URL);
+    } catch {}
+    return;
+  }
+
+  await shareAcademyApp();
+};
+
 const getNoteFileExtension = (url?: string, title?: string) => {
   const value = `${title || ''} ${url || ''}`.toLowerCase().split('?')[0];
   const match = value.match(/\.([a-z0-9]+)(?:\s|$)/i);
@@ -5803,21 +5913,12 @@ const getLegacyDrivePreviewUrl = (url?: string) => {
   return fileId ? `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview` : '';
 };
 
+const isLegacyDriveUrl = (url?: string) => /(?:drive|docs)\.google\.com/i.test(String(url || ''));
+
 const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
   const value = String(url || '').trim();
-  if (!value) {
+  if (!value || isLegacyDriveUrl(value)) {
     return '';
-  }
-
-  const drivePreviewUrl = getLegacyDrivePreviewUrl(value);
-  if (drivePreviewUrl) {
-    return drivePreviewUrl;
-  }
-
-  const extension = getNoteFileExtension(value, title);
-  const isDocument = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(extension);
-  if (isDocument) {
-    return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(value)}`;
   }
 
   return value;
@@ -5825,6 +5926,11 @@ const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
 
 const isImageNoteUrl = (url?: string, title?: string) =>
   ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(getNoteFileExtension(url, title));
+
+const isHtmlNoteContent = (content?: string) => {
+  const value = String(content || '').trim();
+  return /<!doctype html|<html[\s>]|<body[\s>]|<iframe[\s>]|<div[\s>]|<section[\s>]|<article[\s>]|<style[\s>]|<script[\s>]/i.test(value);
+};
 
 const AdminLoginScreen = ({
   mode,
@@ -8732,12 +8838,12 @@ const AdminPanelScreen = ({
                       <input
                         value={lessonForm.course_id === managedCourse.id ? lessonForm.note_url : ''}
                         onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_url: event.target.value })}
-                        placeholder="Note URL optional"
+                        placeholder="Full-screen HTML/website URL optional"
                       />
                       <textarea
                         value={lessonForm.course_id === managedCourse.id ? lessonForm.note_content : ''}
                         onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_content: event.target.value })}
-                        placeholder="Note content optional"
+                        placeholder="Paste full HTML code optional"
                       />
                       <button type="button" onClick={submitLessonForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
                         {editingLessonId ? 'Update Video' : 'Add Video'}
@@ -9005,8 +9111,8 @@ const AdminPanelScreen = ({
                 {lessonThumbnailFile ? `${lessonThumbnailFile.name} • ${(lessonThumbnailFile.size / 1024 / 1024).toFixed(2)} MB` : 'Paste URL above or upload JPG, PNG, WEBP, GIF'}
               </span>
             </label>
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Lesson note URL (optional)" value={lessonForm.note_url} onChange={(e) => setLessonForm({ ...lessonForm, note_url: e.target.value })} />
-            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Lesson note content (optional)" value={lessonForm.note_content} onChange={(e) => setLessonForm({ ...lessonForm, note_content: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Full-screen HTML/website URL optional" value={lessonForm.note_url} onChange={(e) => setLessonForm({ ...lessonForm, note_url: e.target.value })} />
+            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Paste full HTML code optional" value={lessonForm.note_content} onChange={(e) => setLessonForm({ ...lessonForm, note_content: e.target.value })} />
             <button
               disabled={loading}
               onClick={submitLessonForm}
@@ -9127,16 +9233,16 @@ const AdminPanelScreen = ({
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Hosted note URL (optional)" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Full-screen HTML/website URL (no Google Drive preview)" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
             <label className="admin-slider-upload-box">
-              <span className="admin-slider-upload-title">Note file</span>
+              <span className="admin-slider-upload-title">HTML note file</span>
               <span className="admin-slider-upload-button">
                 <Upload size={18} />
-                Upload notes file
+                Upload HTML note
               </span>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                accept=".html,.htm,.txt,.md,image/*,text/html,text/plain,text/markdown"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   if (!file) {
@@ -9156,10 +9262,10 @@ const AdminPanelScreen = ({
                 className="sr-only"
               />
               <span className="admin-slider-upload-hint">
-                {noteFile ? `${noteFile.name} • ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose PDF, image, DOC, PPT, XLS, TXT, or MD up to 15 MB'}
+                {noteFile ? `${noteFile.name} • ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose HTML, image, TXT, or MD up to 15 MB'}
               </span>
             </label>
-            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Note content markdown/text (optional)" value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
+            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Paste full HTML code here (optional)" value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
             <button
               disabled={loading}
               onClick={submitNote}
@@ -10336,6 +10442,49 @@ const NoteViewerScreen = ({
 
   const previewUrl = getNoteHtmlPreviewUrl(lesson.note_url, lesson.title);
   const imagePreview = isImageNoteUrl(lesson.note_url, lesson.title);
+  const htmlContent = isHtmlNoteContent(lesson.note_content) ? lesson.note_content : '';
+  const hasFullPageHtml = Boolean(previewUrl || htmlContent);
+
+  if (hasFullPageHtml) {
+    return (
+      <motion.div
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        className={`fixed inset-0 z-50 overflow-hidden bg-white ${protectedMode ? 'protected-learning-surface' : ''}`}
+        onContextMenu={protectedMode ? (event) => event.preventDefault() : undefined}
+      >
+        {protectedMode && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-3 top-3 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-slate-950/70 text-white shadow-xl backdrop-blur-md"
+          aria-label="Back"
+        >
+          <ArrowLeft size={21} />
+        </button>
+        {imagePreview ? (
+          <div className="h-full w-full overflow-auto bg-slate-950">
+            <img
+              src={previewUrl}
+              alt=""
+              className="mx-auto min-h-full max-w-full object-contain"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        ) : (
+          <iframe
+            src={previewUrl || undefined}
+            srcDoc={htmlContent || undefined}
+            title="Study note"
+            className="h-full w-full border-0 bg-white"
+            loading="lazy"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          />
+        )}
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div 
@@ -10346,86 +10495,14 @@ const NoteViewerScreen = ({
       onContextMenu={protectedMode ? (event) => event.preventDefault() : undefined}
     >
       {protectedMode && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
-      <div className="border-b border-slate-200/80 bg-[linear-gradient(135deg,#17304f_0%,#22486d_100%)] px-4 py-3 text-white shadow-lg shadow-slate-300/30">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/12 transition-colors hover:bg-white/20">
-              <ArrowLeft size={20} />
-            </button>
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-black sm:text-lg">{lesson.title}</h3>
-              <p className="text-[11px] uppercase tracking-[0.16em] text-white/70">Study Material</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {lesson.note_url && (
-              <button
-                type="button"
-                onClick={() => openExternalResource(lesson.note_url)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/12 px-3 py-2 text-sm font-bold hover:bg-white/18"
-              >
-                <ExternalLink size={16} />
-                Open Link
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-hidden p-3 sm:p-4">
-        <div className="h-full overflow-hidden rounded-[28px] border border-white/75 bg-white/80 shadow-[0_18px_55px_rgba(15,23,42,0.12)] backdrop-blur-sm">
-          <div className="mb-6 border-b border-slate-200 pb-4">
-            <div className="px-5 pt-5 sm:px-6 sm:pt-6">
-              <h1 className="text-2xl font-black text-slate-900">{lesson.title}</h1>
-              <p className="mt-2 text-sm text-slate-500">
-                {lesson.note_url ? 'PDF/document is shown as an in-app HTML preview.' : 'Full screen study note reader'}
-              </p>
-            </div>
-          </div>
-          {previewUrl ? (
-            <div className="flex h-[calc(100%-110px)] flex-col px-3 pb-3 sm:px-4 sm:pb-4">
-              <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-slate-600">
-                  <FileText size={16} className="text-primary" />
-                  <span className="truncate">HTML preview ready</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openExternalResource(lesson.note_url)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-black text-primary shadow-sm"
-                >
-                  <ExternalLink size={14} />
-                  Open
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                {imagePreview ? (
-                  <div className="h-full overflow-auto bg-slate-950/95 p-3">
-                    <img
-                      src={previewUrl}
-                      alt={lesson.title}
-                      className="mx-auto min-h-full max-w-full rounded-xl object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                ) : (
-                  <iframe
-                    src={previewUrl}
-                    title={lesson.title}
-                    className="h-full w-full bg-white"
-                    loading="lazy"
-                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                  />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="markdown-body prose prose-sm max-w-none overflow-y-auto px-6 pb-8">
-              <ReactMarkdown>{lesson.note_content}</ReactMarkdown>
-            </div>
-          )}
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="absolute left-3 top-3 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-slate-950/70 text-white shadow-xl backdrop-blur-md"
+        aria-label="Back"
+      >
+        <ArrowLeft size={21} />
+      </button>
     </motion.div>
   );
 };
@@ -11826,6 +11903,7 @@ export default function App() {
         <BottomNav 
           activeScreen={screen} 
           setScreen={setScreen} 
+          onCoursesClick={() => setScreen('my-courses')}
           onQuizClick={() => {
             setSelectedQuizTopic(null);
             setScreen('quiz');
