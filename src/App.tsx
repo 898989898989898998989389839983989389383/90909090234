@@ -4166,6 +4166,49 @@ const VideoPlayerScreen = ({
   const openCustomEmbedFullscreen = () => {
     playerShellRef.current?.requestFullscreen?.();
   };
+  const renderYoutubeControls = () => (
+    <div className="course-video-controls course-video-controls--pod" aria-label="Custom YouTube video controls">
+      <div className="course-video-progress">
+        <span>{formatVideoClock(customEmbedTime)}</span>
+        <input
+          type="range"
+          min="0"
+          max={Math.max(1, Math.floor(customEmbedDuration || 1))}
+          value={Math.min(Math.floor(customEmbedTime), Math.max(1, Math.floor(customEmbedDuration || 1)))}
+          onChange={(event) => {
+            const nextTime = Number(event.target.value);
+            setCustomEmbedTime(nextTime);
+            postYoutubeCommand('seekTo', [nextTime, true]);
+          }}
+          aria-label="Seek video"
+        />
+        <span>{formatVideoClock(customEmbedDuration)}</span>
+      </div>
+      <div className="course-video-control-row">
+        <button type="button" onClick={() => seekCustomEmbed(-10)} aria-label="Seek backward 10 seconds">
+          <SkipBack size={17} />
+        </button>
+        <button type="button" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}>
+          {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+        </button>
+        <button type="button" onClick={() => seekCustomEmbed(10)} aria-label="Seek forward 10 seconds">
+          <SkipForward size={17} />
+        </button>
+        <button type="button" onClick={restartCustomEmbed} aria-label="Restart video">
+          <RotateCcw size={17} />
+        </button>
+        <button type="button" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}>
+          {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </button>
+        <button type="button" onClick={changeCustomEmbedSpeed} aria-label="Change playback speed" className="course-video-speed">
+          {customEmbedSpeed}x
+        </button>
+        <button type="button" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
+          <Maximize size={17} />
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <motion.div 
@@ -4193,54 +4236,12 @@ const VideoPlayerScreen = ({
                 {!customEmbedStarted && (
                   <button type="button" className="course-video-poster" onClick={startCustomEmbed} aria-label="Play YouTube lesson">
                     {youtubePosterUrl && <img src={youtubePosterUrl} alt="" referrerPolicy="no-referrer" />}
-                    <span className="course-video-shade" />
                     <span className="course-video-brand">RBS Academy</span>
                     <span className="course-video-play"><Play size={30} fill="currentColor" /></span>
                     <span className="course-video-title">{currentLesson?.title || course.title}</span>
                   </button>
                 )}
-                <div className="course-video-mini-brand">YouTube Lesson</div>
-                <div className="course-video-controls course-video-controls--pod" aria-label="Custom YouTube video controls">
-                  <div className="course-video-progress">
-                    <span>{formatVideoClock(customEmbedTime)}</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max={Math.max(1, Math.floor(customEmbedDuration || 1))}
-                      value={Math.min(Math.floor(customEmbedTime), Math.max(1, Math.floor(customEmbedDuration || 1)))}
-                      onChange={(event) => {
-                        const nextTime = Number(event.target.value);
-                        setCustomEmbedTime(nextTime);
-                        postYoutubeCommand('seekTo', [nextTime, true]);
-                      }}
-                      aria-label="Seek video"
-                    />
-                    <span>{formatVideoClock(customEmbedDuration)}</span>
-                  </div>
-                  <div className="course-video-control-row">
-                    <button type="button" onClick={() => seekCustomEmbed(-10)} aria-label="Seek backward 10 seconds">
-                      <SkipBack size={17} />
-                    </button>
-                    <button type="button" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}>
-                      {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-                    </button>
-                    <button type="button" onClick={() => seekCustomEmbed(10)} aria-label="Seek forward 10 seconds">
-                      <SkipForward size={17} />
-                    </button>
-                    <button type="button" onClick={restartCustomEmbed} aria-label="Restart video">
-                      <RotateCcw size={17} />
-                    </button>
-                    <button type="button" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}>
-                      {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                    </button>
-                    <button type="button" onClick={changeCustomEmbedSpeed} aria-label="Change playback speed" className="course-video-speed">
-                      {customEmbedSpeed}x
-                    </button>
-                    <button type="button" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
-                      <Maximize size={17} />
-                    </button>
-                  </div>
-                </div>
+                {renderYoutubeControls()}
               </>
             ) : null}
           </div>
