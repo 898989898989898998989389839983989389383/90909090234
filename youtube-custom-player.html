@@ -1,110 +1,88 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RBS Academy Custom YouTube Player</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RBS Academy Premium Player</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <style>
     :root {
-      --blue-950: #071832;
-      --blue-900: #0b2447;
-      --blue-800: #123b70;
-      --blue-700: #1757a6;
-      --gold-500: #f2b84b;
-      --gold-400: #ffd16a;
-      --gold-100: #fff3cf;
-      --white: #ffffff;
-      --slate-100: #eef4fb;
-      --slate-300: #cbd7e6;
-      --slate-700: #31425c;
-      --shadow: 0 24px 70px rgba(7, 24, 50, 0.28);
+      --royal: #2563eb;
+      --sky: #0ea5e9;
+      --sky-soft: rgba(56, 189, 248, 0.32);
+      --navy: #020617;
+      --navy-2: #0f172a;
+      --panel: rgba(15, 23, 42, 0.78);
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --line: rgba(255, 255, 255, 0.11);
+      --glow: 0 32px 90px rgba(14, 165, 233, 0.28);
+      --button-gradient: linear-gradient(135deg, #0ea5e9, #2563eb);
     }
 
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      min-height: 100%;
     }
 
     body {
-      margin: 0;
       min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--blue-950);
-      background:
-        radial-gradient(circle at top left, rgba(242, 184, 75, 0.28), transparent 34rem),
-        linear-gradient(135deg, #eaf2ff 0%, #f8fbff 48%, #fff8e4 100%);
-    }
-
-    .page {
-      width: min(1180px, 100%);
-      margin: 0 auto;
-      padding: 28px 16px;
-    }
-
-    .shell {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 330px;
-      gap: 18px;
-      align-items: start;
-    }
-
-    .player-card {
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.82);
-      border-radius: 26px;
-      background: rgba(255, 255, 255, 0.78);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
-    }
-
-    .lecture-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 18px 20px;
-      background: linear-gradient(135deg, var(--blue-950), var(--blue-800));
-      color: var(--white);
-    }
-
-    .lecture-kicker {
-      margin: 0 0 4px;
-      color: var(--gold-400);
-      font-size: 11px;
-      font-weight: 900;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-
-    .lecture-title {
-      margin: 0;
-      max-width: 56rem;
-      overflow: hidden;
-      font-size: clamp(18px, 3vw, 28px);
-      font-weight: 950;
-      line-height: 1.15;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .lecture-count {
-      display: inline-flex;
-      min-width: 76px;
-      justify-content: center;
-      border: 1px solid rgba(255, 209, 106, 0.32);
-      border-radius: 999px;
-      padding: 9px 12px;
-      background: rgba(255, 209, 106, 0.13);
-      color: var(--gold-100);
-      font-size: 13px;
-      font-weight: 900;
-    }
-
-    .video-stage {
-      position: relative;
-      overflow: hidden;
-      aspect-ratio: 16 / 9;
-      background: #020817;
+      place-items: center;
+      padding: clamp(12px, 3vw, 32px);
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.26), transparent 32rem),
+        radial-gradient(circle at 12% 82%, rgba(37, 99, 235, 0.26), transparent 26rem),
+        linear-gradient(135deg, #020617 0%, #07111f 44%, #082f49 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .page-shell {
+      width: min(1120px, 100%);
+    }
+
+    .player-container {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 28px;
+      background: #000;
+      box-shadow:
+        var(--glow),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      isolation: isolate;
+    }
+
+    .player-container::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      z-index: -1;
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.75), rgba(37, 99, 235, 0.16), rgba(255, 255, 255, 0.06));
+      filter: blur(16px);
+      opacity: 0.66;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at center, rgba(14, 165, 233, 0.12), transparent 48%),
+        #000;
     }
 
     #player {
@@ -112,49 +90,261 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      border: 0;
+      transform: scale(1.18);
+      pointer-events: none;
     }
 
-    .interaction-shield {
+    .hide-youtube {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: clamp(48px, 8vw, 78px);
+      z-index: 6;
+      background: #000;
+      pointer-events: none;
+    }
+
+    .hide-youtube--top {
+      top: 0;
+    }
+
+    .hide-youtube--bottom {
+      bottom: 0;
+    }
+
+    .brand-badge {
+      position: absolute;
+      top: clamp(12px, 2.5vw, 18px);
+      left: clamp(12px, 2.5vw, 18px);
+      z-index: 24;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.76);
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand-badge i {
+      color: #38bdf8;
+      filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.8));
+    }
+
+    .center-play {
       position: absolute;
       inset: 0;
-      z-index: 2;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: opacity 220ms ease, transform 220ms ease, visibility 220ms ease;
+    }
+
+    .center-play.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.96);
       pointer-events: none;
+    }
+
+    .big-play {
+      width: clamp(74px, 12vw, 96px);
+      height: clamp(74px, 12vw, 96px);
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 999px;
+      background: var(--button-gradient);
+      color: white;
+      font-size: clamp(26px, 4vw, 36px);
+      cursor: pointer;
+      box-shadow:
+        0 22px 64px rgba(14, 165, 233, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+
+    .big-play:hover {
+      transform: scale(1.07);
+      box-shadow:
+        0 30px 80px rgba(14, 165, 233, 0.58),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
     }
 
     .loader {
       position: absolute;
-      inset: 0;
-      z-index: 5;
+      top: 50%;
+      left: 50%;
+      z-index: 19;
+      width: 64px;
+      height: 64px;
+      margin: -32px 0 0 -32px;
+      border-radius: 50%;
+      border: 4px solid rgba(255, 255, 255, 0.16);
+      border-top-color: #38bdf8;
+      filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.45));
+      animation: spin 820ms linear infinite;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+
+    .loader.is-visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .controls {
+      position: absolute;
+      left: clamp(10px, 2vw, 18px);
+      right: clamp(10px, 2vw, 18px);
+      bottom: clamp(10px, 2vw, 18px);
+      z-index: 30;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+      align-items: center;
+      gap: clamp(8px, 1.5vw, 12px);
+      padding: clamp(10px, 1.6vw, 12px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.72));
+      box-shadow:
+        0 18px 44px rgba(0, 0, 0, 0.36),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(18px);
+      transition: opacity 280ms ease, transform 280ms ease, visibility 280ms ease;
+    }
+
+    .controls.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(24px);
+      pointer-events: none;
+    }
+
+    .control-btn {
+      width: clamp(40px, 6vw, 48px);
+      height: clamp(40px, 6vw, 48px);
       display: grid;
       place-items: center;
-      padding: 24px;
-      background:
-        radial-gradient(circle at center, rgba(23, 87, 166, 0.72), rgba(2, 8, 23, 0.94) 64%),
-        linear-gradient(135deg, rgba(7, 24, 50, 0.88), rgba(18, 59, 112, 0.92));
-      color: var(--white);
-      transition: opacity 240ms ease, visibility 240ms ease;
+      flex-shrink: 0;
+      border: 0;
+      border-radius: 999px;
+      background: var(--button-gradient);
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow:
+        0 12px 28px rgba(14, 165, 233, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      transition: transform 180ms ease, filter 180ms ease, box-shadow 180ms ease;
     }
 
-    .loader.is-hidden {
-      visibility: hidden;
-      opacity: 0;
+    .control-btn:hover {
+      transform: scale(1.08);
+      filter: brightness(1.08);
+      box-shadow:
+        0 16px 34px rgba(14, 165, 233, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
     }
 
-    .loader-box {
-      display: grid;
-      justify-items: center;
-      gap: 14px;
+    .control-btn:active {
+      transform: scale(0.96);
+    }
+
+    .progress {
+      position: relative;
+      height: 10px;
+      min-width: 90px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.26);
+      cursor: pointer;
+      box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.42);
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #38bdf8, #0ea5e9, #2563eb);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.56);
+      transition: width 120ms linear;
+    }
+
+    .time {
+      min-width: 104px;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 800;
       text-align: center;
+      white-space: nowrap;
     }
 
-    .spinner {
-      width: 58px;
-      height: 58px;
-      border: 5px solid rgba(255, 255, 255, 0.22);
-      border-top-color: var(--gold-400);
-      border-radius: 50%;
-      animation: spin 850ms linear infinite;
+    .speed-menu {
+      position: absolute;
+      right: clamp(64px, 10vw, 86px);
+      bottom: clamp(72px, 10vw, 88px);
+      z-index: 50;
+      min-width: 132px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.96);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(18px);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px) scale(0.98);
+      transform-origin: bottom right;
+      transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+    }
+
+    .speed-menu.is-open {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    .speed-menu button {
+      width: 100%;
+      display: block;
+      border: 0;
+      background: transparent;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 12px 18px;
+      text-align: left;
+      transition: background 160ms ease;
+    }
+
+    .speed-menu button:hover,
+    .speed-menu button.is-active {
+      background: var(--button-gradient);
+    }
+
+    .meta-strip {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .meta-strip strong {
+      color: white;
     }
 
     @keyframes spin {
@@ -163,502 +353,291 @@
       }
     }
 
-    .loader-title {
-      margin: 0;
-      font-size: clamp(20px, 3vw, 30px);
-      font-weight: 950;
-    }
-
-    .loader-text {
-      margin: 0;
-      max-width: 24rem;
-      color: rgba(255, 255, 255, 0.72);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .controls {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 14px;
-      align-items: center;
-      padding: 15px;
-      background: linear-gradient(180deg, #ffffff, #f6f9ff);
-    }
-
-    .control-cluster {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    button {
-      border: 0;
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .icon-button {
-      display: inline-grid;
-      width: 46px;
-      height: 46px;
-      place-items: center;
-      border-radius: 16px;
-      background: var(--slate-100);
-      color: var(--blue-900);
-      font-size: 18px;
-      font-weight: 950;
-      transition: transform 180ms ease, background 180ms ease, color 180ms ease;
-    }
-
-    .icon-button:hover {
-      transform: translateY(-1px);
-      background: #dfeaff;
-      color: var(--blue-700);
-    }
-
-    .play-button {
-      width: 58px;
-      height: 58px;
-      border-radius: 20px;
-      background: linear-gradient(135deg, var(--gold-400), var(--gold-500));
-      color: var(--blue-950);
-      box-shadow: 0 14px 28px rgba(242, 184, 75, 0.34);
-      font-size: 22px;
-    }
-
-    .meta-strip {
-      min-width: 0;
-      padding: 0 4px;
-    }
-
-    .now-label {
-      margin: 0 0 4px;
-      color: var(--blue-700);
-      font-size: 11px;
-      font-weight: 950;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .now-title {
-      margin: 0;
-      overflow: hidden;
-      color: var(--blue-950);
-      font-size: 15px;
-      font-weight: 900;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .status-pill {
-      border-radius: 999px;
-      padding: 10px 13px;
-      background: var(--blue-950);
-      color: var(--gold-100);
-      font-size: 12px;
-      font-weight: 900;
-      white-space: nowrap;
-    }
-
-    .side-panel {
-      border: 1px solid rgba(255, 255, 255, 0.82);
-      border-radius: 24px;
-      background: rgba(255, 255, 255, 0.82);
-      box-shadow: 0 18px 48px rgba(7, 24, 50, 0.14);
-      overflow: hidden;
-      backdrop-filter: blur(18px);
-    }
-
-    .panel-section {
-      padding: 16px;
-      border-bottom: 1px solid rgba(203, 215, 230, 0.7);
-    }
-
-    .panel-section:last-child {
-      border-bottom: 0;
-    }
-
-    .panel-title {
-      margin: 0 0 12px;
-      color: var(--blue-950);
-      font-size: 15px;
-      font-weight: 950;
-    }
-
-    .video-form {
-      display: grid;
-      gap: 10px;
-    }
-
-    .input {
-      width: 100%;
-      min-height: 46px;
-      border: 1px solid var(--slate-300);
-      border-radius: 15px;
-      padding: 0 13px;
-      outline: 0;
-      color: var(--blue-950);
-      font-size: 14px;
-      font-weight: 800;
-      background: #ffffff;
-    }
-
-    .input:focus {
-      border-color: var(--blue-700);
-      box-shadow: 0 0 0 4px rgba(23, 87, 166, 0.12);
-    }
-
-    .primary-button {
-      min-height: 46px;
-      border-radius: 15px;
-      background: linear-gradient(135deg, var(--blue-800), var(--blue-950));
-      color: var(--white);
-      font-weight: 950;
-    }
-
-    .lecture-list {
-      display: grid;
-      gap: 9px;
-    }
-
-    .lecture-item {
-      width: 100%;
-      display: grid;
-      grid-template-columns: 38px 1fr;
-      gap: 10px;
-      align-items: center;
-      border-radius: 16px;
-      padding: 10px;
-      background: #f6f9ff;
-      color: var(--blue-950);
-      text-align: left;
-    }
-
-    .lecture-item.is-active {
-      background: linear-gradient(135deg, var(--blue-900), var(--blue-700));
-      color: var(--white);
-    }
-
-    .lecture-number {
-      display: grid;
-      width: 38px;
-      height: 38px;
-      place-items: center;
-      border-radius: 13px;
-      background: rgba(242, 184, 75, 0.22);
-      color: var(--blue-900);
-      font-size: 13px;
-      font-weight: 950;
-    }
-
-    .lecture-item.is-active .lecture-number {
-      background: var(--gold-400);
-      color: var(--blue-950);
-    }
-
-    .lecture-name {
-      overflow: hidden;
-      font-size: 13px;
-      font-weight: 900;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    @media (max-width: 860px) {
-      .shell {
-        grid-template-columns: 1fr;
-      }
-
-      .lecture-header {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .lecture-title {
-        white-space: normal;
+    @media (max-width: 720px) {
+      .player-container {
+        border-radius: 20px;
       }
 
       .controls {
-        grid-template-columns: 1fr;
-      }
-
-      .control-cluster {
-        justify-content: center;
-      }
-
-      .status-pill {
-        justify-self: center;
-      }
-    }
-
-    @media (max-width: 520px) {
-      .page {
-        padding: 12px;
-      }
-
-      .player-card,
-      .side-panel {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
         border-radius: 18px;
       }
 
-      .lecture-header {
-        padding: 15px;
+      .time {
+        min-width: 76px;
+        font-size: 11px;
+      }
+
+      .control-btn:nth-of-type(5) {
+        display: none;
+      }
+
+      .brand-badge {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
       }
 
       .controls {
-        gap: 12px;
-        padding: 12px;
+        gap: 7px;
       }
 
-      .icon-button {
-        width: 42px;
-        height: 42px;
-        border-radius: 14px;
+      .progress {
+        height: 8px;
       }
 
-      .play-button {
-        width: 54px;
-        height: 54px;
+      .meta-strip {
+        display: none;
       }
     }
   </style>
 </head>
 <body>
-  <main class="page">
-    <section class="shell" aria-label="Custom lecture player">
-      <div class="player-card">
-        <header class="lecture-header">
-          <div>
-            <p class="lecture-kicker">RBS Academy Lecture</p>
-            <h1 class="lecture-title" id="lectureTitle">Organic Chemistry: Introduction</h1>
-          </div>
-          <span class="lecture-count" id="lectureCount">1 / 3</span>
-        </header>
+  <main class="page-shell">
+    <section class="player-container" id="container" aria-label="RBS Academy premium video player">
+      <div class="video-wrapper" id="videoArea">
+        <div id="player"></div>
+        <div class="hide-youtube hide-youtube--top"></div>
+        <div class="hide-youtube hide-youtube--bottom"></div>
 
-        <div class="video-stage" id="playerArea" oncontextmenu="return false">
-          <div id="player"></div>
-          <div class="interaction-shield" aria-hidden="true"></div>
-          <div class="loader" id="loader">
-            <div class="loader-box">
-              <div class="spinner" aria-hidden="true"></div>
-              <h2 class="loader-title">Loading lecture</h2>
-              <p class="loader-text">Preparing the secure classroom player with custom controls.</p>
-            </div>
-          </div>
+        <div class="brand-badge">
+          <i class="fa-solid fa-graduation-cap"></i>
+          <span>RBS Academy</span>
         </div>
 
-        <nav class="controls" aria-label="Video controls">
-          <div class="control-cluster">
-            <button class="icon-button" type="button" id="prevBtn" aria-label="Previous lecture">&#8249;&#8249;</button>
-            <button class="icon-button play-button" type="button" id="playBtn" aria-label="Play lecture">&#9658;</button>
-            <button class="icon-button" type="button" id="nextBtn" aria-label="Next lecture">&#8250;&#8250;</button>
+        <div class="loader" id="loader" aria-hidden="true"></div>
+
+        <button class="center-play" id="overlay" type="button" aria-label="Play video">
+          <span class="big-play">
+            <i class="fa-solid fa-play"></i>
+          </span>
+        </button>
+
+        <div class="speed-menu" id="speedMenu" aria-label="Playback speed menu">
+          <button type="button" data-speed="0.5">0.5x</button>
+          <button type="button" data-speed="1" class="is-active">Normal</button>
+          <button type="button" data-speed="1.25">1.25x</button>
+          <button type="button" data-speed="1.5">1.5x</button>
+          <button type="button" data-speed="2">2x</button>
+        </div>
+
+        <div class="controls" id="controls">
+          <button class="control-btn" id="playBtn" type="button" aria-label="Play or pause">
+            <i class="fa-solid fa-play"></i>
+          </button>
+
+          <button class="control-btn" id="muteBtn" type="button" aria-label="Mute or unmute">
+            <i class="fa-solid fa-volume-high"></i>
+          </button>
+
+          <div class="progress" id="progress" role="slider" aria-label="Video progress">
+            <div class="progress-bar" id="bar"></div>
           </div>
 
-          <div class="meta-strip">
-            <p class="now-label">Now Playing</p>
-            <p class="now-title" id="nowTitle">Organic Chemistry: Introduction</p>
-          </div>
+          <div class="time" id="time">0:00 / 0:00</div>
 
-          <div class="status-pill" id="statusText">Ready</div>
-        </nav>
+          <button class="control-btn" id="speedBtn" type="button" aria-label="Playback speed">
+            <i class="fa-solid fa-gauge-high"></i>
+          </button>
+
+          <button class="control-btn" id="fullBtn" type="button" aria-label="Fullscreen">
+            <i class="fa-solid fa-expand"></i>
+          </button>
+        </div>
       </div>
-
-      <aside class="side-panel" aria-label="Lecture options">
-        <div class="panel-section">
-          <h2 class="panel-title">Load by YouTube ID</h2>
-          <form class="video-form" id="videoForm">
-            <input class="input" id="videoIdInput" name="videoId" placeholder="Enter YouTube video ID only" autocomplete="off" />
-            <input class="input" id="videoTitleInput" name="videoTitle" placeholder="Lecture title optional" autocomplete="off" />
-            <button class="primary-button" type="submit">Load Lecture</button>
-          </form>
-        </div>
-
-        <div class="panel-section">
-          <h2 class="panel-title">Lecture Queue</h2>
-          <div class="lecture-list" id="lectureList"></div>
-        </div>
-      </aside>
     </section>
+
+    <div class="meta-strip">
+      <span><strong>Premium Chemistry Learning</strong> • Custom YouTube Player</span>
+      <span>RBS Academy</span>
+    </div>
   </main>
 
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script>
-    const lectures = [
-      { id: "ysz5S6PUM-U", title: "Organic Chemistry: Introduction" },
-      { id: "dQw4w9WgXcQ", title: "Study Skills: Focus Session" },
-      { id: "M7lc1UVf-VE", title: "YouTube API Demo Lecture" }
-    ];
+    const VIDEO_ID = "8IjZR79hJqk";
+    const AUTO_HIDE_MS = 2500;
 
-    let currentIndex = 0;
-    let player = null;
+    let player;
     let isPlaying = false;
-    let isPlayerReady = false;
+    let isMuted = false;
+    let hideTimeout;
 
-    const playerArea = document.getElementById("playerArea");
+    const container = document.getElementById("container");
+    const videoArea = document.getElementById("videoArea");
+    const overlay = document.getElementById("overlay");
     const loader = document.getElementById("loader");
-    const lectureTitle = document.getElementById("lectureTitle");
-    const lectureCount = document.getElementById("lectureCount");
-    const nowTitle = document.getElementById("nowTitle");
-    const statusText = document.getElementById("statusText");
+    const controls = document.getElementById("controls");
     const playBtn = document.getElementById("playBtn");
-    const prevBtn = document.getElementById("prevBtn");
-    const nextBtn = document.getElementById("nextBtn");
-    const lectureList = document.getElementById("lectureList");
-    const videoForm = document.getElementById("videoForm");
-    const videoIdInput = document.getElementById("videoIdInput");
-    const videoTitleInput = document.getElementById("videoTitleInput");
-
-    function showLoader(text) {
-      statusText.textContent = text || "Loading";
-      loader.classList.remove("is-hidden");
-    }
-
-    function hideLoader() {
-      loader.classList.add("is-hidden");
-    }
-
-    function normalizeVideoId(value) {
-      return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-    }
-
-    function currentLecture() {
-      return lectures[currentIndex];
-    }
-
-    function updateLectureUi() {
-      const lecture = currentLecture();
-      lectureTitle.textContent = lecture.title;
-      nowTitle.textContent = lecture.title;
-      lectureCount.textContent = `${currentIndex + 1} / ${lectures.length}`;
-      videoIdInput.value = lecture.id;
-      renderLectureList();
-    }
-
-    function renderLectureList() {
-      lectureList.innerHTML = "";
-      lectures.forEach((lecture, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `lecture-item${index === currentIndex ? " is-active" : ""}`;
-        button.setAttribute("aria-label", `Play ${lecture.title}`);
-        button.innerHTML = `
-          <span class="lecture-number">${index + 1}</span>
-          <span class="lecture-name"></span>
-        `;
-        button.querySelector(".lecture-name").textContent = lecture.title;
-        button.addEventListener("click", () => loadLecture(index));
-        lectureList.appendChild(button);
-      });
-    }
-
-    function setPlayingState(nextPlaying) {
-      isPlaying = nextPlaying;
-      playBtn.innerHTML = isPlaying ? "&#10073;&#10073;" : "&#9658;";
-      playBtn.setAttribute("aria-label", isPlaying ? "Pause lecture" : "Play lecture");
-      statusText.textContent = isPlaying ? "Playing" : "Paused";
-    }
-
-    function loadLecture(index) {
-      currentIndex = (index + lectures.length) % lectures.length;
-      updateLectureUi();
-      setPlayingState(false);
-      showLoader("Loading");
-
-      if (player && isPlayerReady) {
-        player.loadVideoById({
-          videoId: currentLecture().id,
-          suggestedQuality: "hd720"
-        });
-      }
-    }
+    const muteBtn = document.getElementById("muteBtn");
+    const progress = document.getElementById("progress");
+    const bar = document.getElementById("bar");
+    const time = document.getElementById("time");
+    const speedBtn = document.getElementById("speedBtn");
+    const speedMenu = document.getElementById("speedMenu");
+    const fullBtn = document.getElementById("fullBtn");
 
     function onYouTubeIframeAPIReady() {
-      updateLectureUi();
       player = new YT.Player("player", {
-        width: "100%",
-        height: "100%",
-        videoId: currentLecture().id,
+        videoId: VIDEO_ID,
         playerVars: {
           autoplay: 0,
           controls: 0,
+          modestbranding: 1,
+          rel: 0,
           disablekb: 1,
           fs: 0,
           iv_load_policy: 3,
-          modestbranding: 1,
           playsinline: 1,
-          rel: 0
+          loop: 1,
+          playlist: VIDEO_ID
         },
         events: {
-          onReady: function () {
-            isPlayerReady = true;
-            hideLoader();
-            statusText.textContent = "Ready";
+          onReady: () => {
+            loader.classList.remove("is-visible");
+            setInterval(updateProgress, 500);
           },
-          onStateChange: function (event) {
-            if (event.data === YT.PlayerState.BUFFERING) {
-              showLoader("Buffering");
-            }
-
-            if (event.data === YT.PlayerState.PLAYING) {
-              hideLoader();
-              setPlayingState(true);
-            }
-
-            if (event.data === YT.PlayerState.PAUSED) {
-              hideLoader();
-              setPlayingState(false);
-            }
-
-            if (event.data === YT.PlayerState.ENDED) {
-              setPlayingState(false);
-              loadLecture(currentIndex + 1);
-            }
-          }
+          onStateChange: onPlayerState
         }
       });
     }
 
-    playBtn.addEventListener("click", function () {
-      if (!player || !isPlayerReady) {
+    function onPlayerState(event) {
+      const state = event.data;
+      loader.classList.toggle("is-visible", state === YT.PlayerState.BUFFERING);
+
+      if (state === YT.PlayerState.PLAYING) {
+        isPlaying = true;
+        playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        overlay.classList.add("is-hidden");
+        startAutoHide();
         return;
       }
 
-      if (isPlaying) {
-        player.pauseVideo();
+      if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED) {
+        isPlaying = false;
+        playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+        overlay.classList.remove("is-hidden");
+        controls.classList.remove("is-hidden");
+      }
+    }
+
+    function togglePlay() {
+      if (!player) return;
+      isPlaying ? player.pauseVideo() : player.playVideo();
+    }
+
+    function toggleMute() {
+      if (!player) return;
+
+      if (isMuted) {
+        player.unMute();
+        muteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+        isMuted = false;
       } else {
-        player.playVideo();
-      }
-    });
-
-    prevBtn.addEventListener("click", function () {
-      loadLecture(currentIndex - 1);
-    });
-
-    nextBtn.addEventListener("click", function () {
-      loadLecture(currentIndex + 1);
-    });
-
-    videoForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      const videoId = normalizeVideoId(videoIdInput.value);
-      if (!videoId) {
-        videoIdInput.focus();
-        return;
+        player.mute();
+        muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+        isMuted = true;
       }
 
-      const title = videoTitleInput.value.trim() || "Custom Lecture";
-      lectures.push({ id: videoId, title });
-      videoTitleInput.value = "";
-      loadLecture(lectures.length - 1);
+      startAutoHide();
+    }
+
+    function updateProgress() {
+      if (!player || !player.getDuration) return;
+
+      const current = player.getCurrentTime();
+      const duration = player.getDuration();
+
+      if (duration > 0) {
+        bar.style.width = `${(current / duration) * 100}%`;
+        time.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
+      }
+    }
+
+    function seekVideo(event) {
+      if (!player || !player.getDuration) return;
+
+      const rect = progress.getBoundingClientRect();
+      const x = event.touches ? event.touches[0].clientX : event.clientX;
+      const percent = Math.min(1, Math.max(0, (x - rect.left) / rect.width));
+      player.seekTo(player.getDuration() * percent, true);
+      startAutoHide();
+    }
+
+    function formatTime(seconds) {
+      const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+      const minutes = Math.floor(safeSeconds / 60);
+      const remainingSeconds = safeSeconds % 60;
+      return `${minutes}:${remainingSeconds < 10 ? "0" : ""}${remainingSeconds}`;
+    }
+
+    function setSpeed(speed) {
+      if (!player) return;
+
+      player.setPlaybackRate(speed);
+      speedMenu.classList.remove("is-open");
+      speedMenu.querySelectorAll("button").forEach((button) => {
+        button.classList.toggle("is-active", Number(button.dataset.speed) === speed);
+      });
+      startAutoHide();
+    }
+
+    function toggleSpeedMenu() {
+      speedMenu.classList.toggle("is-open");
+      controls.classList.remove("is-hidden");
+      clearTimeout(hideTimeout);
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        container.requestFullscreen?.();
+        fullBtn.innerHTML = '<i class="fa-solid fa-compress"></i>';
+      } else {
+        document.exitFullscreen?.();
+        fullBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+      }
+    }
+
+    function startAutoHide() {
+      clearTimeout(hideTimeout);
+      controls.classList.remove("is-hidden");
+      hideTimeout = setTimeout(() => {
+        if (isPlaying) {
+          controls.classList.add("is-hidden");
+          speedMenu.classList.remove("is-open");
+        }
+      }, AUTO_HIDE_MS);
+    }
+
+    playBtn.addEventListener("click", togglePlay);
+    muteBtn.addEventListener("click", toggleMute);
+    overlay.addEventListener("click", togglePlay);
+    progress.addEventListener("click", seekVideo);
+    progress.addEventListener("touchstart", seekVideo, { passive: true });
+    speedBtn.addEventListener("click", toggleSpeedMenu);
+    fullBtn.addEventListener("click", toggleFullscreen);
+
+    speedMenu.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
     });
 
-    playerArea.addEventListener("contextmenu", function (event) {
-      event.preventDefault();
+    ["mousemove", "click", "touchstart"].forEach((eventName) => {
+      videoArea.addEventListener(eventName, startAutoHide, { passive: true });
     });
 
-    renderLectureList();
-    showLoader("Loading");
+    document.addEventListener("fullscreenchange", () => {
+      fullBtn.innerHTML = document.fullscreenElement
+        ? '<i class="fa-solid fa-compress"></i>'
+        : '<i class="fa-solid fa-expand"></i>';
+    });
+
+    document.addEventListener("contextmenu", (event) => event.preventDefault());
   </script>
-  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>
