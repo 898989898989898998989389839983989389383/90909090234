@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Home, 
   BookOpen, 
@@ -4150,13 +4151,19 @@ const VideoPlayerScreen = ({
           playlist: videoId,
         },
         events: {
-          onReady: () => {
+          onReady: (event) => {
             progressIntervalId = window.setInterval(() => {
               const player = youtubePlayerRef.current;
               if (!player) return;
               setCustomEmbedTime(Number(player.getCurrentTime?.() || 0));
               setCustomEmbedDuration(Number(player.getDuration?.() || 0));
             }, 500);
+            if (customEmbedStarted && customEmbedTime > 0) {
+              event.target?.seekTo(customEmbedTime, true);
+            }
+            if (customEmbedPlaying) {
+              event.target?.playVideo();
+            }
           },
           onStateChange: (event) => {
             const playingState = nativeWindow.YT?.PlayerState?.PLAYING ?? 1;
@@ -4195,7 +4202,7 @@ const VideoPlayerScreen = ({
       youtubePlayerRef.current?.destroy?.();
       youtubePlayerRef.current = null;
     };
-  }, [currentLesson?.video_url]);
+  }, [currentLesson?.video_url, customEmbedFullscreen]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -4282,7 +4289,6 @@ const VideoPlayerScreen = ({
     setCustomEmbedFullscreen(true);
     nativeWindow.Android?.enterVideoFullscreen?.();
     await lockWebOrientation('landscape');
-    await playerShellRef.current?.requestFullscreen?.().catch(() => undefined);
   };
   const closeCustomEmbedFullscreen = async () => {
     setCustomEmbedFullscreen(false);
@@ -4339,6 +4345,57 @@ const VideoPlayerScreen = ({
     </div>
   );
 
+  const videoPlayerElement = activeVideoUrl && usesEmbedPlayer ? (
+    <div
+      className="course-video-player"
+      data-fullscreen={customEmbedFullscreen ? 'true' : 'false'}
+      ref={playerShellRef}
+      onMouseMove={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
+      onTouchStart={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
+      onClick={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
+    >
+      {isProtectedYoutubeEmbed ? (
+        <div className="course-youtube-host" ref={youtubeHostRef} />
+      ) : (
+        <iframe
+          src={activeVideoUrl}
+          className="course-video-frame"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen={false}
+          referrerPolicy="strict-origin-when-cross-origin"
+          title={currentLesson?.title || course.title}
+        ></iframe>
+      )}
+      {isProtectedYoutubeEmbed ? (
+        <>
+          <div className="course-video-hide course-video-hide--top" />
+          <div className="course-video-hide course-video-hide--bottom" />
+          <div className="course-video-brand course-video-brand--live">RBS Academy</div>
+          {customEmbedPlaying && (
+            <button
+              type="button"
+              className="course-video-touch-layer"
+              onClick={startYoutubeAutoHide}
+              onTouchStart={startYoutubeAutoHide}
+              aria-label="Show video controls"
+            />
+          )}
+          {customEmbedFullscreen && (
+            <button type="button" className="course-video-exit-fullscreen" onClick={closeCustomEmbedFullscreen} aria-label="Exit fullscreen">
+              <X size={18} />
+            </button>
+          )}
+          {!customEmbedPlaying && (
+            <button type="button" className="course-video-poster" onClick={startCustomEmbed} aria-label="Play YouTube lesson">
+              <span className="course-video-play"><Play size={30} fill="currentColor" /></span>
+            </button>
+          )}
+          {renderYoutubeControls()}
+        </>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <motion.div 
       initial={{ y: '100%' }} 
@@ -4350,54 +4407,9 @@ const VideoPlayerScreen = ({
       {isProtectedSurface && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
-          <div
-            className="course-video-player"
-            data-fullscreen={customEmbedFullscreen ? 'true' : 'false'}
-            ref={playerShellRef}
-            onMouseMove={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
-            onTouchStart={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
-            onClick={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
-          >
-            {isProtectedYoutubeEmbed ? (
-              <div className="course-youtube-host" ref={youtubeHostRef} />
-            ) : (
-              <iframe
-                src={activeVideoUrl}
-                className="course-video-frame"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen={false}
-                referrerPolicy="strict-origin-when-cross-origin"
-                title={currentLesson?.title || course.title}
-              ></iframe>
-            )}
-            {isProtectedYoutubeEmbed ? (
-              <>
-                <div className="course-video-hide course-video-hide--top" />
-                <div className="course-video-hide course-video-hide--bottom" />
-                <div className="course-video-brand course-video-brand--live">RBS Academy</div>
-                {customEmbedPlaying && (
-                  <button
-                    type="button"
-                    className="course-video-touch-layer"
-                    onClick={startYoutubeAutoHide}
-                    onTouchStart={startYoutubeAutoHide}
-                    aria-label="Show video controls"
-                  />
-                )}
-                {customEmbedFullscreen && (
-                  <button type="button" className="course-video-exit-fullscreen" onClick={closeCustomEmbedFullscreen} aria-label="Exit fullscreen">
-                    <X size={18} />
-                  </button>
-                )}
-                {!customEmbedPlaying && (
-                  <button type="button" className="course-video-poster" onClick={startCustomEmbed} aria-label="Play YouTube lesson">
-                    <span className="course-video-play"><Play size={30} fill="currentColor" /></span>
-                  </button>
-                )}
-                {renderYoutubeControls()}
-              </>
-            ) : null}
-          </div>
+          customEmbedFullscreen && videoPlayerElement
+            ? createPortal(videoPlayerElement, document.body)
+            : videoPlayerElement
         ) : activeVideoUrl ? (
           <video
             key={activeVideoUrl}

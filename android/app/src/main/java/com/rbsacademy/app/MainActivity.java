@@ -16,6 +16,7 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final int WEBVIEW_CACHE_VERSION = 13;
+    private boolean videoFullscreenActive = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +28,14 @@ public class MainActivity extends BridgeActivity {
 
         clearStaleWebViewData(bridge.getWebView());
         bridge.getWebView().addJavascriptInterface(new AndroidBridge(), "Android");
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && videoFullscreenActive) {
+            hideSystemBars();
+        }
     }
 
     private void clearStaleWebViewData(WebView webView) {
@@ -116,12 +125,13 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void lockLandscape() {
-            runOnUiThread(() -> setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE));
+            runOnUiThread(() -> setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
         }
 
         @JavascriptInterface
         public void lockPortrait() {
             runOnUiThread(() -> {
+                videoFullscreenActive = false;
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
                 showSystemBars();
             });
@@ -135,7 +145,8 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void enterVideoFullscreen() {
             runOnUiThread(() -> {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                videoFullscreenActive = true;
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                 hideSystemBars();
             });
         }
@@ -143,6 +154,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void exitVideoFullscreen() {
             runOnUiThread(() -> {
+                videoFullscreenActive = false;
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
                 showSystemBars();
             });
