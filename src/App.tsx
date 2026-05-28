@@ -65,6 +65,39 @@ type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | '
 const APP_SHARE_URL = 'https://play.google.com/store/apps/details?id=com.rbs.academy';
 const APP_SHARE_TEXT = 'Download RBS Academy for premium chemistry learning, notes, quizzes, and live classes.';
 
+type YoutubePlayerApi = {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  mute: () => void;
+  unMute: () => void;
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  setPlaybackRate: (speed: number) => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  getPlayerState: () => number;
+  destroy: () => void;
+};
+
+type YoutubeWindow = Window & {
+  YT?: {
+    Player: new (
+      element: HTMLElement,
+      config: {
+        videoId: string;
+        playerVars: Record<string, string | number>;
+        events?: Record<string, (event: { data?: number; target?: YoutubePlayerApi }) => void>;
+      }
+    ) => YoutubePlayerApi;
+    PlayerState?: {
+      PLAYING: number;
+      PAUSED: number;
+      ENDED: number;
+      BUFFERING: number;
+    };
+  };
+  onYouTubeIframeAPIReady?: () => void;
+};
+
 interface Lesson {
   id: string;
   course_id: string;
@@ -4039,8 +4072,13 @@ const VideoPlayerScreen = ({
   const [customEmbedTime, setCustomEmbedTime] = useState(0);
   const [customEmbedDuration, setCustomEmbedDuration] = useState(0);
   const [customEmbedSpeed, setCustomEmbedSpeed] = useState(1);
+  const [youtubeControlsHidden, setYoutubeControlsHidden] = useState(false);
+  const [youtubeSpeedMenuOpen, setYoutubeSpeedMenuOpen] = useState(false);
   const embedFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const youtubeHostRef = useRef<HTMLDivElement | null>(null);
+  const youtubePlayerRef = useRef<YoutubePlayerApi | null>(null);
   const playerShellRef = useRef<HTMLDivElement | null>(null);
+  const youtubeHideTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setCurrentLesson(course?.lessonList?.[0] || null);
@@ -4050,6 +4088,8 @@ const VideoPlayerScreen = ({
     setCustomEmbedTime(0);
     setCustomEmbedDuration(0);
     setCustomEmbedSpeed(1);
+    setYoutubeControlsHidden(false);
+    setYoutubeSpeedMenuOpen(false);
   }, [course]);
 
   useEffect(() => {
@@ -4059,6 +4099,8 @@ const VideoPlayerScreen = ({
     setCustomEmbedTime(0);
     setCustomEmbedDuration(0);
     setCustomEmbedSpeed(1);
+    setYoutubeControlsHidden(false);
+    setYoutubeSpeedMenuOpen(false);
   }, [currentLesson?.id]);
 
   useEffect(() => {
@@ -4103,6 +4145,83 @@ const VideoPlayerScreen = ({
     return () => window.clearInterval(intervalId);
   }, [customEmbedStarted, currentLesson?.id]);
 
+  useEffect(() => {
+    const videoId = getYoutubeVideoId(currentLesson?.video_url);
+    const host = youtubeHostRef.current;
+    if (!videoId || !host) {
+      return;
+    }
+
+    let cancelled = false;
+    let progressIntervalId: number | undefined;
+    const nativeWindow = window as YoutubeWindow;
+    const mountPlayer = () => {
+      if (cancelled || !youtubeHostRef.current || !nativeWindow.YT?.Player) {
+        return;
+      }
+
+      youtubePlayerRef.current?.destroy?.();
+      youtubePlayerRef.current = new nativeWindow.YT.Player(youtubeHostRef.current, {
+        videoId,
+        playerVars: {
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+          playsinline: 1,
+          loop: 1,
+          playlist: videoId,
+        },
+        events: {
+          onReady: () => {
+            progressIntervalId = window.setInterval(() => {
+              const player = youtubePlayerRef.current;
+              if (!player) return;
+              setCustomEmbedTime(Number(player.getCurrentTime?.() || 0));
+              setCustomEmbedDuration(Number(player.getDuration?.() || 0));
+            }, 500);
+          },
+          onStateChange: (event) => {
+            const playingState = nativeWindow.YT?.PlayerState?.PLAYING ?? 1;
+            const isPlaying = event.data === playingState;
+            setCustomEmbedPlaying(isPlaying);
+            setCustomEmbedStarted((started) => started || isPlaying);
+            if (!isPlaying) {
+              setYoutubeControlsHidden(false);
+            }
+          },
+        },
+      });
+    };
+
+    if (nativeWindow.YT?.Player) {
+      mountPlayer();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(script);
+      }
+      const previousReady = nativeWindow.onYouTubeIframeAPIReady;
+      nativeWindow.onYouTubeIframeAPIReady = () => {
+        previousReady?.();
+        mountPlayer();
+      };
+    }
+
+    return () => {
+      cancelled = true;
+      if (progressIntervalId) {
+        window.clearInterval(progressIntervalId);
+      }
+      youtubePlayerRef.current?.destroy?.();
+      youtubePlayerRef.current = null;
+    };
+  }, [currentLesson?.video_url]);
+
   if (!course) return null;
 
   const isProtectedSurface = protectedMode;
@@ -4124,9 +4243,26 @@ const VideoPlayerScreen = ({
       '*'
     );
   };
+  const startYoutubeAutoHide = () => {
+    if (youtubeHideTimeoutRef.current) {
+      window.clearTimeout(youtubeHideTimeoutRef.current);
+    }
+    setYoutubeControlsHidden(false);
+    youtubeHideTimeoutRef.current = window.setTimeout(() => {
+      if (youtubePlayerRef.current?.getPlayerState?.() === 1) {
+        setYoutubeControlsHidden(true);
+        setYoutubeSpeedMenuOpen(false);
+      }
+    }, 2500);
+  };
   const startCustomEmbed = () => {
     setCustomEmbedStarted(true);
     setCustomEmbedPlaying(true);
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.playVideo();
+      startYoutubeAutoHide();
+      return;
+    }
     postYoutubeCommand('playVideo');
   };
   const toggleCustomEmbedPlayback = () => {
@@ -4135,23 +4271,34 @@ const VideoPlayerScreen = ({
       return;
     }
 
-    postYoutubeCommand(customEmbedPlaying ? 'pauseVideo' : 'playVideo');
+    if (youtubePlayerRef.current) {
+      customEmbedPlaying ? youtubePlayerRef.current.pauseVideo() : youtubePlayerRef.current.playVideo();
+      startYoutubeAutoHide();
+    } else {
+      postYoutubeCommand(customEmbedPlaying ? 'pauseVideo' : 'playVideo');
+    }
     setCustomEmbedPlaying((isPlaying) => !isPlaying);
   };
   const toggleCustomEmbedMute = () => {
-    postYoutubeCommand(customEmbedMuted ? 'unMute' : 'mute');
+    if (youtubePlayerRef.current) {
+      customEmbedMuted ? youtubePlayerRef.current.unMute() : youtubePlayerRef.current.mute();
+      startYoutubeAutoHide();
+    } else {
+      postYoutubeCommand(customEmbedMuted ? 'unMute' : 'mute');
+    }
     setCustomEmbedMuted((isMuted) => !isMuted);
   };
   const seekCustomEmbed = (seconds: number) => {
     const nextTime = Math.max(0, Math.min(customEmbedDuration || Number.MAX_SAFE_INTEGER, customEmbedTime + seconds));
     setCustomEmbedTime(nextTime);
-    postYoutubeCommand('seekTo', [nextTime, true]);
+    youtubePlayerRef.current ? youtubePlayerRef.current.seekTo(nextTime, true) : postYoutubeCommand('seekTo', [nextTime, true]);
+    startYoutubeAutoHide();
   };
-  const changeCustomEmbedSpeed = () => {
-    const speeds = [1, 1.25, 1.5, 2, 0.75];
-    const nextSpeed = speeds[(speeds.indexOf(customEmbedSpeed) + 1) % speeds.length] || 1;
-    setCustomEmbedSpeed(nextSpeed);
-    postYoutubeCommand('setPlaybackRate', [nextSpeed]);
+  const setYoutubePlaybackSpeed = (speed: number) => {
+    setCustomEmbedSpeed(speed);
+    setYoutubeSpeedMenuOpen(false);
+    youtubePlayerRef.current ? youtubePlayerRef.current.setPlaybackRate(speed) : postYoutubeCommand('setPlaybackRate', [speed]);
+    startYoutubeAutoHide();
   };
   const restartCustomEmbed = () => {
     if (!customEmbedStarted) {
@@ -4159,15 +4306,21 @@ const VideoPlayerScreen = ({
       return;
     }
 
-    postYoutubeCommand('seekTo', [0, true]);
-    postYoutubeCommand('playVideo');
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.seekTo(0, true);
+      youtubePlayerRef.current.playVideo();
+      startYoutubeAutoHide();
+    } else {
+      postYoutubeCommand('seekTo', [0, true]);
+      postYoutubeCommand('playVideo');
+    }
     setCustomEmbedPlaying(true);
   };
   const openCustomEmbedFullscreen = () => {
     playerShellRef.current?.requestFullscreen?.();
   };
   const renderYoutubeControls = () => (
-    <div className="course-video-controls course-video-controls--pod" aria-label="Custom YouTube video controls">
+    <div className={`course-video-controls course-video-controls--pod ${youtubeControlsHidden ? 'hide' : ''}`} aria-label="Custom YouTube video controls">
       <div className="course-video-progress">
         <span>{formatVideoClock(customEmbedTime)}</span>
         <input
@@ -4178,8 +4331,9 @@ const VideoPlayerScreen = ({
           onChange={(event) => {
             const nextTime = Number(event.target.value);
             setCustomEmbedTime(nextTime);
-            postYoutubeCommand('seekTo', [nextTime, true]);
-          }}
+                        youtubePlayerRef.current ? youtubePlayerRef.current.seekTo(nextTime, true) : postYoutubeCommand('seekTo', [nextTime, true]);
+                        startYoutubeAutoHide();
+                      }}
           aria-label="Seek video"
         />
         <span>{formatVideoClock(customEmbedDuration)}</span>
@@ -4200,7 +4354,7 @@ const VideoPlayerScreen = ({
         <button type="button" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}>
           {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
         </button>
-        <button type="button" onClick={changeCustomEmbedSpeed} aria-label="Change playback speed" className="course-video-speed">
+        <button type="button" onClick={() => setYoutubeSpeedMenuOpen((isOpen) => !isOpen)} aria-label="Change playback speed" className="course-video-speed">
           {customEmbedSpeed}x
         </button>
         <button type="button" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
@@ -4221,25 +4375,45 @@ const VideoPlayerScreen = ({
       {isProtectedSurface && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
-          <div className="course-video-player" ref={playerShellRef}>
-            <iframe
-              ref={embedFrameRef}
-              src={activeVideoUrl}
-              className="course-video-frame"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen={false}
-              referrerPolicy="strict-origin-when-cross-origin"
-              title={currentLesson?.title || course.title}
-            ></iframe>
+          <div
+            className="course-video-player"
+            ref={playerShellRef}
+            onMouseMove={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
+            onTouchStart={isProtectedYoutubeEmbed ? startYoutubeAutoHide : undefined}
+          >
+            {isProtectedYoutubeEmbed ? (
+              <div className="course-youtube-host" ref={youtubeHostRef} />
+            ) : (
+              <iframe
+                ref={embedFrameRef}
+                src={activeVideoUrl}
+                className="course-video-frame"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen={false}
+                referrerPolicy="strict-origin-when-cross-origin"
+                title={currentLesson?.title || course.title}
+              ></iframe>
+            )}
             {isProtectedYoutubeEmbed ? (
               <>
+                <div className="course-video-hide course-video-hide--top" />
+                <div className="course-video-hide course-video-hide--bottom" />
+                <div className="course-video-brand course-video-brand--live">RBS Academy</div>
                 {!customEmbedStarted && (
                   <button type="button" className="course-video-poster" onClick={startCustomEmbed} aria-label="Play YouTube lesson">
                     {youtubePosterUrl && <img src={youtubePosterUrl} alt="" referrerPolicy="no-referrer" />}
-                    <span className="course-video-brand">RBS Academy</span>
                     <span className="course-video-play"><Play size={30} fill="currentColor" /></span>
                     <span className="course-video-title">{currentLesson?.title || course.title}</span>
                   </button>
+                )}
+                {youtubeSpeedMenuOpen && (
+                  <div className="course-video-speed-menu">
+                    {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
+                      <button key={speed} type="button" onClick={() => setYoutubePlaybackSpeed(speed)}>
+                        {speed === 1 ? 'Normal' : `${speed}x`}
+                      </button>
+                    ))}
+                  </div>
                 )}
                 {renderYoutubeControls()}
               </>
