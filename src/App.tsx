@@ -11200,6 +11200,20 @@ export default function App() {
     }
   };
 
+  const goBackOneStep = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    setScreen(getBackScreen());
+  };
+
   const blockCurrentStudentSession = (blockedUser: AuthUser | null, message = 'Your account is blocked. Contact academy admin.') => {
     const nextUser = blockedUser ? { ...normalizeAuthUser(blockedUser), status: 'blocked' } : null;
     setBlockedAccount({ user: nextUser, message });
@@ -11648,7 +11662,7 @@ export default function App() {
       }
 
       if (screenRef.current !== 'home') {
-        setScreen(getBackScreen());
+        goBackOneStep();
         return;
       }
 
@@ -12323,7 +12337,7 @@ export default function App() {
           title={getTitle()} 
           user={user}
           showBack={screen !== 'home'} 
-          onBack={() => setScreen(getBackScreen())} 
+          onBack={goBackOneStep} 
           onMenuClick={() => setIsDrawerOpen(true)}
           onNotificationClick={handleNotificationIconClick}
           notificationCount={studentNotifications.length}
