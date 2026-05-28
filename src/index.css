@@ -385,6 +385,16 @@ body {
   height: 100vh;
 }
 
+.course-video-player[data-fullscreen="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  background: #000;
+}
+
 .course-video-frame,
 .course-youtube-host,
 .course-youtube-host iframe {
@@ -395,14 +405,30 @@ body {
   border: 0;
 }
 
+.course-youtube-host {
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .course-video-frame {
   display: block;
   object-fit: cover;
 }
 
 .course-youtube-host iframe {
-  transform: scale(1.18);
+  top: 50%;
+  left: 50%;
+  width: max(100%, calc(100vh * 16 / 9));
+  height: max(100%, calc(100vw * 9 / 16));
+  transform: translate(-50%, -50%) scale(1.22);
   pointer-events: none;
+}
+
+.course-video-player[data-fullscreen="true"] .course-youtube-host iframe,
+.course-video-player:fullscreen .course-youtube-host iframe {
+  width: max(100vw, calc(100vh * 16 / 9));
+  height: max(100vh, calc(100vw * 9 / 16));
+  transform: translate(-50%, -50%) scale(1.18);
 }
 
 .course-video-hide {
@@ -421,6 +447,11 @@ body {
 
 .course-video-hide--bottom {
   bottom: 0;
+}
+
+.course-video-player[data-fullscreen="true"] .course-video-hide,
+.course-video-player:fullscreen .course-video-hide {
+  height: 0;
 }
 
 .course-video-brand {
@@ -449,6 +480,31 @@ body {
   border-radius: 999px;
   background: #38bdf8;
   box-shadow: 0 0 14px rgba(56, 189, 248, 0.9);
+}
+
+.course-video-touch-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.course-video-exit-fullscreen {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 30;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #ffffff;
 }
 
 .course-video-poster {
@@ -633,6 +689,13 @@ body {
 
   .course-video-speed-menu {
     bottom: 60px;
+  }
+
+  .course-video-exit-fullscreen {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
   }
 }
 
