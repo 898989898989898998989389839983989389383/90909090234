@@ -367,6 +367,9 @@ body {
   inset: 0;
   overflow: hidden;
   background: #000;
+  box-shadow:
+    0 30px 90px rgba(14, 165, 233, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .course-video-frame,
@@ -409,23 +412,21 @@ body {
 
 .course-video-brand {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: 18px;
+  left: 18px;
   z-index: 20;
   display: flex;
   width: fit-content;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.58rem 0.95rem;
+  gap: 10px;
+  padding: 10px 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.82);
+  background: rgba(15, 23, 42, 0.75);
   color: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  box-shadow: 0 12px 30px rgba(14, 165, 233, 0.18);
+  font-size: 14px;
+  font-weight: 700;
+  backdrop-filter: blur(12px);
 }
 
 .course-video-brand--live::before {
@@ -440,84 +441,54 @@ body {
 .course-video-poster {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #ffffff;
-  background: #000;
+  background: transparent;
   border: 0;
-  z-index: 18;
+  z-index: 15;
   cursor: pointer;
-}
-
-.course-video-poster img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.65;
-  pointer-events: none;
-}
-
-.course-video-poster > * {
-  position: relative;
-  z-index: 2;
 }
 
 .course-video-play {
   display: grid;
   place-items: center;
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 95px;
+  height: 95px;
+  border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #0ea5e9, #2563eb);
-  box-shadow: 0 20px 58px rgba(14, 165, 233, 0.42);
+  background: linear-gradient(135deg, #0ea5e9, #2563eb, #1d4ed8);
   color: #fff;
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  box-shadow: 0 20px 60px rgba(14, 165, 233, 0.45);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .course-video-poster:hover .course-video-play {
   transform: scale(1.06);
-  box-shadow: 0 24px 70px rgba(14, 165, 233, 0.52);
-}
-
-.course-video-title {
-  position: absolute;
-  bottom: 1.1rem;
-  left: 1rem;
-  right: 1rem;
-  max-width: 16rem;
-  font-size: 1rem;
-  font-weight: 900;
-  line-height: 1.2;
-  margin: 0 auto;
-  text-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
 }
 
 .course-video-controls {
   position: absolute;
-  left: 0.75rem;
-  right: 0.75rem;
-  bottom: 0.75rem;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
   z-index: 25;
   display: flex;
-  gap: 0.5rem;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 0.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 1.35rem;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.78));
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42), 0 0 34px rgba(14, 165, 233, 0.12);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.72));
+  backdrop-filter: blur(16px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
-.course-video-controls button {
-  width: 2.35rem;
-  height: 2.35rem;
+.course-video-control-btn {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -526,64 +497,73 @@ body {
   background: linear-gradient(135deg, #0ea5e9, #2563eb);
   color: #ffffff;
   box-shadow: 0 10px 25px rgba(14, 165, 233, 0.28);
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  cursor: pointer;
+  transition: transform 0.22s ease, background 0.22s ease;
 }
 
-.course-video-controls button:hover {
-  transform: scale(1.06);
-  box-shadow: 0 14px 32px rgba(14, 165, 233, 0.36);
+.course-video-control-btn:hover {
+  transform: scale(1.08);
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
 }
 
 .course-video-controls--pod.hide {
   opacity: 0;
-  transform: translateY(1.5rem);
+  transform: translateY(25px);
   pointer-events: none;
 }
 
-.course-video-progress,
-.course-video-control-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.course-video-progress span {
-  width: 2.5rem;
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 0.68rem;
-  font-weight: 800;
-  text-align: center;
-}
-
-.course-video-progress input {
-  min-width: 0;
+.course-video-progress {
+  position: relative;
   flex: 1;
-  accent-color: #ffffff;
+  height: 9px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
   cursor: pointer;
 }
 
-.course-video-control-row {
-  justify-content: center;
-  flex-wrap: wrap;
+.course-video-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #2563eb);
+  transition: width 0.18s linear;
+}
+
+.course-video-time {
+  min-width: 95px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.course-video-speed-wrap {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .course-video-controls .course-video-speed {
-  width: auto;
-  min-width: 2.35rem;
-  padding-inline: 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 900;
+  width: 48px;
+  min-width: 48px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .course-video-speed-menu {
   position: absolute;
-  right: 1rem;
-  bottom: 5.6rem;
+  right: 0;
+  bottom: 70px;
   z-index: 50;
+  display: block;
   overflow: hidden;
-  border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(18px);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 
@@ -591,15 +571,56 @@ body {
   display: block;
   width: 100%;
   border: 0;
-  padding: 0.7rem 1.2rem;
+  padding: 12px 22px;
+  background: transparent;
   color: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   text-align: left;
+  cursor: pointer;
 }
 
 .course-video-speed-menu button:hover {
   background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+@media (max-width: 700px) {
+  .course-video-brand {
+    top: 10px;
+    left: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .course-video-controls {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .course-video-control-btn,
+  .course-video-controls .course-video-speed {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    font-size: 11px;
+  }
+
+  .course-video-play {
+    width: 75px;
+    height: 75px;
+  }
+
+  .course-video-time {
+    min-width: 72px;
+    font-size: 11px;
+  }
+
+  .course-video-speed-menu {
+    bottom: 60px;
+  }
 }
 
 .binaural-wave--playing span {
