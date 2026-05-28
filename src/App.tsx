@@ -146,6 +146,7 @@ interface AuthUser {
   email: string;
   phone: string;
   avatarUrl?: string;
+  classLevel?: 'class-11' | 'class-12';
   status?: string;
   userCategory?: 'free' | 'premium';
   grantedCourseIds?: string[];
@@ -206,6 +207,42 @@ interface AppControlSettings {
   notificationId?: string;
   notificationSentAt?: string;
 }
+
+type StudentClassLevel = 'class-11' | 'class-12';
+
+const STUDENT_CLASS_OPTIONS: Array<{ value: StudentClassLevel; label: string }> = [
+  { value: 'class-11', label: 'Class 11' },
+  { value: 'class-12', label: 'Class 12' },
+];
+
+const normalizeStudentClassLevel = (value: unknown): StudentClassLevel => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '-');
+  return normalized === 'class-11' || normalized === '11' ? 'class-11' : 'class-12';
+};
+
+const getStudentClassLabel = (value: unknown) =>
+  STUDENT_CLASS_OPTIONS.find((item) => item.value === normalizeStudentClassLevel(value))?.label || 'Class 12';
+
+const getClassLevelFromText = (value: string): StudentClassLevel | '' => {
+  const normalized = value.toLowerCase();
+  if (/\bclass\s*11\b|\bgrade\s*11\b|\b11th\b/.test(normalized)) return 'class-11';
+  if (/\bclass\s*12\b|\bgrade\s*12\b|\b12th\b/.test(normalized)) return 'class-12';
+  return '';
+};
+
+const matchesStudentClass = (text: string, classLevel?: string) => {
+  const itemClass = getClassLevelFromText(text);
+  return !itemClass || itemClass === normalizeStudentClassLevel(classLevel);
+};
+
+const courseMatchesStudentClass = (course: Course, classLevel?: string) =>
+  matchesStudentClass(`${course.title} ${course.category}`, classLevel);
+
+const noteMatchesStudentClass = (note: Note, classLevel?: string) =>
+  matchesStudentClass(`${note.title} ${note.category} ${note.content || ''}`, classLevel);
+
+const quizMatchesStudentClass = (quiz: Quiz, classLevel?: string) =>
+  matchesStudentClass(quiz.topic, classLevel);
 
 interface NotificationHistoryItem {
   id: string;
@@ -1009,10 +1046,18 @@ const normalizeSliders = (items: SliderItem[] | null | undefined): SliderItem[] 
 };
 
 const apiAuthPost = async (
-  action: 'login' | 'signup',
+  action: 'login' | 'signup' | 'request-signup-otp' | 'verify-signup-otp' | 'request-password-reset-otp' | 'verify-password-reset-otp',
   payload: Record<string, unknown>
 ) => {
-  return fetch(apiUrl(action === 'signup' ? '/api/signup' : '/api/login'), {
+  const endpoint = ({
+    login: '/api/login',
+    signup: '/api/signup',
+    'request-signup-otp': '/api/request-signup-otp',
+    'verify-signup-otp': '/api/verify-signup-otp',
+    'request-password-reset-otp': '/api/request-password-reset-otp',
+    'verify-password-reset-otp': '/api/verify-password-reset-otp',
+  } as const)[action];
+  return fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -1099,7 +1144,7 @@ const apiMediaPost = async (action: 'createCourse' | 'updateCourse' | 'createLes
   return apiPost(action, payload);
 };
 
-type CloudinaryUploadKind = 'slider' | 'course' | 'lesson' | 'question' | 'note';
+type CloudinaryUploadKind = 'slider' | 'course' | 'lesson' | 'question' | 'note' | 'profile';
 
 const getUploadMimeType = (file: File) => {
   if (file.type) {
@@ -1254,13 +1299,14 @@ const readLenientJsonResponse = async (response: Response) => {
 
 const normalizeAuthUser = (
   user: any,
-  fallback: { name?: string; email?: string; phone?: string; avatarUrl?: string } = {}
+  fallback: { name?: string; email?: string; phone?: string; avatarUrl?: string; classLevel?: StudentClassLevel | string } = {}
 ): AuthUser => ({
   id: String(user?.id || `u${Date.now()}`),
   name: String(user?.name || fallback.name || 'Student'),
   email: String(user?.email || fallback.email || ''),
   phone: String(user?.phone || fallback.phone || ''),
   avatarUrl: String(user?.avatarUrl || user?.avatar_url || fallback.avatarUrl || ''),
+  classLevel: normalizeStudentClassLevel(user?.classLevel || user?.class_level || fallback.classLevel),
   status: String(user?.status || 'active'),
   userCategory: String(user?.userCategory || user?.user_category || 'free').toLowerCase() === 'premium' ? 'premium' : 'free',
   grantedCourseIds: Array.isArray(user?.grantedCourseIds)
@@ -1295,6 +1341,7 @@ const getStoredUsers = (): StoredUser[] => {
     const normalizedUsers = parsedUsers.map((user) => ({
       ...user,
       phone: String((user as Partial<StoredUser>).phone || ''),
+      classLevel: normalizeStudentClassLevel((user as Partial<StoredUser>).classLevel),
     }));
     const filteredUsers = normalizedUsers.filter((user) => !isLegacySeedUser(user));
     if (filteredUsers.length !== parsedUsers.length) {
@@ -1314,7 +1361,7 @@ const saveStoredUsers = (users: StoredUser[]) => {
 
 const runLocalStudentAuth = (
   action: 'signup' | 'login',
-  payload: { name?: string; email: string; phone?: string; password: string }
+  payload: { name?: string; email: string; phone?: string; password: string; classLevel?: StudentClassLevel | string }
 ) => {
   const normalizedEmail = String(payload.email || '').trim().toLowerCase();
   const password = String(payload.password || '');
@@ -1335,6 +1382,7 @@ const runLocalStudentAuth = (
       name: String(payload.name || normalizedEmail).trim() || 'Student',
       email: normalizedEmail,
       phone: String(payload.phone || ''),
+      classLevel: normalizeStudentClassLevel(payload.classLevel),
       password,
       status: 'active',
       userCategory: 'free',
@@ -1357,14 +1405,14 @@ const updateStoredUser = (updatedUser: AuthUser) => {
   const storedUsers = getStoredUsers();
   const nextUsers = storedUsers.map((storedUser) =>
     storedUser.id === updatedUser.id
-      ? { ...storedUser, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone, avatarUrl: updatedUser.avatarUrl || '' }
+      ? { ...storedUser, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone, avatarUrl: updatedUser.avatarUrl || '', classLevel: normalizeStudentClassLevel(updatedUser.classLevel) }
       : storedUser
   );
 
   saveStoredUsers(nextUsers);
 };
 
-const updateStoredUserCredentials = (payload: { id: string; name: string; avatarUrl?: string; password?: string }) => {
+const updateStoredUserCredentials = (payload: { id: string; name: string; avatarUrl?: string; classLevel?: StudentClassLevel | string; password?: string }) => {
   const storedUsers = getStoredUsers();
   const nextUsers = storedUsers.map((storedUser) =>
     storedUser.id === payload.id
@@ -1372,6 +1420,7 @@ const updateStoredUserCredentials = (payload: { id: string; name: string; avatar
           ...storedUser,
           name: payload.name,
           avatarUrl: payload.avatarUrl || '',
+          classLevel: normalizeStudentClassLevel(payload.classLevel || storedUser.classLevel),
           ...(payload.password ? { password: payload.password } : {})
         }
       : storedUser
@@ -1391,7 +1440,7 @@ const getStoredSessionUser = (): AuthUser | null => {
   }
 
   try {
-    return JSON.parse(rawUser) as AuthUser;
+    return normalizeAuthUser(JSON.parse(rawUser) as AuthUser);
   } catch {
     return null;
   }
@@ -1407,7 +1456,7 @@ const saveSessionUser = (user: AuthUser | null) => {
     return;
   }
 
-  window.localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+  window.localStorage.setItem(USER_SESSION_KEY, JSON.stringify(normalizeAuthUser(user)));
 };
 
 const getUserAvatarUrl = (user?: Partial<AuthUser> | null) => {
@@ -2136,18 +2185,24 @@ const requestAppNotifications = async () => {
 
 const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   const [isSignup, setIsSignup] = useState(false);
+  const [authStep, setAuthStep] = useState<'credentials' | 'signup-otp' | 'forgot-email' | 'forgot-otp'>('credentials');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [classLevel, setClassLevel] = useState<StudentClassLevel>('class-12');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [pendingSignupPassword, setPendingSignupPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setInfo('');
 
     if (isSignup && password !== confirmPassword) {
       setError('Passwords do not match');
@@ -2170,41 +2225,133 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
       return;
     }
 
+    const normalizedClassLevel = normalizeStudentClassLevel(classLevel);
+
     try {
       const devicePayload = getDevicePayload();
       const payload = isSignup
-        ? { name: trimmedName, email, phone: normalizedPhone, password, ...devicePayload }
+        ? { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel, password, ...devicePayload }
         : { email, password, ...devicePayload };
 
-      const res = await apiAuthPost(isSignup ? 'signup' : 'login', payload);
+      const res = await apiAuthPost(isSignup ? 'request-signup-otp' : 'login', payload);
       const data = await readLenientJsonResponse(res);
       if (data.success) {
-        const normalizedUser = normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone });
         if (isSignup) {
-          const storedUsers = getStoredUsers();
-          const storedUser: StoredUser = { ...normalizedUser, password };
-          const withoutDuplicate = storedUsers.filter((item) => String(item.email || '').toLowerCase() !== String(normalizedUser.email || '').toLowerCase());
-          saveStoredUsers([...withoutDuplicate, storedUser]);
+          setPendingSignupPassword(password);
+          setAuthStep('signup-otp');
+          setOtp('');
+          setError('');
+          setInfo('OTP sent to your email.');
+          setLoading(false);
+          return;
         }
+        const normalizedUser = normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel });
         onLogin(normalizedUser);
       } else {
         setError(data.message || (isSignup ? 'Signup failed' : 'Login failed'));
       }
     } catch (err) {
+      if (isSignup) {
+        setError(err instanceof Error ? err.message : 'Email verification is required. Please try again online.');
+        return;
+      }
       const localResult = runLocalStudentAuth(isSignup ? 'signup' : 'login', {
         name: trimmedName,
         email,
         phone: normalizedPhone,
+        classLevel: normalizedClassLevel,
         password,
       });
       if (localResult.success) {
-        onLogin(normalizeAuthUser(localResult.user, { name: trimmedName, email, phone: normalizedPhone }));
+        onLogin(normalizeAuthUser(localResult.user, { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel }));
       } else {
         setError(localResult.message || (err instanceof Error ? err.message : 'Internet is required to verify this mobile. Please try again.'));
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerifySignupOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await apiAuthPost('verify-signup-otp', { email, otp });
+      const data = await readLenientJsonResponse(res);
+      if (!data.success) {
+        setError(data.message || 'Invalid OTP');
+        return;
+      }
+      const normalizedUser = normalizeAuthUser(data.user, { name: name.trim(), email, phone: normalizePhoneNumber(phone), classLevel });
+      const storedUsers = getStoredUsers();
+      const storedUser: StoredUser = { ...normalizedUser, password: pendingSignupPassword || password };
+      const withoutDuplicate = storedUsers.filter((item) => String(item.email || '').toLowerCase() !== String(normalizedUser.email || '').toLowerCase());
+      saveStoredUsers([...withoutDuplicate, storedUser]);
+      onLogin(normalizedUser);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to verify OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await apiAuthPost('request-password-reset-otp', { email });
+      const data = await readLenientJsonResponse(res);
+      if (!data.success) {
+        setError(data.message || 'Unable to send OTP');
+        return;
+      }
+      setAuthStep('forgot-otp');
+      setOtp('');
+      setInfo('OTP sent to your email.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyPasswordResetOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await apiAuthPost('verify-password-reset-otp', { email, otp });
+      const data = await readLenientJsonResponse(res);
+      if (!data.success) {
+        setError(data.message || 'Invalid OTP');
+        return;
+      }
+      setAuthStep('credentials');
+      setIsSignup(false);
+      setPassword('');
+      setOtp('');
+      setInfo('Temporary password sent to your email. Please login with it.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to reset password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetAuthFormMode = (signup: boolean) => {
+    setIsSignup(signup);
+    setAuthStep('credentials');
+    setError('');
+    setInfo('');
+    setPhone('');
+    setPassword('');
+    setConfirmPassword('');
+    setOtp('');
   };
 
   return (
@@ -2230,10 +2377,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         <button
           type="button"
           onClick={() => {
-            setIsSignup(false);
-            setError('');
-            setPhone('');
-            setConfirmPassword('');
+            resetAuthFormMode(false);
           }}
           className={`auth-login-switch-button ${!isSignup ? 'auth-login-switch-button--active' : ''}`}
         >
@@ -2242,9 +2386,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         <button
           type="button"
           onClick={() => {
-            setIsSignup(true);
-            setError('');
-            setPhone('');
+            resetAuthFormMode(true);
           }}
           className={`auth-login-switch-button ${isSignup ? 'auth-login-switch-button--active' : ''}`}
         >
@@ -2252,6 +2394,78 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         </button>
       </div>
 
+      {authStep === 'signup-otp' ? (
+        <form onSubmit={handleVerifySignupOtp} className="w-full space-y-4">
+          <label className="auth-login-field">
+            <span className="auth-login-label">Email OTP</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              required
+              className="auth-scenic-input auth-login-input text-sm text-center tracking-[0.35em]"
+              placeholder="000000"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+          </label>
+          <div className="auth-login-meta">
+            <div className="auth-login-note">OTP sent to {email}. It expires in 10 minutes.</div>
+            <button type="button" onClick={() => setAuthStep('credentials')} className="auth-scenic-link text-sm">Edit details</button>
+          </div>
+          {info && <p className="rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">{info}</p>}
+          {error && <p className="auth-login-error">{error}</p>}
+          <button type="submit" disabled={loading} className="auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2">
+            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Verify Email'}
+          </button>
+        </form>
+      ) : authStep === 'forgot-email' ? (
+        <form onSubmit={handleRequestPasswordReset} className="w-full space-y-4">
+          <label className="auth-login-field">
+            <span className="auth-login-label">Registered Email</span>
+            <input
+              type="email"
+              required
+              className="auth-scenic-input auth-login-input text-sm"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <div className="auth-login-meta">
+            <div className="auth-login-note">We will send an OTP to verify this email.</div>
+            <button type="button" onClick={() => resetAuthFormMode(false)} className="auth-scenic-link text-sm">Back to login</button>
+          </div>
+          {info && <p className="rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">{info}</p>}
+          {error && <p className="auth-login-error">{error}</p>}
+          <button type="submit" disabled={loading} className="auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2">
+            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Send OTP'}
+          </button>
+        </form>
+      ) : authStep === 'forgot-otp' ? (
+        <form onSubmit={handleVerifyPasswordResetOtp} className="w-full space-y-4">
+          <label className="auth-login-field">
+            <span className="auth-login-label">Password Reset OTP</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              required
+              className="auth-scenic-input auth-login-input text-sm text-center tracking-[0.35em]"
+              placeholder="000000"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+          </label>
+          <div className="auth-login-meta">
+            <div className="auth-login-note">After OTP verification, a temporary password will be emailed.</div>
+            <button type="button" onClick={() => setAuthStep('forgot-email')} className="auth-scenic-link text-sm">Change email</button>
+          </div>
+          {info && <p className="rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">{info}</p>}
+          {error && <p className="auth-login-error">{error}</p>}
+          <button type="submit" disabled={loading} className="auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2">
+            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Verify OTP'}
+          </button>
+        </form>
+      ) : (
       <form onSubmit={handleSubmit} className="w-full space-y-4">
         {isSignup && (
           <label className="auth-login-field">
@@ -2277,6 +2491,21 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
+          </label>
+        )}
+        {isSignup && (
+          <label className="auth-login-field">
+            <span className="auth-login-label">Class</span>
+            <select
+              required
+              className="auth-scenic-input auth-login-input text-sm"
+              value={classLevel}
+              onChange={(e) => setClassLevel(normalizeStudentClassLevel(e.target.value))}
+            >
+              {STUDENT_CLASS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </label>
         )}
         <label className="auth-login-field">
@@ -2318,9 +2547,10 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         
         <div className="auth-login-meta">
           <div className="auth-login-note">{isSignup ? 'Use a password you will remember.' : 'Use the same email and password you signed up with.'}</div>
-          {!isSignup && <button type="button" className="auth-scenic-link text-sm">Forgot password?</button>}
+          {!isSignup && <button type="button" onClick={() => { setAuthStep('forgot-email'); setError(''); }} className="auth-scenic-link text-sm">Forgot password?</button>}
         </div>
 
+        {info && <p className="rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">{info}</p>}
         {error && <p className="auth-login-error">{error}</p>}
 
         <button 
@@ -2332,17 +2562,14 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         </button>
 
       </form>
+      )}
 
       <p className="auth-login-footer">
         {isSignup ? 'Already have an account?' : 'New here?'}{' '}
         <button
           type="button"
           onClick={() => {
-            setIsSignup(!isSignup);
-            setError('');
-            setPhone('');
-            setPassword('');
-            setConfirmPassword('');
+            resetAuthFormMode(!isSignup);
           }}
           className="auth-login-footer-link"
         >
@@ -4072,7 +4299,7 @@ const CourseDetailsScreen = ({
 
         {isUnlocked && isPremiumCourse && (
           <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">
-            Admin ne is premium course ka access unlock kar diya hai.
+            You are now premium member
           </div>
         )}
 
@@ -4837,6 +5064,7 @@ const ProfileScreen = ({
           </div>
           <h2 className="text-xl font-bold text-white">{user?.name || 'Student'}</h2>
           <p className="text-white/70 text-sm">{user?.email || 'rahul.sharma@gmail.com'}</p>
+          <p className="mt-1 text-white/80 text-xs font-bold">{getStudentClassLabel(user?.classLevel)}</p>
           <div className="mt-3 rounded-full bg-white/15 px-4 py-2 text-xs font-bold text-white">
             Open Profile Management
           </div>
@@ -4953,6 +5181,7 @@ const SettingsScreen = ({
           <div>
             <div className="font-bold">{user?.name || 'Student'}</div>
             <div className="text-xs text-white/70">{user?.email || 'student@academy.com'}</div>
+            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/60">{getStudentClassLabel(user?.classLevel)}</div>
           </div>
         </div>
       </div>
@@ -5013,22 +5242,35 @@ const ProfileEditScreen = ({
   onSave
 }: {
   user: AuthUser,
-  onSave: (payload: { name: string; avatarUrl?: string; password?: string }) => Promise<{ success: boolean; message?: string }>
+  onSave: (payload: { name: string; avatarUrl?: string; classLevel?: StudentClassLevel; password?: string }) => Promise<{ success: boolean; message?: string }>
 }) => {
   const [name, setName] = useState(user?.name || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [classLevel, setClassLevel] = useState<StudentClassLevel>(normalizeStudentClassLevel(user?.classLevel));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const avatarPreviewUrl = avatarUrl.trim() || getUserAvatarUrl({ ...user, name });
+  const [avatarFilePreviewUrl, setAvatarFilePreviewUrl] = useState('');
+  const avatarPreviewUrl = avatarFilePreviewUrl || avatarUrl.trim() || getUserAvatarUrl({ ...user, name });
   const avatarPresets = [
     { label: 'Classic', seed: user?.name || 'Student' },
     { label: 'Focus', seed: `${user?.id || user?.name}-focus` },
     { label: 'Scholar', seed: `${user?.id || user?.name}-scholar` },
     { label: 'Bright', seed: `${user?.id || user?.name}-bright` },
   ];
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarFilePreviewUrl('');
+      return;
+    }
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setAvatarFilePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [avatarFile]);
 
   const handleAvatarFileChange = (file: File | null) => {
     if (!file) {
@@ -5041,23 +5283,14 @@ const ProfileEditScreen = ({
       return;
     }
 
-    if (file.size > 1024 * 1024) {
-      setError('Avatar image must be 1 MB or smaller');
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Avatar image must be 5 MB or smaller');
       setMessage('');
       return;
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAvatarUrl(String(reader.result || ''));
-      setError('');
-      setMessage('');
-    };
-    reader.onerror = () => {
-      setError('Unable to read selected avatar image');
-      setMessage('');
-    };
-    reader.readAsDataURL(file);
+    setAvatarFile(file);
+    setError('');
+    setMessage('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -5086,18 +5319,28 @@ const ProfileEditScreen = ({
     setError('');
     setMessage('');
 
-    const result = await onSave({
-      name: trimmedName,
-      avatarUrl: avatarUrl.trim(),
-      password: password || undefined
-    });
+    try {
+      const uploadedAvatarUrl = avatarFile
+        ? await uploadFileToCloudinary(avatarFile, 'profile')
+        : avatarUrl.trim();
+      const result = await onSave({
+        name: trimmedName,
+        avatarUrl: uploadedAvatarUrl,
+        classLevel,
+        password: password || undefined
+      });
 
-    if (result.success) {
-      setMessage(result.message || 'Profile updated successfully');
-      setPassword('');
-      setConfirmPassword('');
-    } else {
-      setError(result.message || 'Unable to update profile');
+      if (result.success) {
+        setAvatarFile(null);
+        setAvatarUrl(uploadedAvatarUrl);
+        setMessage(result.message || 'Profile updated successfully');
+        setPassword('');
+        setConfirmPassword('');
+      } else {
+        setError(result.message || 'Unable to update profile');
+      }
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Profile image upload failed');
     }
 
     setSaving(false);
@@ -5124,7 +5367,7 @@ const ProfileEditScreen = ({
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-black text-gray-900">Student Avatar</h3>
-                <p className="mt-1 text-xs leading-5 text-gray-500">Choose a preset, paste an image URL, or upload a small picture.</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">Upload a profile image or choose a preset. Uploaded images are saved on Cloudinary.</p>
               </div>
             </div>
 
@@ -5135,7 +5378,10 @@ const ProfileEditScreen = ({
                   <button
                     key={preset.label}
                     type="button"
-                    onClick={() => setAvatarUrl(presetUrl)}
+                    onClick={() => {
+                      setAvatarFile(null);
+                      setAvatarUrl(presetUrl);
+                    }}
                     className="rounded-2xl border border-gray-200 bg-white p-2 text-center transition active:scale-95"
                     aria-label={`Use ${preset.label} avatar`}
                   >
@@ -5166,10 +5412,13 @@ const ProfileEditScreen = ({
                   onChange={(e) => handleAvatarFileChange(e.target.files?.[0] || null)}
                 />
               </label>
-              {avatarUrl && (
+              {(avatarUrl || avatarFile) && (
                 <button
                   type="button"
-                  onClick={() => setAvatarUrl('')}
+                  onClick={() => {
+                    setAvatarFile(null);
+                    setAvatarUrl('');
+                  }}
                   className="w-full rounded-2xl bg-white px-4 py-3 text-xs font-black text-gray-500"
                 >
                   Use name-based default avatar
@@ -5195,6 +5444,19 @@ const ProfileEditScreen = ({
               readOnly
               className="w-full rounded-2xl border border-gray-200 px-4 py-3 bg-gray-50 text-gray-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-800 mb-2">Class</label>
+            <select
+              value={classLevel}
+              onChange={(e) => setClassLevel(normalizeStudentClassLevel(e.target.value))}
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-primary"
+            >
+              {STUDENT_CLASS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -10013,6 +10275,7 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                     </div>
                     <div className="admin-user-card-tags">
                       <span>{userItem.userCategory === 'premium' ? 'Premium User' : 'Free User'}</span>
+                      <span>{getStudentClassLabel(userItem.classLevel)}</span>
                         {userItem.password && (
                           <span>Password saved</span>
                         )}
@@ -10210,6 +10473,9 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                   <span>{selectedStudent.email || 'No email'} • ID {selectedStudent.id}</span>
                   <div className={`admin-platform-status ${selectedStudent.userCategory === 'premium' ? 'is-active' : ''}`}>
                     {selectedStudent.userCategory === 'premium' ? 'Premium User' : 'Free User'}
+                  </div>
+                  <div className="admin-platform-status is-active">
+                    {getStudentClassLabel(selectedStudent.classLevel)}
                   </div>
                   <div className={`admin-platform-status ${selectedStudent.status === 'blocked' ? 'is-blocked' : 'is-active'}`}>
                     {selectedStudent.status === 'blocked' ? 'Platform blocked' : 'Platform active'}
@@ -11299,18 +11565,20 @@ export default function App() {
     setIsDrawerOpen(false);
   };
 
-  const handleProfileUpdate = async ({ name, avatarUrl, password }: { name: string; avatarUrl?: string; password?: string }) => {
+  const handleProfileUpdate = async ({ name, avatarUrl, classLevel, password }: { name: string; avatarUrl?: string; classLevel?: StudentClassLevel; password?: string }) => {
     if (!user) {
       return { success: false, message: 'User not found' };
     }
 
-    const updatedUser = { ...user, name, avatarUrl: avatarUrl || '' };
+    const normalizedClassLevel = normalizeStudentClassLevel(classLevel || user.classLevel);
+    const updatedUser = { ...user, name, avatarUrl: avatarUrl || '', classLevel: normalizedClassLevel };
 
     try {
       const response = await apiPost('updateProfile', {
         id: user.id,
         name,
         avatarUrl: avatarUrl || '',
+        classLevel: normalizedClassLevel,
         password
       });
       const data = await response.json();
@@ -11329,6 +11597,7 @@ export default function App() {
         id: normalizedUser.id,
         name: normalizedUser.name,
         avatarUrl: normalizedUser.avatarUrl || '',
+        classLevel: normalizedUser.classLevel,
         password
       });
       return { success: true, message: 'Profile updated successfully' };
@@ -11337,6 +11606,7 @@ export default function App() {
         id: updatedUser.id,
         name: updatedUser.name,
         avatarUrl: updatedUser.avatarUrl || '',
+        classLevel: updatedUser.classLevel,
         password
       });
       setUser(updatedUser);
@@ -11525,15 +11795,19 @@ export default function App() {
 
     if (loading || sessionChecking) return <Loading />;
     if (!user) return <LoginScreen onLogin={handleLogin} />;
+    const studentClassLevel = normalizeStudentClassLevel(user.classLevel);
+    const visibleCourses = courses.filter((course) => courseMatchesStudentClass(course, studentClassLevel));
+    const visibleNotes = notes.filter((note) => noteMatchesStudentClass(note, studentClassLevel));
+    const visibleQuizzes = quizzes.filter((quiz) => quizMatchesStudentClass(quiz, studentClassLevel));
 
     switch (screen) {
       case 'home': return (
         <HomeScreen 
           setScreen={setScreen} 
           sliders={sliders}
-          courses={courses} 
-          notes={notes}
-          quizzes={quizzes}
+          courses={visibleCourses} 
+          notes={visibleNotes}
+          quizzes={visibleQuizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
           onOpenLiveClasses={() => setScreen('live-classes')}
@@ -11544,7 +11818,7 @@ export default function App() {
       case 'courses': return (
         <CoursesScreen 
           setScreen={setScreen} 
-          courses={courses} 
+          courses={visibleCourses} 
           unlockedCourseIds={unlockedCourseIds}
           initialTab={coursesInitialTab}
           onBuyClick={handleRequestCourseUnlock}
@@ -11554,7 +11828,7 @@ export default function App() {
       case 'live-classes': return (
         <LiveClassesScreen
           liveClasses={liveClasses}
-          courses={courses}
+          courses={visibleCourses}
           onJoinClass={(liveClass) => {
             setSelectedLiveClass(liveClass);
             setScreen('live-class-viewer');
@@ -11570,7 +11844,7 @@ export default function App() {
       case 'binaural-beats': return <BinauralBeatsScreen />;
       case 'notes': return (
         <NotesScreen 
-          notes={notes} 
+          notes={visibleNotes} 
           onViewNote={(note) => {
             setSelectedLesson({
               id: note.id,
@@ -11585,7 +11859,7 @@ export default function App() {
           }}
         />
       );
-      case 'quiz': return <QuizScreen quizzes={quizzes} initialQuiz={selectedQuizTopic} />;
+      case 'quiz': return <QuizScreen quizzes={visibleQuizzes} initialQuiz={selectedQuizTopic} />;
       case 'support-chat': return <SupportChatScreen />;
       case 'about-us': return <AboutUsScreen />;
       case 'about-developer': return <AboutDeveloperScreen />;
@@ -11617,7 +11891,7 @@ export default function App() {
       case 'help-center': return <HelpCenterScreen />;
       case 'my-courses': return (
         <MyCoursesScreen
-          courses={courses}
+          courses={visibleCourses}
           unlockedCourseIds={unlockedCourseIds}
           onCourseSelect={(course) => {
             setSelectedCourse(course);
@@ -11629,9 +11903,9 @@ export default function App() {
       case 'admin': return <HomeScreen 
         setScreen={setScreen} 
         sliders={sliders}
-        courses={courses} 
-        notes={notes}
-        quizzes={quizzes}
+        courses={visibleCourses} 
+        notes={visibleNotes}
+        quizzes={visibleQuizzes}
         unlockedCourseIds={unlockedCourseIds}
         onOpenCoursesTab={handleOpenCoursesTab}
         onOpenLiveClasses={() => setScreen('live-classes')}
@@ -11681,7 +11955,7 @@ export default function App() {
             setScreen('note-viewer');
           }}
           onTakeQuiz={() => {
-            const quiz = quizzes.find(q => q.topic.toLowerCase().includes(selectedCourse?.category.toLowerCase() || ''));
+            const quiz = visibleQuizzes.find(q => q.topic.toLowerCase().includes(selectedCourse?.category.toLowerCase() || ''));
             setSelectedQuizTopic(quiz || null);
             setScreen('quiz');
           }}
@@ -11693,9 +11967,9 @@ export default function App() {
         <HomeScreen 
           setScreen={setScreen} 
           sliders={sliders}
-          courses={courses} 
-          notes={notes}
-          quizzes={quizzes}
+          courses={visibleCourses} 
+          notes={visibleNotes}
+          quizzes={visibleQuizzes}
           unlockedCourseIds={unlockedCourseIds}
           onOpenCoursesTab={handleOpenCoursesTab}
           onOpenLiveClasses={() => setScreen('live-classes')}

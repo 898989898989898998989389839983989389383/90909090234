@@ -2,6 +2,7 @@ import express from "express";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import nodemailer from "nodemailer";
 import { createHash, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import type { PoolConnection, RowDataPacket } from "./mysql.js";
@@ -40,12 +41,21 @@ const CLOUDINARY_PDF_CONFIG: CloudinaryConfig = parseCloudinaryUrl(process.env.C
   apiKey: "",
   apiSecret: "",
 };
+const CLOUDINARY_THUMBNAIL_CONFIG: CloudinaryConfig =
+  parseCloudinaryUrl(process.env.CLOUDINARY_THUMBNAIL_URL?.trim() || process.env.CLOUDINARY_ACCOUNT_2_URL?.trim() || "") ||
+  CLOUDINARY_PDF_CONFIG;
 const CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER?.trim().replace(/^\/+|\/+$/g, "") || "rbs-academy";
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME?.trim() || "";
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "";
 const ADMIN_AUTH_SECRET = process.env.ADMIN_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SMTP_HOST = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "true").toLowerCase() !== "false";
+const SMTP_USER = process.env.GOOGLE_SMTP_USER?.trim() || process.env.SMTP_USER?.trim() || "";
+const SMTP_PASS = process.env.GOOGLE_SMTP_APP_PASSWORD || process.env.SMTP_PASS || "";
+const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL?.trim() || SMTP_USER;
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const PASSWORD_PREFIX = "scrypt";
 const APP_CONTROL_KEY = "app-control";
@@ -102,6 +112,7 @@ type DbUser = RowDataPacket & {
   phone: string;
   password: string;
   avatar_url?: string;
+  class_level?: string;
   status?: string;
   user_category?: string;
   device_id?: string;
@@ -152,6 +163,16 @@ type DbLiveClass = RowDataPacket & {
   is_active?: number | boolean;
   created_at?: Date | string;
 };
+type DbAuthOtp = RowDataPacket & {
+  id: string;
+  email: string;
+  purpose: "signup" | "password-reset";
+  otp_hash: string;
+  payload?: string;
+  expires_at?: Date | string;
+  used_at?: Date | string | null;
+  attempts?: number;
+};
 type AdminRole = "admin" | "superadmin";
 type DbAdminCredential = RowDataPacket & { id: string; role: AdminRole; username: string; password: string; created_at?: Date | string; updated_at?: Date | string };
 
@@ -163,6 +184,10 @@ const createId = (prefix: string) => `${prefix}${Date.now()}${randomUUID().repla
 const isValidStudentName = (value: string) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const normalizePhoneNumber = (value: string) => value.replace(/\D/g, "");
+const normalizeStudentClassLevel = (value: unknown) => {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
+  return normalized === "class-11" || normalized === "11" ? "class-11" : "class-12";
+};
 const normalizeDeviceId = (value: unknown) => String(value || "").trim().slice(0, 160);
 const normalizeDeviceLabel = (value: unknown) => String(value || "Student mobile").trim().slice(0, 240);
 const toBase64Url = (value: string) => Buffer.from(value).toString("base64url");
@@ -195,6 +220,73 @@ const createAccessCode = () => {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const chunk = () => Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   return `RBS-${chunk()}-${chunk()}`;
+};
+
+const createOtpCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const createTemporaryPassword = () => `RBS${randomBytes(4).toString("hex").toUpperCase()}`;
+
+const assertSmtpConfigured = () => {
+  if (!SMTP_USER || !SMTP_PASS || !SMTP_FROM_EMAIL) {
+    throw new Error("Google SMTP is not configured. Set GOOGLE_SMTP_USER and GOOGLE_SMTP_APP_PASSWORD.");
+  }
+};
+
+const sendEmail = async (to: string, subject: string, text: string) => {
+  assertSmtpConfigured();
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+  await transporter.sendMail({
+    from: `"RBS Academy" <${SMTP_FROM_EMAIL}>`,
+    to,
+    subject,
+    text,
+  });
+};
+
+const saveOtp = async (
+  email: string,
+  purpose: DbAuthOtp["purpose"],
+  otp: string,
+  payload: Record<string, unknown> = {},
+) => {
+  await execute(
+    "UPDATE auth_otps SET used_at = CURRENT_TIMESTAMP WHERE email = ? AND purpose = ? AND used_at IS NULL",
+    [email, purpose],
+  );
+  await execute(
+    "INSERT INTO auth_otps (id, email, purpose, otp_hash, payload, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)",
+    [createId("otp"), email, purpose, hashValue(otp), JSON.stringify(payload), new Date(Date.now() + 10 * 60 * 1000)],
+  );
+};
+
+const verifyOtp = async (email: string, purpose: DbAuthOtp["purpose"], otp: string) => {
+  const record = await queryOne<DbAuthOtp>(
+    "SELECT * FROM auth_otps WHERE email = ? AND purpose = ? AND used_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+    [email, purpose],
+  );
+  if (!record) {
+    return { ok: false, status: 400, message: "OTP not found. Please request a new OTP." } as const;
+  }
+  if (record.expires_at && new Date(record.expires_at).getTime() <= Date.now()) {
+    return { ok: false, status: 400, message: "OTP expired. Please request a new OTP." } as const;
+  }
+  if (Number(record.attempts || 0) >= 5) {
+    return { ok: false, status: 429, message: "Too many OTP attempts. Please request a new OTP." } as const;
+  }
+  if (!safeEqual(String(record.otp_hash || ""), hashValue(String(otp || "").trim()))) {
+    await execute("UPDATE auth_otps SET attempts = COALESCE(attempts, 0) + 1 WHERE id = ?", [record.id]);
+    return { ok: false, status: 401, message: "Invalid OTP" } as const;
+  }
+
+  await execute("UPDATE auth_otps SET used_at = CURRENT_TIMESTAMP WHERE id = ?", [record.id]);
+  return { ok: true, record } as const;
 };
 
 const parseJsonArray = (value: unknown) => {
@@ -504,6 +596,9 @@ const assertCloudinaryConfigured = (config: CloudinaryConfig, mediaType = "media
     if (mediaType === "PDF") {
       throw new Error("PDF Cloudinary storage is not configured. Set CLOUDINARY_PDF_URL.");
     }
+    if (mediaType === "thumbnail") {
+      throw new Error("Thumbnail Cloudinary storage is not configured. Set CLOUDINARY_THUMBNAIL_URL or CLOUDINARY_ACCOUNT_2_URL.");
+    }
     throw new Error("Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.");
   }
 };
@@ -515,6 +610,19 @@ const getCloudinaryConfigForUpload = (mimeType: string) => {
   if (mimeType === "application/pdf") {
     assertCloudinaryConfigured(CLOUDINARY_PDF_CONFIG, "PDF");
     return CLOUDINARY_PDF_CONFIG;
+  }
+  assertCloudinaryConfigured(CLOUDINARY_CONFIG);
+  return CLOUDINARY_CONFIG;
+};
+
+const isThumbnailUpload = (assetFolder: string, prefix: string) =>
+  (assetFolder === "courses" && prefix === "course-thumbnail") ||
+  (assetFolder === "lessons" && prefix === "video-thumbnail");
+
+const getCloudinaryConfigForContentImage = (assetFolder: string, prefix: string) => {
+  if (isThumbnailUpload(assetFolder, prefix)) {
+    assertCloudinaryConfigured(CLOUDINARY_THUMBNAIL_CONFIG, "thumbnail");
+    return CLOUDINARY_THUMBNAIL_CONFIG;
   }
   assertCloudinaryConfigured(CLOUDINARY_CONFIG);
   return CLOUDINARY_CONFIG;
@@ -618,7 +726,15 @@ const saveContentImage = async (
   }
 
   assertValidImagePayload(imageData, mimeType);
-  return uploadToCloudinary(assetFolder, prefix, imageData, mimeType, "image");
+  return uploadToCloudinary(
+    assetFolder,
+    prefix,
+    imageData,
+    mimeType,
+    "image",
+    "",
+    getCloudinaryConfigForContentImage(assetFolder, prefix),
+  );
 };
 
 const saveNoteFile = async (payload: Record<string, unknown>) => {
@@ -658,7 +774,7 @@ const deleteStoredImage = async (imageUrl?: string, localPrefix = "/uploads/") =
   const cloudinaryMatch = String(imageUrl).match(
     /^https:\/\/res\.cloudinary\.com\/([^/]+)\/(image|raw)\/upload\/(?:[^/]+\/)*v\d+\/(.+)$/,
   );
-  const cloudinaryConfig = [CLOUDINARY_CONFIG, CLOUDINARY_PDF_CONFIG]
+  const cloudinaryConfig = [CLOUDINARY_CONFIG, CLOUDINARY_PDF_CONFIG, CLOUDINARY_THUMBNAIL_CONFIG]
     .find((config) => config.cloudName && config.cloudName === cloudinaryMatch?.[1]);
   if (cloudinaryMatch && cloudinaryConfig?.apiKey && cloudinaryConfig.apiSecret) {
     const resourceType = cloudinaryMatch[2];
@@ -790,6 +906,7 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
     email: String(user.email || ""),
     phone: String(user.phone || ""),
     avatarUrl: String(user.avatar_url || ""),
+    classLevel: normalizeStudentClassLevel(user.class_level),
     status: String((user as Partial<DbUser>).status || "active"),
     userCategory: getComputedUserCategory(user, grantedCourseIds),
     grantedCourseIds,
@@ -844,6 +961,8 @@ const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "ph
     name: String(user.name || ""),
     email: String(user.email || ""),
     phone: String(user.phone || ""),
+    avatarUrl: String(user.avatar_url || ""),
+    classLevel: normalizeStudentClassLevel(user.class_level),
     status: String(user.status || "active"),
     userCategory: getComputedUserCategory(user, courseIdsByUser.get(String(user.id)) || []),
     grantedCourseIds: courseIdsByUser.get(String(user.id)) || [],
@@ -1262,11 +1381,12 @@ export const createApiApp = async () => {
     res.json({ success: true, message: "Admin account deleted" });
   }));
 
-  app.post("/api/signup", asyncHandler(async (req, res) => {
-    const { name, email, phone, password, deviceId, deviceLabel } = req.body || {};
+  app.post("/api/request-signup-otp", asyncHandler(async (req, res) => {
+    const { name, email, phone, classLevel, password, deviceId, deviceLabel } = req.body || {};
     const trimmedName = String(name || "").trim();
     const normalizedEmail = normalizeEmail(String(email || ""));
     const normalizedPhone = normalizePhoneNumber(String(phone || ""));
+    const normalizedClassLevel = normalizeStudentClassLevel(classLevel);
     const normalizedDeviceId = normalizeDeviceId(deviceId);
     const normalizedDeviceLabel = normalizeDeviceLabel(deviceLabel);
 
@@ -1296,25 +1416,138 @@ export const createApiApp = async () => {
       return;
     }
 
+    const otp = createOtpCode();
+    await saveOtp(normalizedEmail, "signup", otp, {
+      name: trimmedName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      classLevel: normalizedClassLevel,
+      passwordHash: hashPassword(String(password)),
+      deviceId: normalizedDeviceId,
+      deviceLabel: normalizedDeviceLabel,
+    });
+    await sendEmail(
+      normalizedEmail,
+      "RBS Academy email verification OTP",
+      `Your RBS Academy signup OTP is ${otp}. It expires in 10 minutes.`,
+    );
+    res.json({ success: true, message: "OTP sent to your email" });
+  }));
+
+  app.post("/api/verify-signup-otp", asyncHandler(async (req, res) => {
+    const normalizedEmail = normalizeEmail(String(req.body?.email || ""));
+    const otp = String(req.body?.otp || "").trim();
+    if (!normalizedEmail || !otp) {
+      res.status(400).json({ success: false, message: "Email and OTP are required" });
+      return;
+    }
+
+    const verification = await verifyOtp(normalizedEmail, "signup", otp);
+    if (!verification.ok) {
+      res.status(verification.status).json({ success: false, message: verification.message });
+      return;
+    }
+
+    const payload = JSON.parse(String(verification.record.payload || "{}")) as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      classLevel?: string;
+      passwordHash?: string;
+      deviceId?: string;
+      deviceLabel?: string;
+    };
+    const existingUser = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
+    if (existingUser) {
+      res.status(409).json({ success: false, message: "Email already registered" });
+      return;
+    }
+
     const id = `u${Date.now()}`;
     await execute(
-      "INSERT INTO users (id, name, email, phone, password, status, user_category, device_id, device_label, device_bound_at) VALUES (?, ?, ?, ?, ?, 'active', 'free', ?, ?, CURRENT_TIMESTAMP)",
-      [id, trimmedName, normalizedEmail, normalizedPhone, hashPassword(String(password)), normalizedDeviceId, normalizedDeviceLabel],
+      "INSERT INTO users (id, name, email, phone, password, class_level, status, user_category, device_id, device_label, device_bound_at) VALUES (?, ?, ?, ?, ?, ?, 'active', 'free', ?, ?, CURRENT_TIMESTAMP)",
+      [
+        id,
+        String(payload.name || "Student").trim(),
+        normalizedEmail,
+        String(payload.phone || ""),
+        String(payload.passwordHash || hashPassword(createTemporaryPassword())),
+        normalizeStudentClassLevel(payload.classLevel),
+        normalizeDeviceId(payload.deviceId),
+        normalizeDeviceLabel(payload.deviceLabel),
+      ],
     );
     res.status(201).json({
       success: true,
       user: await normalizeUser({
         id,
-        name: trimmedName,
+        name: String(payload.name || "Student").trim(),
         email: normalizedEmail,
-        phone: normalizedPhone,
+        phone: String(payload.phone || ""),
+        class_level: normalizeStudentClassLevel(payload.classLevel),
         status: "active",
         user_category: "free",
-        device_id: normalizedDeviceId,
-        device_label: normalizedDeviceLabel,
+        device_id: normalizeDeviceId(payload.deviceId),
+        device_label: normalizeDeviceLabel(payload.deviceLabel),
         device_bound_at: new Date(),
       }),
     });
+  }));
+
+  app.post("/api/signup", asyncHandler(async (req, res) => {
+    res.status(400).json({ success: false, message: "Email verification is required. Please request signup OTP first." });
+  }));
+
+  app.post("/api/request-password-reset-otp", asyncHandler(async (req, res) => {
+    const normalizedEmail = normalizeEmail(String(req.body?.email || ""));
+    if (!normalizedEmail) {
+      res.status(400).json({ success: false, message: "Email is required" });
+      return;
+    }
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
+    if (!user) {
+      res.status(404).json({ success: false, message: "Email is not registered" });
+      return;
+    }
+
+    const otp = createOtpCode();
+    await saveOtp(normalizedEmail, "password-reset", otp);
+    await sendEmail(
+      normalizedEmail,
+      "RBS Academy password reset OTP",
+      `Your RBS Academy password reset OTP is ${otp}. It expires in 10 minutes.`,
+    );
+    res.json({ success: true, message: "Password reset OTP sent to your email" });
+  }));
+
+  app.post("/api/verify-password-reset-otp", asyncHandler(async (req, res) => {
+    const normalizedEmail = normalizeEmail(String(req.body?.email || ""));
+    const otp = String(req.body?.otp || "").trim();
+    if (!normalizedEmail || !otp) {
+      res.status(400).json({ success: false, message: "Email and OTP are required" });
+      return;
+    }
+
+    const verification = await verifyOtp(normalizedEmail, "password-reset", otp);
+    if (!verification.ok) {
+      res.status(verification.status).json({ success: false, message: verification.message });
+      return;
+    }
+
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = ?", [normalizedEmail]);
+    if (!user) {
+      res.status(404).json({ success: false, message: "Email is not registered" });
+      return;
+    }
+
+    const temporaryPassword = createTemporaryPassword();
+    await execute("UPDATE users SET password = ? WHERE id = ?", [hashPassword(temporaryPassword), user.id]);
+    await sendEmail(
+      normalizedEmail,
+      "RBS Academy temporary password",
+      `Your RBS Academy temporary password is ${temporaryPassword}. Login with this password and change it from Profile Information.`,
+    );
+    res.json({ success: true, message: "A temporary password has been sent to your email" });
   }));
 
   app.post("/api/login", asyncHandler(async (req, res) => {
@@ -1640,6 +1873,7 @@ export const createApiApp = async () => {
       course: { folder: "courses", prefix: "course-thumbnail", resourceType: "image" },
       lesson: { folder: "lessons", prefix: "video-thumbnail", resourceType: "image" },
       question: { folder: "questions", prefix: "question", resourceType: "image" },
+      profile: { folder: "profiles", prefix: "profile-avatar", resourceType: "image" },
       note: { folder: "notes", prefix: "note", resourceType: "raw" },
     };
     const uploadKind = uploadKinds[String(req.body?.kind || "").trim().toLowerCase()];
@@ -1656,7 +1890,9 @@ export const createApiApp = async () => {
       return;
     }
 
-    const cloudinaryConfig = getCloudinaryConfigForUpload(mimeType);
+    const cloudinaryConfig = uploadKind.resourceType === "image"
+      ? getCloudinaryConfigForContentImage(uploadKind.folder, uploadKind.prefix)
+      : getCloudinaryConfigForUpload(mimeType);
     const authorization = createCloudinaryUploadAuthorization(
       uploadKind.folder,
       uploadKind.prefix,
@@ -1981,7 +2217,7 @@ export const createApiApp = async () => {
     if (existing) {
       await execute("UPDATE enrollments SET access_code = ?, granted_at = ?, expires_at = ?, status = 'active' WHERE id = ?", [generatedCode, new Date(), expiryDate, existing.id]);
       await syncUserCategory(String(userId));
-      res.json({ success: true, message: "Course access granted", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
+      res.json({ success: true, message: "You are now premium member", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
       return;
     }
 
@@ -1990,7 +2226,7 @@ export const createApiApp = async () => {
       [createId("en"), userId, courseId, generatedCode, new Date(), expiryDate],
     );
     await syncUserCategory(String(userId));
-    res.json({ success: true, message: "Course access granted", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
+    res.json({ success: true, message: "You are now premium member", accessCode: generatedCode, user: await getFreshNormalizedUser(String(userId)) });
   }));
 
   app.post("/api/revokeCourseAccess", requireAdmin(), asyncHandler(async (req, res) => {
@@ -2367,9 +2603,10 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateProfile", asyncHandler(async (req, res) => {
-    const { id, name, avatarUrl, password } = req.body || {};
+    const { id, name, avatarUrl, classLevel, password } = req.body || {};
     const trimmedName = String(name || "").trim();
     const trimmedAvatarUrl = String(avatarUrl || "").trim();
+    const normalizedClassLevel = normalizeStudentClassLevel(classLevel);
     if (!id || !trimmedName) {
       res.status(400).json({ success: false, message: "User id and name are required" });
       return;
@@ -2392,7 +2629,7 @@ export const createApiApp = async () => {
     }
 
     const nextPassword = password ? hashPassword(String(password)) : current.password;
-    await execute("UPDATE users SET name = ?, avatar_url = ?, password = ? WHERE id = ?", [trimmedName, trimmedAvatarUrl, nextPassword, id]);
+    await execute("UPDATE users SET name = ?, avatar_url = ?, class_level = ?, password = ? WHERE id = ?", [trimmedName, trimmedAvatarUrl, normalizedClassLevel, nextPassword, id]);
     const updatedUser = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [id]);
     res.json({ success: true, message: "Profile updated", user: updatedUser ? await normalizeUser(updatedUser) : null });
   }));

@@ -1054,6 +1054,7 @@ const createSchema = async (client: Pool | PoolClient) => {
       phone TEXT NOT NULL DEFAULT '',
       password TEXT NOT NULL,
       avatar_url TEXT DEFAULT '',
+      class_level TEXT DEFAULT 'class-12',
       status TEXT DEFAULT 'active',
       user_category TEXT DEFAULT 'free',
       device_id TEXT DEFAULT '',
@@ -1064,11 +1065,30 @@ const createSchema = async (client: Pool | PoolClient) => {
 
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS class_level TEXT DEFAULT 'class-12'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_category TEXT DEFAULT 'free'`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_label TEXT DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_bound_at TIMESTAMPTZ`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS auth_otps (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      payload TEXT DEFAULT '{}',
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      attempts INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await client.query(`ALTER TABLE auth_otps ADD COLUMN IF NOT EXISTS payload TEXT DEFAULT '{}'`);
+  await client.query(`ALTER TABLE auth_otps ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE auth_otps ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0`);
+  await client.query(`ALTER TABLE auth_otps ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS admin_credentials (
