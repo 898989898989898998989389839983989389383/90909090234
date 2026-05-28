@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RBS Academy Custom YouTube Player</title>
+  <style>
+    :root {
+      --blue-950: #071832;
+      --blue-900: #0b2447;
+      --blue-800: #123b70;
+      --blue-700: #1757a6;
+      --gold-500: #f2b84b;
+      --gold-400: #ffd16a;
+      --gold-100: #fff3cf;
+      --white: #ffffff;
+      --slate-100: #eef4fb;
+      --slate-300: #cbd7e6;
+      --slate-700: #31425c;
+      --shadow: 0 24px 70px rgba(7, 24, 50, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--blue-950);
+      background:
+        radial-gradient(circle at top left, rgba(242, 184, 75, 0.28), transparent 34rem),
+        linear-gradient(135deg, #eaf2ff 0%, #f8fbff 48%, #fff8e4 100%);
+    }
+
+    .page {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 28px 16px;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .player-card {
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.82);
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .lecture-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      background: linear-gradient(135deg, var(--blue-950), var(--blue-800));
+      color: var(--white);
+    }
+
+    .lecture-kicker {
+      margin: 0 0 4px;
+      color: var(--gold-400);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .lecture-title {
+      margin: 0;
+      max-width: 56rem;
+      overflow: hidden;
+      font-size: clamp(18px, 3vw, 28px);
+      font-weight: 950;
+      line-height: 1.15;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .lecture-count {
+      display: inline-flex;
+      min-width: 76px;
+      justify-content: center;
+      border: 1px solid rgba(255, 209, 106, 0.32);
+      border-radius: 999px;
+      padding: 9px 12px;
+      background: rgba(255, 209, 106, 0.13);
+      color: var(--gold-100);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .video-stage {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      background: #020817;
+      user-select: none;
+    }
+
+    #player {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    .interaction-shield {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .loader {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at center, rgba(23, 87, 166, 0.72), rgba(2, 8, 23, 0.94) 64%),
+        linear-gradient(135deg, rgba(7, 24, 50, 0.88), rgba(18, 59, 112, 0.92));
+      color: var(--white);
+      transition: opacity 240ms ease, visibility 240ms ease;
+    }
+
+    .loader.is-hidden {
+      visibility: hidden;
+      opacity: 0;
+    }
+
+    .loader-box {
+      display: grid;
+      justify-items: center;
+      gap: 14px;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 58px;
+      height: 58px;
+      border: 5px solid rgba(255, 255, 255, 0.22);
+      border-top-color: var(--gold-400);
+      border-radius: 50%;
+      animation: spin 850ms linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loader-title {
+      margin: 0;
+      font-size: clamp(20px, 3vw, 30px);
+      font-weight: 950;
+    }
+
+    .loader-text {
+      margin: 0;
+      max-width: 24rem;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 15px;
+      background: linear-gradient(180deg, #ffffff, #f6f9ff);
+    }
+
+    .control-cluster {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .icon-button {
+      display: inline-grid;
+      width: 46px;
+      height: 46px;
+      place-items: center;
+      border-radius: 16px;
+      background: var(--slate-100);
+      color: var(--blue-900);
+      font-size: 18px;
+      font-weight: 950;
+      transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+    }
+
+    .icon-button:hover {
+      transform: translateY(-1px);
+      background: #dfeaff;
+      color: var(--blue-700);
+    }
+
+    .play-button {
+      width: 58px;
+      height: 58px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-500));
+      color: var(--blue-950);
+      box-shadow: 0 14px 28px rgba(242, 184, 75, 0.34);
+      font-size: 22px;
+    }
+
+    .meta-strip {
+      min-width: 0;
+      padding: 0 4px;
+    }
+
+    .now-label {
+      margin: 0 0 4px;
+      color: var(--blue-700);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .now-title {
+      margin: 0;
+      overflow: hidden;
+      color: var(--blue-950);
+      font-size: 15px;
+      font-weight: 900;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-pill {
+      border-radius: 999px;
+      padding: 10px 13px;
+      background: var(--blue-950);
+      color: var(--gold-100);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .side-panel {
+      border: 1px solid rgba(255, 255, 255, 0.82);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 18px 48px rgba(7, 24, 50, 0.14);
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+    }
+
+    .panel-section {
+      padding: 16px;
+      border-bottom: 1px solid rgba(203, 215, 230, 0.7);
+    }
+
+    .panel-section:last-child {
+      border-bottom: 0;
+    }
+
+    .panel-title {
+      margin: 0 0 12px;
+      color: var(--blue-950);
+      font-size: 15px;
+      font-weight: 950;
+    }
+
+    .video-form {
+      display: grid;
+      gap: 10px;
+    }
+
+    .input {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid var(--slate-300);
+      border-radius: 15px;
+      padding: 0 13px;
+      outline: 0;
+      color: var(--blue-950);
+      font-size: 14px;
+      font-weight: 800;
+      background: #ffffff;
+    }
+
+    .input:focus {
+      border-color: var(--blue-700);
+      box-shadow: 0 0 0 4px rgba(23, 87, 166, 0.12);
+    }
+
+    .primary-button {
+      min-height: 46px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, var(--blue-800), var(--blue-950));
+      color: var(--white);
+      font-weight: 950;
+    }
+
+    .lecture-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .lecture-item {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 10px;
+      align-items: center;
+      border-radius: 16px;
+      padding: 10px;
+      background: #f6f9ff;
+      color: var(--blue-950);
+      text-align: left;
+    }
+
+    .lecture-item.is-active {
+      background: linear-gradient(135deg, var(--blue-900), var(--blue-700));
+      color: var(--white);
+    }
+
+    .lecture-number {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border-radius: 13px;
+      background: rgba(242, 184, 75, 0.22);
+      color: var(--blue-900);
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .lecture-item.is-active .lecture-number {
+      background: var(--gold-400);
+      color: var(--blue-950);
+    }
+
+    .lecture-name {
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 900;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .lecture-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .lecture-title {
+        white-space: normal;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .control-cluster {
+        justify-content: center;
+      }
+
+      .status-pill {
+        justify-self: center;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .page {
+        padding: 12px;
+      }
+
+      .player-card,
+      .side-panel {
+        border-radius: 18px;
+      }
+
+      .lecture-header {
+        padding: 15px;
+      }
+
+      .controls {
+        gap: 12px;
+        padding: 12px;
+      }
+
+      .icon-button {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+      }
+
+      .play-button {
+        width: 54px;
+        height: 54px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="shell" aria-label="Custom lecture player">
+      <div class="player-card">
+        <header class="lecture-header">
+          <div>
+            <p class="lecture-kicker">RBS Academy Lecture</p>
+            <h1 class="lecture-title" id="lectureTitle">Organic Chemistry: Introduction</h1>
+          </div>
+          <span class="lecture-count" id="lectureCount">1 / 3</span>
+        </header>
+
+        <div class="video-stage" id="playerArea" oncontextmenu="return false">
+          <div id="player"></div>
+          <div class="interaction-shield" aria-hidden="true"></div>
+          <div class="loader" id="loader">
+            <div class="loader-box">
+              <div class="spinner" aria-hidden="true"></div>
+              <h2 class="loader-title">Loading lecture</h2>
+              <p class="loader-text">Preparing the secure classroom player with custom controls.</p>
+            </div>
+          </div>
+        </div>
+
+        <nav class="controls" aria-label="Video controls">
+          <div class="control-cluster">
+            <button class="icon-button" type="button" id="prevBtn" aria-label="Previous lecture">&#8249;&#8249;</button>
+            <button class="icon-button play-button" type="button" id="playBtn" aria-label="Play lecture">&#9658;</button>
+            <button class="icon-button" type="button" id="nextBtn" aria-label="Next lecture">&#8250;&#8250;</button>
+          </div>
+
+          <div class="meta-strip">
+            <p class="now-label">Now Playing</p>
+            <p class="now-title" id="nowTitle">Organic Chemistry: Introduction</p>
+          </div>
+
+          <div class="status-pill" id="statusText">Ready</div>
+        </nav>
+      </div>
+
+      <aside class="side-panel" aria-label="Lecture options">
+        <div class="panel-section">
+          <h2 class="panel-title">Load by YouTube ID</h2>
+          <form class="video-form" id="videoForm">
+            <input class="input" id="videoIdInput" name="videoId" placeholder="Enter YouTube video ID only" autocomplete="off" />
+            <input class="input" id="videoTitleInput" name="videoTitle" placeholder="Lecture title optional" autocomplete="off" />
+            <button class="primary-button" type="submit">Load Lecture</button>
+          </form>
+        </div>
+
+        <div class="panel-section">
+          <h2 class="panel-title">Lecture Queue</h2>
+          <div class="lecture-list" id="lectureList"></div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const lectures = [
+      { id: "ysz5S6PUM-U", title: "Organic Chemistry: Introduction" },
+      { id: "dQw4w9WgXcQ", title: "Study Skills: Focus Session" },
+      { id: "M7lc1UVf-VE", title: "YouTube API Demo Lecture" }
+    ];
+
+    let currentIndex = 0;
+    let player = null;
+    let isPlaying = false;
+    let isPlayerReady = false;
+
+    const playerArea = document.getElementById("playerArea");
+    const loader = document.getElementById("loader");
+    const lectureTitle = document.getElementById("lectureTitle");
+    const lectureCount = document.getElementById("lectureCount");
+    const nowTitle = document.getElementById("nowTitle");
+    const statusText = document.getElementById("statusText");
+    const playBtn = document.getElementById("playBtn");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const lectureList = document.getElementById("lectureList");
+    const videoForm = document.getElementById("videoForm");
+    const videoIdInput = document.getElementById("videoIdInput");
+    const videoTitleInput = document.getElementById("videoTitleInput");
+
+    function showLoader(text) {
+      statusText.textContent = text || "Loading";
+      loader.classList.remove("is-hidden");
+    }
+
+    function hideLoader() {
+      loader.classList.add("is-hidden");
+    }
+
+    function normalizeVideoId(value) {
+      return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    }
+
+    function currentLecture() {
+      return lectures[currentIndex];
+    }
+
+    function updateLectureUi() {
+      const lecture = currentLecture();
+      lectureTitle.textContent = lecture.title;
+      nowTitle.textContent = lecture.title;
+      lectureCount.textContent = `${currentIndex + 1} / ${lectures.length}`;
+      videoIdInput.value = lecture.id;
+      renderLectureList();
+    }
+
+    function renderLectureList() {
+      lectureList.innerHTML = "";
+      lectures.forEach((lecture, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `lecture-item${index === currentIndex ? " is-active" : ""}`;
+        button.setAttribute("aria-label", `Play ${lecture.title}`);
+        button.innerHTML = `
+          <span class="lecture-number">${index + 1}</span>
+          <span class="lecture-name"></span>
+        `;
+        button.querySelector(".lecture-name").textContent = lecture.title;
+        button.addEventListener("click", () => loadLecture(index));
+        lectureList.appendChild(button);
+      });
+    }
+
+    function setPlayingState(nextPlaying) {
+      isPlaying = nextPlaying;
+      playBtn.innerHTML = isPlaying ? "&#10073;&#10073;" : "&#9658;";
+      playBtn.setAttribute("aria-label", isPlaying ? "Pause lecture" : "Play lecture");
+      statusText.textContent = isPlaying ? "Playing" : "Paused";
+    }
+
+    function loadLecture(index) {
+      currentIndex = (index + lectures.length) % lectures.length;
+      updateLectureUi();
+      setPlayingState(false);
+      showLoader("Loading");
+
+      if (player && isPlayerReady) {
+        player.loadVideoById({
+          videoId: currentLecture().id,
+          suggestedQuality: "hd720"
+        });
+      }
+    }
+
+    function onYouTubeIframeAPIReady() {
+      updateLectureUi();
+      player = new YT.Player("player", {
+        width: "100%",
+        height: "100%",
+        videoId: currentLecture().id,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          playsinline: 1,
+          rel: 0
+        },
+        events: {
+          onReady: function () {
+            isPlayerReady = true;
+            hideLoader();
+            statusText.textContent = "Ready";
+          },
+          onStateChange: function (event) {
+            if (event.data === YT.PlayerState.BUFFERING) {
+              showLoader("Buffering");
+            }
+
+            if (event.data === YT.PlayerState.PLAYING) {
+              hideLoader();
+              setPlayingState(true);
+            }
+
+            if (event.data === YT.PlayerState.PAUSED) {
+              hideLoader();
+              setPlayingState(false);
+            }
+
+            if (event.data === YT.PlayerState.ENDED) {
+              setPlayingState(false);
+              loadLecture(currentIndex + 1);
+            }
+          }
+        }
+      });
+    }
+
+    playBtn.addEventListener("click", function () {
+      if (!player || !isPlayerReady) {
+        return;
+      }
+
+      if (isPlaying) {
+        player.pauseVideo();
+      } else {
+        player.playVideo();
+      }
+    });
+
+    prevBtn.addEventListener("click", function () {
+      loadLecture(currentIndex - 1);
+    });
+
+    nextBtn.addEventListener("click", function () {
+      loadLecture(currentIndex + 1);
+    });
+
+    videoForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      const videoId = normalizeVideoId(videoIdInput.value);
+      if (!videoId) {
+        videoIdInput.focus();
+        return;
+      }
+
+      const title = videoTitleInput.value.trim() || "Custom Lecture";
+      lectures.push({ id: videoId, title });
+      videoTitleInput.value = "";
+      loadLecture(lectures.length - 1);
+    });
+
+    playerArea.addEventListener("contextmenu", function (event) {
+      event.preventDefault();
+    });
+
+    renderLectureList();
+    showLoader("Loading");
+  </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
