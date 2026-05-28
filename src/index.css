@@ -372,6 +372,19 @@ body {
     0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
+.course-video-player:fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+}
+
+.course-video-player:fullscreen .course-youtube-host iframe {
+  width: 100vw;
+  height: 100vh;
+}
+
 .course-video-frame,
 .course-youtube-host,
 .course-youtube-host iframe {

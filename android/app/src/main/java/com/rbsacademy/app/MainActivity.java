@@ -1,6 +1,7 @@
 package com.rbsacademy.app;
 
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -77,6 +78,21 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void openNotifications() {
             // Kept for compatibility with existing WebView notification bridges.
+        }
+
+        @JavascriptInterface
+        public void lockLandscape() {
+            runOnUiThread(() -> setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE));
+        }
+
+        @JavascriptInterface
+        public void lockPortrait() {
+            runOnUiThread(() -> setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT));
+        }
+
+        @JavascriptInterface
+        public void unlockOrientation() {
+            runOnUiThread(() -> setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED));
         }
     }
 }

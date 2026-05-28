@@ -93,6 +93,17 @@ type YoutubeWindow = Window & {
     };
   };
   onYouTubeIframeAPIReady?: () => void;
+  Android?: {
+    lockLandscape?: () => void;
+    lockPortrait?: () => void;
+    unlockOrientation?: () => void;
+  };
+};
+
+type AppOrientationLock = 'any' | 'natural' | 'landscape' | 'portrait' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary';
+
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: AppOrientationLock) => Promise<void>;
 };
 
 interface Lesson {
@@ -1890,6 +1901,11 @@ const formatVideoClock = (seconds: number) => {
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const lockWebOrientation = async (orientation: AppOrientationLock) => {
+  const orientationApi = screen.orientation as LockableScreenOrientation | undefined;
+  await orientationApi?.lock?.(orientation).catch(() => undefined);
 };
 
 const getProtectedEmbedUrl = (url?: string, autoplay = false) => {
@@ -4176,6 +4192,23 @@ const VideoPlayerScreen = ({
     };
   }, [currentLesson?.video_url]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement === playerShellRef.current) {
+        return;
+      }
+
+      const nativeWindow = window as YoutubeWindow;
+      nativeWindow.Android?.lockPortrait?.();
+      void lockWebOrientation('portrait');
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   if (!course) return null;
 
   const isProtectedSurface = protectedMode;
@@ -4231,8 +4264,11 @@ const VideoPlayerScreen = ({
     youtubePlayerRef.current?.setPlaybackRate(speed);
     startYoutubeAutoHide();
   };
-  const openCustomEmbedFullscreen = () => {
-    playerShellRef.current?.requestFullscreen?.();
+  const openCustomEmbedFullscreen = async () => {
+    const nativeWindow = window as YoutubeWindow;
+    nativeWindow.Android?.lockLandscape?.();
+    await lockWebOrientation('landscape');
+    await playerShellRef.current?.requestFullscreen?.().catch(() => undefined);
   };
   const renderYoutubeControls = () => (
     <div className={`course-video-controls course-video-controls--pod ${youtubeControlsHidden ? 'hide' : ''}`} aria-label="Custom YouTube video controls">

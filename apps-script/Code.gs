@@ -14,7 +14,7 @@ const SHEET_HEADERS = {
   Enrollments: ['id', 'user_id', 'course_id', 'access_code', 'granted_at', 'expires_at', 'status'],
   Sliders: ['id', 'title', 'subtitle', 'image_url', 'drive_file_id', 'sort_order', 'is_active'],
   Courses: ['id', 'title', 'lessons', 'image', 'price', 'oldPrice', 'type', 'category', 'access_code'],
-  Lessons: ['id', 'course_id', 'title', 'duration', 'note_content', 'note_url', 'video_url', 'thumbnail_url', 'sort_order'],
+  Lessons: ['id', 'course_id', 'title', 'duration', 'note_content', 'note_url', 'video_url', 'thumbnail_url', 'download_url', 'download_label', 'download_enabled', 'sort_order'],
   Notes: ['id', 'title', 'lessons', 'category', 'type', 'url', 'content'],
   Quizzes: ['id', 'topic', 'type', 'sheet_name'],
   Questions: ['id', 'quiz_id', 'text', 'options', 'correctAnswer', 'explanation', 'image_url', 'option_images'],
@@ -397,7 +397,7 @@ function deleteCourse_(body) {
 }
 
 function createLesson_(body) {
-  validateRequired_(body, ['course_id', 'title', 'duration', 'video_url']);
+  validateRequired_(body, ['course_id', 'title', 'video_url']);
 
   var uploaded = saveContentImage_(body, 'video');
   const lesson = {
@@ -409,6 +409,9 @@ function createLesson_(body) {
     note_url: body.note_url || '',
     video_url: body.video_url,
     thumbnail_url: uploaded.imageUrl || body.thumbnail_url || '',
+    download_url: body.download_url || '',
+    download_label: body.download_label || '',
+    download_enabled: body.download_enabled === false ? false : true,
     sort_order: Number(body.sort_order || 0),
   };
 
@@ -417,7 +420,7 @@ function createLesson_(body) {
 }
 
 function updateLesson_(body) {
-  validateRequired_(body, ['id', 'course_id', 'title', 'duration', 'video_url']);
+  validateRequired_(body, ['id', 'course_id', 'title', 'video_url']);
 
   var currentLesson = readSheetObjects_(SHEET_NAMES.lessons).find(function(item) {
     return String(item.id) === String(body.id);
@@ -432,6 +435,9 @@ function updateLesson_(body) {
     note_url: body.note_url || '',
     video_url: body.video_url,
     thumbnail_url: uploaded.imageUrl || body.thumbnail_url || (currentLesson && currentLesson.thumbnail_url) || '',
+    download_url: body.download_url || '',
+    download_label: body.download_label || '',
+    download_enabled: body.download_enabled === false ? false : true,
     sort_order: Number(body.sort_order || 0),
   });
 

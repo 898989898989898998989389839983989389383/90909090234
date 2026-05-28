@@ -966,6 +966,28 @@ const upsertRows = async (
   }
 };
 
+const insertRowsIfMissing = async (
+  client: Pool | PoolClient,
+  table: string,
+  rows: Record<string, unknown>[],
+) => {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const columns = Object.keys(rows[0]);
+  const quotedColumns = columns.map((column) => `"${column}"`);
+
+  for (const row of rows) {
+    const values = columns.map((column) => row[column] ?? null);
+    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
+    await client.query(
+      `INSERT INTO "${table}" (${quotedColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT ("id") DO NOTHING`,
+      values,
+    );
+  }
+};
+
 const upsertRowsInBatches = async (
   client: Pool | PoolClient,
   table: string,
@@ -1261,11 +1283,11 @@ const seedDatabase = async (client: Pool | PoolClient) => {
   }
   await seedRowsIfEmpty(client, "lessons", seedLessons);
   await client.query(`DELETE FROM "lessons" WHERE "id" IN ('l6', 'l7', 'l8') AND "course_id" = '7'`);
-  await upsertRows(client, "lessons", fullChemistryCoursePlaylistLessons);
+  await insertRowsIfMissing(client, "lessons", fullChemistryCoursePlaylistLessons);
   await seedRowsIfEmpty(client, "notes", seedNotes);
   await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
   await client.query(`DELETE FROM "notes" WHERE "id" LIKE 'drive-folder-%'`);
-  await upsertRows(client, "notes", driveClass12Notes);
+  await insertRowsIfMissing(client, "notes", driveClass12Notes);
   await seedRowsIfEmpty(client, "quizzes", seedQuizzes);
   await upsertRows(client, "quizzes", nebQuestionBank.quizzes);
   await seedRowsIfEmpty(
