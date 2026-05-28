@@ -11428,7 +11428,9 @@ export default function App() {
         return;
       }
 
-      CapacitorApp.exitApp();
+      if (window.confirm('Exit RBS Academy?')) {
+        CapacitorApp.exitApp();
+      }
     }).then((handle) => {
       removeBackButtonListener = handle.remove;
     }).catch(() => {});

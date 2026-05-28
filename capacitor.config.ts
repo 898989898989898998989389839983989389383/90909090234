@@ -8,6 +8,7 @@ const config: CapacitorConfig = {
   appName: 'RBS Academy',
   webDir: 'dist',
   server: {
+    url: 'https://rbs-academy-current.vercel.app',
     androidScheme: 'https'
   },
   plugins: {

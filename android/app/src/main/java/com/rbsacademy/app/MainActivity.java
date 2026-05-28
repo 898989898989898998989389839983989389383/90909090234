@@ -10,7 +10,7 @@ import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private static final int WEBVIEW_CACHE_VERSION = 12;
+    private static final int WEBVIEW_CACHE_VERSION = 13;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
