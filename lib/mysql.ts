@@ -800,6 +800,7 @@ const seedSliders: SeedSlider[] = [
 ];
 
 const seedLiveClasses: SeedLiveClass[] = [];
+const removedDummyPremiumCourseIds = ["5", "7", "11", "21", "22", "23", "c1778073513478e4c7ae52", "c177807312799652cdba22"];
 
 let pool: Pool | null = null;
 let initPromise: Promise<void> | null = null;
@@ -1277,24 +1278,10 @@ const createSchema = async (client: Pool | PoolClient) => {
 
 const seedDatabase = async (client: Pool | PoolClient) => {
   const nebQuestionBank = createNebChemistryQuestionBank();
-  await seedRowsIfEmpty(client, "courses", seedCourses);
-  const nebCourse = seedCourses.find((course) => course.id === "5");
-  if (nebCourse) {
-    await client.query(
-      `UPDATE "courses" SET "title" = $1, "price" = $2, "oldPrice" = $3, "type" = $4, "category" = $5 WHERE "id" = $6`,
-      [nebCourse.title, nebCourse.price, nebCourse.oldPrice, nebCourse.type, nebCourse.category, nebCourse.id],
-    );
-  }
-  const fullChemistryCourse = seedCourses.find((course) => course.id === "7");
-  if (fullChemistryCourse) {
-    await client.query(
-      `UPDATE "courses" SET "lessons" = $1, "price" = $2, "oldPrice" = $3, "type" = $4 WHERE "id" = $5`,
-      [fullChemistryCourse.lessons, fullChemistryCourse.price, fullChemistryCourse.oldPrice, fullChemistryCourse.type, fullChemistryCourse.id],
-    );
-  }
-  await seedRowsIfEmpty(client, "lessons", seedLessons);
-  await client.query(`DELETE FROM "lessons" WHERE "id" IN ('l6', 'l7', 'l8') AND "course_id" = '7'`);
-  await insertRowsIfMissing(client, "lessons", fullChemistryCoursePlaylistLessons);
+  await client.query(`DELETE FROM "lessons" WHERE "course_id" = ANY($1::text[])`, [removedDummyPremiumCourseIds]);
+  await client.query(`DELETE FROM "enrollments" WHERE "course_id" = ANY($1::text[])`, [removedDummyPremiumCourseIds]);
+  await client.query(`UPDATE "live_classes" SET "course_id" = NULL WHERE "course_id" = ANY($1::text[])`, [removedDummyPremiumCourseIds]);
+  await client.query(`DELETE FROM "courses" WHERE "id" = ANY($1::text[])`, [removedDummyPremiumCourseIds]);
   await seedRowsIfEmpty(client, "notes", seedNotes);
   await client.query(`DELETE FROM "notes" WHERE "id" IN ('n1', 'n2', 'n3')`);
   await client.query(`DELETE FROM "notes" WHERE "id" LIKE 'drive-folder-%'`);

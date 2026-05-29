@@ -2496,6 +2496,12 @@ export const createApiApp = async () => {
       return;
     }
 
+    const course = await queryOne<DbCourse>("SELECT id FROM courses WHERE id = ?", [course_id]);
+    if (!course) {
+      res.status(404).json({ success: false, message: "Course not found. Refresh course builder and choose a valid course." });
+      return;
+    }
+
     const thumbnail_url = await saveContentImage(req.body || {}, "lessons", "video-thumbnail", "thumbnail_url");
     const id = createId("l");
     await execute(
@@ -2576,6 +2582,12 @@ export const createApiApp = async () => {
     const current = await queryOne<DbLesson>("SELECT * FROM lessons WHERE id = ?", [id]);
     if (!current) {
       res.status(404).json({ success: false, message: "Lesson not found" });
+      return;
+    }
+
+    const course = await queryOne<DbCourse>("SELECT id FROM courses WHERE id = ?", [course_id]);
+    if (!course) {
+      res.status(404).json({ success: false, message: "Course not found. Refresh course builder and choose a valid course." });
       return;
     }
 
