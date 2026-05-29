@@ -362,6 +362,8 @@ const DEVICE_ID_STORAGE_KEY = 'rbs-academy-device-id';
 const NOTIFICATION_SOUND_FILE = 'rbs_wow_tone.wav';
 const NOTIFICATION_CHANNEL_UPDATES = 'rbs-wow-updates';
 const NOTIFICATION_CHANNEL_COURSE_ACCESS = 'rbs-wow-course-access';
+const NOTIFICATION_CHANNEL_LIVE_CLASSES = 'rbs-wow-live-classes';
+const LIVE_CLASS_REMINDER_LEAD_MS = 15 * 60 * 1000;
 const DATA_REQUEST_TIMEOUT_MS = 8000;
 let interactionAudioContext: AudioContext | null = null;
 let lastInteractionSound: { type: 'tap' | 'back'; playedAt: number } | null = null;
@@ -2305,6 +2307,17 @@ const ensureNativeNotificationChannels = async () => {
         lightColor: '#0047AB',
         vibration: true,
       }),
+      LocalNotifications.createChannel({
+        id: NOTIFICATION_CHANNEL_LIVE_CLASSES,
+        name: 'Live Class Alerts',
+        description: 'Upcoming and starting live class reminders.',
+        importance: 5,
+        visibility: 1,
+        sound: NOTIFICATION_SOUND_FILE,
+        lights: true,
+        lightColor: '#0EA5E9',
+        vibration: true,
+      }),
     ]);
   }
 };
@@ -2372,6 +2385,93 @@ const showAppNotification = async (
     tag: String(extra.type || channelId),
     data: extra,
   });
+};
+
+const createStableNotificationId = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash % 2147480000) || 1;
+};
+
+const getLiveClassNotificationPayload = (liveClass: LiveClass, phase: 'reminder' | 'start') => ({
+  type: 'live-class-alert',
+  screen: 'live-classes',
+  liveClassId: liveClass.id,
+  phase,
+  notificationId: `live-class-${phase}-${liveClass.id}`,
+});
+
+const scheduleNativeLiveClassAlerts = async (liveClasses: LiveClass[]) => {
+  if (!isNativeLocalNotificationAvailable()) {
+    return false;
+  }
+
+  try {
+    await ensureNativeNotificationChannels();
+    let permission = await LocalNotifications.checkPermissions();
+    if (permission.display === 'prompt' || permission.display === 'prompt-with-rationale') {
+      permission = await LocalNotifications.requestPermissions();
+    }
+    if (permission.display !== 'granted') {
+      return false;
+    }
+
+    const now = Date.now();
+    const notifications = liveClasses.flatMap((liveClass) => {
+      if (!liveClass.is_active || !liveClass.scheduled_at || !isValidMeetingUrl(liveClass.meeting_url)) {
+        return [];
+      }
+
+      const startsAt = new Date(liveClass.scheduled_at).getTime();
+      if (!Number.isFinite(startsAt) || startsAt <= now + 30 * 1000) {
+        return [];
+      }
+
+      const reminderAt = startsAt - LIVE_CLASS_REMINDER_LEAD_MS;
+      const items = [];
+      if (reminderAt > now + 30 * 1000) {
+        items.push({
+          id: createStableNotificationId(`${liveClass.id}:reminder`),
+          title: `Live class soon: ${liveClass.title}`,
+          body: `Starts in 15 minutes. ${formatLiveClassDate(liveClass.scheduled_at)}`,
+          largeBody: `Your RBS Academy live class "${liveClass.title}" starts in 15 minutes.`,
+          schedule: { at: new Date(reminderAt) },
+          channelId: NOTIFICATION_CHANNEL_LIVE_CLASSES,
+          sound: NOTIFICATION_SOUND_FILE,
+          iconColor: '#0EA5E9',
+          autoCancel: true,
+          extra: getLiveClassNotificationPayload(liveClass, 'reminder'),
+        });
+      }
+
+      items.push({
+        id: createStableNotificationId(`${liveClass.id}:start`),
+        title: `Live class starting: ${liveClass.title}`,
+        body: 'Tap to open Live Classes and join now.',
+        largeBody: `Your RBS Academy live class "${liveClass.title}" is starting now.`,
+        schedule: { at: new Date(startsAt) },
+        channelId: NOTIFICATION_CHANNEL_LIVE_CLASSES,
+        sound: NOTIFICATION_SOUND_FILE,
+        iconColor: '#0EA5E9',
+        autoCancel: true,
+        extra: getLiveClassNotificationPayload(liveClass, 'start'),
+      });
+
+      return items;
+    });
+
+    if (!notifications.length) {
+      return true;
+    }
+
+    await LocalNotifications.schedule({ notifications });
+    return true;
+  } catch (error) {
+    console.error('Unable to schedule live class alerts:', error);
+    return false;
+  }
 };
 
 const requestAppNotifications = async () => {
@@ -11782,6 +11882,7 @@ export default function App() {
   const coursesRef = useRef<Course[]>(courses);
   const unlockedCourseIdsRef = useRef<string[]>(initialSessionUser?.grantedCourseIds || []);
   const notifiedCourseUnlockIdsRef = useRef<Set<string>>(new Set(initialSessionUser?.grantedCourseIds || []));
+  const liveClassAlertTimersRef = useRef<number[]>([]);
   const accessSyncReadyRef = useRef(false);
   const appControlNotificationKeyRef = useRef(`${cachedAppControlSettings.notificationId || ''}\n${cachedAppControlSettings.notificationTitle}\n${cachedAppControlSettings.notificationBody}`);
   const appControlSyncReadyRef = useRef(false);
@@ -12181,6 +12282,59 @@ export default function App() {
   useEffect(() => {
     coursesRef.current = courses;
   }, [courses]);
+
+  useEffect(() => {
+    if (isManagementRoute || !user?.id || !liveClasses.length) {
+      liveClassAlertTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      liveClassAlertTimersRef.current = [];
+      return;
+    }
+
+    scheduleNativeLiveClassAlerts(liveClasses).catch(() => {});
+
+    liveClassAlertTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    liveClassAlertTimersRef.current = [];
+
+    if (isNativeLocalNotificationAvailable() || !isNotificationSupported() || Notification.permission !== 'granted') {
+      return;
+    }
+
+    const now = Date.now();
+    liveClasses.forEach((liveClass) => {
+      if (!liveClass.is_active || !liveClass.scheduled_at || !isValidMeetingUrl(liveClass.meeting_url)) {
+        return;
+      }
+
+      const startsAt = new Date(liveClass.scheduled_at).getTime();
+      if (!Number.isFinite(startsAt) || startsAt <= now + 30 * 1000) {
+        return;
+      }
+
+      ([
+        { phase: 'reminder' as const, at: startsAt - LIVE_CLASS_REMINDER_LEAD_MS, title: `Live class soon: ${liveClass.title}`, body: `Starts in 15 minutes. ${formatLiveClassDate(liveClass.scheduled_at)}` },
+        { phase: 'start' as const, at: startsAt, title: `Live class starting: ${liveClass.title}`, body: 'Tap to open Live Classes and join now.' },
+      ]).forEach((alert) => {
+        const delay = alert.at - Date.now();
+        if (delay <= 30 * 1000 || delay > 24 * 60 * 60 * 1000) {
+          return;
+        }
+
+        const timerId = window.setTimeout(() => {
+          showLocalNotification(alert.title, {
+            body: alert.body,
+            tag: `live-class-${alert.phase}-${liveClass.id}`,
+            data: getLiveClassNotificationPayload(liveClass, alert.phase),
+          }).catch(() => {});
+        }, delay);
+        liveClassAlertTimersRef.current.push(timerId);
+      });
+    });
+
+    return () => {
+      liveClassAlertTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      liveClassAlertTimersRef.current = [];
+    };
+  }, [isManagementRoute, user?.id, liveClasses]);
 
   useEffect(() => {
     unlockedCourseIdsRef.current = unlockedCourseIds;
