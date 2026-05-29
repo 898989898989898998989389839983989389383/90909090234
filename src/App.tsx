@@ -363,6 +363,111 @@ const NOTIFICATION_SOUND_FILE = 'rbs_wow_tone.wav';
 const NOTIFICATION_CHANNEL_UPDATES = 'rbs-wow-updates';
 const NOTIFICATION_CHANNEL_COURSE_ACCESS = 'rbs-wow-course-access';
 const DATA_REQUEST_TIMEOUT_MS = 8000;
+let interactionAudioContext: AudioContext | null = null;
+let lastInteractionSound: { type: 'tap' | 'back'; playedAt: number } | null = null;
+
+const getInteractionAudioContext = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) {
+    return null;
+  }
+
+  if (!interactionAudioContext || interactionAudioContext.state === 'closed') {
+    interactionAudioContext = new AudioContextClass();
+  }
+
+  if (interactionAudioContext.state === 'suspended') {
+    interactionAudioContext.resume().catch(() => {});
+  }
+
+  return interactionAudioContext;
+};
+
+const playInteractionSound = (type: 'tap' | 'back') => {
+  const playedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (lastInteractionSound?.type === type && playedAt - lastInteractionSound.playedAt < 140) {
+    return;
+  }
+  lastInteractionSound = { type, playedAt };
+
+  const context = getInteractionAudioContext();
+  if (!context) {
+    return;
+  }
+
+  const now = context.currentTime;
+  const gain = context.createGain();
+  const filter = context.createBiquadFilter();
+  const oscillator = context.createOscillator();
+  const panner = typeof context.createStereoPanner === 'function' ? context.createStereoPanner() : null;
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(type === 'back' ? 1200 : 2600, now);
+  oscillator.type = type === 'back' ? 'triangle' : 'sine';
+  gain.gain.setValueAtTime(0.0001, now);
+
+  if (type === 'tap') {
+    oscillator.frequency.setValueAtTime(620, now);
+    oscillator.frequency.exponentialRampToValueAtTime(980, now + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.085, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+    panner?.pan.setValueAtTime(0.12, now);
+  } else {
+    oscillator.frequency.setValueAtTime(520, now);
+    oscillator.frequency.exponentialRampToValueAtTime(230, now + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    panner?.pan.setValueAtTime(-0.16, now);
+  }
+
+  oscillator.connect(filter);
+  filter.connect(gain);
+  if (panner) {
+    gain.connect(panner).connect(context.destination);
+  } else {
+    gain.connect(context.destination);
+  }
+
+  oscillator.start(now);
+  oscillator.stop(now + (type === 'back' ? 0.18 : 0.09));
+};
+
+const isInteractiveTapTarget = (target: EventTarget | null) => {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const element = target.closest('button, a, [role="button"], .nav-item, .admin-feature-card, .course-card, .note-card');
+  if (!element || element.getAttribute('data-sound') === 'off') {
+    return false;
+  }
+
+  if (element instanceof HTMLButtonElement && element.disabled) {
+    return false;
+  }
+
+  return true;
+};
+
+const isBackTapTarget = (target: EventTarget | null) => {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const button = target.closest('button, [role="button"]');
+  if (!button) {
+    return false;
+  }
+
+  const ariaLabel = button.getAttribute('aria-label') || '';
+  return /back/i.test(ariaLabel)
+    || /back/i.test(button.textContent || '')
+    || Boolean(button.querySelector('.lucide-arrow-left'));
+};
 const DEFAULT_APP_CONTROL_SETTINGS: AppControlSettings = {
   appName: 'RBS Academy',
   welcomeEnabled: true,
@@ -11733,6 +11838,8 @@ export default function App() {
   };
 
   const goBackOneStep = () => {
+    playInteractionSound('back');
+
     if (document.fullscreenElement) {
       void document.exitFullscreen?.();
       return;
@@ -11971,6 +12078,7 @@ export default function App() {
     }
 
     const handlePopState = (event: PopStateEvent) => {
+      playInteractionSound('back');
       const nextScreen = (event.state as { rbsAcademyScreen?: Screen } | null)?.rbsAcademyScreen;
       if (nextScreen) {
         restoringHistoryRef.current = true;
@@ -11987,6 +12095,26 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
+  }, [isManagementRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) {
+      return;
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (isBackTapTarget(event.target)) {
+        playInteractionSound('back');
+        return;
+      }
+
+      if (isInteractiveTapTarget(event.target)) {
+        playInteractionSound('tap');
+      }
+    };
+
+    document.addEventListener('pointerup', handlePointerUp, true);
+    return () => document.removeEventListener('pointerup', handlePointerUp, true);
   }, [isManagementRoute]);
 
   useEffect(() => {
