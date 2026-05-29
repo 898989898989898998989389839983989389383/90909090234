@@ -1,9 +1,11 @@
 package com.rbsacademy.app;
 
+import android.app.PictureInPictureParams;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Rational;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -157,6 +159,22 @@ public class MainActivity extends BridgeActivity {
                 videoFullscreenActive = false;
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
                 showSystemBars();
+            });
+        }
+
+        @JavascriptInterface
+        public void enterPipMode() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    return;
+                }
+
+                videoFullscreenActive = false;
+                showSystemBars();
+                PictureInPictureParams params = new PictureInPictureParams.Builder()
+                    .setAspectRatio(new Rational(16, 9))
+                    .build();
+                enterPictureInPictureMode(params);
             });
         }
     }

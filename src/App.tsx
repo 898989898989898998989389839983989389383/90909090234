@@ -37,6 +37,7 @@ import {
   ExternalLink,
   Headphones,
   Pause,
+  PictureInPicture2,
   Volume2,
   Waves,
   WifiOff,
@@ -100,6 +101,7 @@ type YoutubeWindow = Window & {
     unlockOrientation?: () => void;
     enterVideoFullscreen?: () => void;
     exitVideoFullscreen?: () => void;
+    enterPipMode?: () => void;
   };
 };
 
@@ -4299,6 +4301,16 @@ const VideoPlayerScreen = ({
       await document.exitFullscreen?.().catch(() => undefined);
     }
   };
+  const enterCustomEmbedPip = async () => {
+    if (!customEmbedStarted) {
+      startCustomEmbed();
+    }
+
+    setCustomEmbedFullscreen(false);
+    const nativeWindow = window as YoutubeWindow;
+    nativeWindow.Android?.enterPipMode?.();
+    await lockWebOrientation('portrait');
+  };
   const renderYoutubeControls = () => (
     <div className={`course-video-controls course-video-controls--pod ${youtubeControlsHidden ? 'hide' : ''}`} aria-label="Custom YouTube video controls">
       <button type="button" className="course-video-control-btn" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}>
@@ -4341,6 +4353,9 @@ const VideoPlayerScreen = ({
       </div>
       <button type="button" className="course-video-control-btn" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
         <Maximize size={17} />
+      </button>
+      <button type="button" className="course-video-control-btn" onClick={enterCustomEmbedPip} aria-label="Picture in picture">
+        <PictureInPicture2 size={17} />
       </button>
     </div>
   );
