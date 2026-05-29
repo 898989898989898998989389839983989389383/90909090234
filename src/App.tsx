@@ -980,6 +980,26 @@ const fullChemistryCoursePlaylistLessons: Lesson[] = [
 ];
 
 const dummyFullChemistryLessonIds = new Set(['l6', 'l7', 'l8']);
+const removedDummyPremiumCourseIds = new Set([
+  '5',
+  '7',
+  '11',
+  '21',
+  '22',
+  '23',
+  'c1778073513478e4c7ae52',
+  'c177807312799652cdba22',
+]);
+const removedDummyPremiumCourseTitles = new Set([
+  'chemistry crash course 30 days',
+  'physical chemistry problem solving',
+  'inorganic chemistry revision batch',
+  'tollens test',
+  'class 11 full chemistry',
+  'class 11 hemistry',
+  'neb chemistry: organic chemistry',
+  'full chemistry course',
+]);
 
 const fallbackCourses: Course[] = [
   {
@@ -1064,12 +1084,18 @@ const withFullChemistryPlaylistLessons = (courses: Course[]) => courses.map((cou
   };
 });
 
+const removeDeletedDummyPremiumCourses = (courses: Course[]) => (courses || []).filter((course) => {
+  const id = String(course.id || '').trim();
+  const title = String(course.title || '').trim().toLowerCase();
+  return !removedDummyPremiumCourseIds.has(id) && !removedDummyPremiumCourseTitles.has(title);
+});
+
 const filterChemistryAppData = (payload: {
   courses: Course[];
   notes: Note[];
   quizzes: Quiz[];
 }) => ({
-  courses: withFullChemistryPlaylistLessons(payload.courses || []),
+  courses: withFullChemistryPlaylistLessons(removeDeletedDummyPremiumCourses(payload.courses || [])),
   notes: payload.notes || [],
   quizzes: payload.quizzes || [],
 });
