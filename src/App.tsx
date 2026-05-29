@@ -7071,6 +7071,11 @@ const AdminPanelScreen = ({
   download_enabled: true,
   sort_order: '0',
 });
+  const [playlistImportForm, setPlaylistImportForm] = useState({
+    course_id: '',
+    playlist_url: '',
+    start_order: '',
+  });
   const [courseThumbnailFile, setCourseThumbnailFile] = useState<File | null>(null);
   const [lessonThumbnailFile, setLessonThumbnailFile] = useState<File | null>(null);
   const [courseThumbnailPreviewUrl, setCourseThumbnailPreviewUrl] = useState('');
@@ -8333,6 +8338,42 @@ const AdminPanelScreen = ({
             : 'Video thumbnail upload failed. Check Cloudinary configuration.'
           : 'Unable to save lesson'
       );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitPlaylistImport = async () => {
+    const courseId = playlistImportForm.course_id || selectedManagedCourseId || managedCourse?.id || '';
+    if (!courseId) {
+      setMessage('Choose a course before importing a YouTube playlist');
+      return;
+    }
+
+    if (!playlistImportForm.playlist_url.trim()) {
+      setMessage('Paste a valid YouTube playlist URL');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await apiPost('importYoutubePlaylist', {
+        course_id: courseId,
+        playlist_url: playlistImportForm.playlist_url.trim(),
+        start_order: playlistImportForm.start_order ? Number(playlistImportForm.start_order) : undefined,
+      });
+      const data = await readJsonResponse(response);
+      if (!data.success) {
+        setMessage(data.message || 'Unable to import YouTube playlist');
+        return;
+      }
+
+      setPlaylistImportForm({ course_id: courseId, playlist_url: '', start_order: '' });
+      await onRefresh();
+      setMessage(data.message || 'YouTube playlist imported successfully');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to import YouTube playlist');
     } finally {
       setLoading(false);
     }
@@ -9620,6 +9661,7 @@ const AdminPanelScreen = ({
                     const courseId = event.target.value;
                     setSelectedManagedCourseId(courseId);
                     setLessonForm((current) => ({ ...current, course_id: courseId, sort_order: '1' }));
+                    setPlaylistImportForm((current) => ({ ...current, course_id: courseId }));
                     setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
                   }}
                 >
@@ -9638,6 +9680,36 @@ const AdminPanelScreen = ({
                       <div>
                         <strong>Add videos to {managedCourse.title}</strong>
                         <span>{managedCourseLessons.length} videos added</span>
+                      </div>
+                    </div>
+                    <div className="admin-video-custom-control mb-4">
+                      <div className="admin-course-workspace-title">
+                        <Play size={18} />
+                        <div>
+                          <strong>Import YouTube playlist</strong>
+                          <span>Paste a public playlist link. All videos will become ordered lessons in this course.</span>
+                        </div>
+                      </div>
+                      <input
+                        value={playlistImportForm.course_id === managedCourse.id ? playlistImportForm.playlist_url : ''}
+                        onChange={(event) => setPlaylistImportForm({ ...playlistImportForm, course_id: managedCourse.id, playlist_url: event.target.value })}
+                        placeholder="https://www.youtube.com/playlist?list=..."
+                      />
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <input
+                          inputMode="numeric"
+                          value={playlistImportForm.course_id === managedCourse.id ? playlistImportForm.start_order : ''}
+                          onChange={(event) => setPlaylistImportForm({ ...playlistImportForm, course_id: managedCourse.id, start_order: event.target.value.replace(/[^\d]/g, '') })}
+                          placeholder={`Start order optional, next is ${managedCourseLessons.length + 1}`}
+                        />
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={submitPlaylistImport}
+                          className="admin-secondary-button px-5 py-3 text-sm font-bold"
+                        >
+                          {loading ? 'Importing...' : 'Import Playlist'}
+                        </button>
                       </div>
                     </div>
                     <div className="admin-course-mini-form">

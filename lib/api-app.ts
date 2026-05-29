@@ -331,6 +331,72 @@ const normalizeQuestion = (question: Partial<DbQuestion> & { options?: unknown }
   explanation: String(question.explanation || ""),
 });
 
+const decodeXmlEntity = (value: string) => value
+  .replace(/&amp;/g, "&")
+  .replace(/&lt;/g, "<")
+  .replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"')
+  .replace(/&#39;/g, "'")
+  .replace(/&#x27;/g, "'")
+  .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)))
+  .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(parseInt(code, 10)));
+
+const extractXmlTagValue = (entry: string, tagName: string) => {
+  const match = entry.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "i"));
+  return match ? decodeXmlEntity(match[1].trim()) : "";
+};
+
+const extractYoutubePlaylistId = (value: unknown) => {
+  const url = String(value || "").trim();
+  if (!url) return "";
+
+  try {
+    const parsedUrl = new URL(url);
+    const listId = parsedUrl.searchParams.get("list");
+    if (listId) return listId.trim();
+    if (/youtube\.com$/i.test(parsedUrl.hostname) || /youtube\.com$/i.test(parsedUrl.hostname.replace(/^www\./, ""))) {
+      const pathMatch = parsedUrl.pathname.match(/\/playlist\/([^/?]+)/i);
+      if (pathMatch?.[1]) return pathMatch[1].trim();
+    }
+  } catch {}
+
+  return /^[A-Za-z0-9_-]{10,}$/.test(url) ? url : "";
+};
+
+const youtubeEmbedUrl = (videoId: string) => `https://www.youtube-nocookie.com/embed/${videoId}`;
+const youtubeThumbnailUrl = (videoId: string) => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+const fetchYoutubePlaylistItems = async (playlistUrl: unknown) => {
+  const playlistId = extractYoutubePlaylistId(playlistUrl);
+  if (!playlistId) {
+    throw new Error("Paste a valid YouTube playlist URL");
+  }
+
+  const response = await fetch(`https://www.youtube.com/feeds/videos.xml?playlist_id=${encodeURIComponent(playlistId)}`);
+  if (!response.ok) {
+    throw new Error("Unable to read this YouTube playlist. Make sure it is public.");
+  }
+
+  const xml = await response.text();
+  const entries = xml.match(/<entry>[\s\S]*?<\/entry>/gi) || [];
+  const items = entries.map((entry) => {
+    const videoId = extractXmlTagValue(entry, "yt:videoId");
+    const title = extractXmlTagValue(entry, "media:title") || extractXmlTagValue(entry, "title") || "YouTube lesson";
+    const thumbnail = entry.match(/<media:thumbnail[^>]*url="([^"]+)"/i)?.[1] || "";
+    return {
+      videoId,
+      title,
+      thumbnail_url: decodeXmlEntity(thumbnail || youtubeThumbnailUrl(videoId)),
+    };
+  }).filter((item) => item.videoId);
+
+  if (!items.length) {
+    throw new Error("No public videos found in this playlist");
+  }
+
+  return items;
+};
+
 const normalizeSlider = (slider: Partial<DbSlider>) => ({
   ...slider,
   sort_order: Number(slider.sort_order || 0),
@@ -2437,6 +2503,67 @@ export const createApiApp = async () => {
       [id, course_id, title, duration || "", note_content || "", note_url || "", video_url || "", thumbnail_url || "", download_url || "", download_label || "", download_enabled === false ? false : true, Number(sort_order || 0)],
     );
     res.status(201).json({ success: true, message: "Lesson created" });
+  }));
+
+  app.post("/api/importYoutubePlaylist", requireAdmin(), asyncHandler(async (req, res) => {
+    const { course_id, playlist_url, start_order } = req.body || {};
+    const normalizedCourseId = String(course_id || "").trim();
+    if (!normalizedCourseId || !String(playlist_url || "").trim()) {
+      res.status(400).json({ success: false, message: "Course and YouTube playlist URL are required" });
+      return;
+    }
+
+    const course = await queryOne<DbCourse>("SELECT * FROM courses WHERE id = ?", [normalizedCourseId]);
+    if (!course) {
+      res.status(404).json({ success: false, message: "Course not found" });
+      return;
+    }
+
+    const playlistItems = await fetchYoutubePlaylistItems(playlist_url);
+    const existingLessons = await queryRows<DbLesson>("SELECT video_url, sort_order FROM lessons WHERE course_id = ?", [normalizedCourseId]);
+    const existingVideoIds = new Set(
+      existingLessons
+        .map((lesson) => String(lesson.video_url || "").match(/(?:embed\/|watch\?v=|youtu\.be\/)([^?&/]+)/i)?.[1] || "")
+        .filter(Boolean),
+    );
+    const maxSortOrder = existingLessons.reduce((max, lesson) => Math.max(max, Number(lesson.sort_order || 0)), 0);
+    const firstSortOrder = Number(start_order || 0) > 0 ? Number(start_order) : maxSortOrder + 1;
+    const importedItems = playlistItems.filter((item) => !existingVideoIds.has(item.videoId));
+
+    if (!importedItems.length) {
+      res.json({ success: true, message: "Playlist videos already exist in this course", imported: 0 });
+      return;
+    }
+
+    await withTransaction(async (connection) => {
+      for (const [index, item] of importedItems.entries()) {
+        await connection.execute(
+          "INSERT INTO lessons (id, course_id, title, duration, note_content, note_url, video_url, thumbnail_url, download_url, download_label, download_enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [
+            createId("l"),
+            normalizedCourseId,
+            item.title,
+            "",
+            "",
+            "",
+            youtubeEmbedUrl(item.videoId),
+            item.thumbnail_url,
+            "",
+            "",
+            true,
+            firstSortOrder + index,
+          ],
+        );
+      }
+
+      const [totalLessons] = await connection.query<RowDataPacket>(
+        "SELECT COUNT(*)::int AS count FROM lessons WHERE course_id = ?",
+        [normalizedCourseId],
+      );
+      await connection.execute("UPDATE courses SET lessons = ? WHERE id = ?", [Number(totalLessons[0]?.count || 0), normalizedCourseId]);
+    });
+
+    res.status(201).json({ success: true, message: `${importedItems.length} playlist videos imported`, imported: importedItems.length });
   }));
 
   app.post("/api/updateLesson", requireAdmin(), asyncHandler(async (req, res) => {
