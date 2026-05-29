@@ -5183,8 +5183,6 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
   const [showResults, setShowResults] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
-  const [jsonQuizText, setJsonQuizText] = useState('');
-  const [jsonQuizError, setJsonQuizError] = useState('');
   const quizContentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -5214,48 +5212,6 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
 
   const handleStartQuiz = () => {
     setIsQuizStarted(true);
-  };
-
-  const resetQuizProgress = (quiz: Quiz | null = selectedQuiz) => {
-    setSelectedQuiz(quiz);
-    setCurrentQuestionIndex(0);
-    setScore(0);
-    setShowResults(false);
-    setSelectedOption(null);
-    setIsAnswered(false);
-  };
-
-  const loadJsonQuiz = (rawJson: string) => {
-    try {
-      const parsedJson = JSON.parse(rawJson);
-      const importedQuestions = normalizeImportedQuestions(parsedJson);
-      const firstQuestion = importedQuestions[0];
-      const nextQuiz: Quiz = {
-        id: `json-${Date.now()}`,
-        topic: firstQuestion.subject || firstQuestion.chapter || 'JSON Quiz',
-        questions: importedQuestions.map((question, index) => ({
-          id: String((question as any).id || `json-q-${index + 1}`),
-          quiz_id: 'json-renderer',
-          ...question,
-        })),
-      };
-
-      setJsonQuizError('');
-      setJsonQuizText(rawJson);
-      resetQuizProgress(nextQuiz);
-      setIsQuizStarted(true);
-    } catch (error) {
-      setJsonQuizError(error instanceof Error ? error.message : 'Invalid quiz JSON');
-    }
-  };
-
-  const handleJsonQuizFile = async (file?: File | null) => {
-    if (!file) return;
-    try {
-      loadJsonQuiz(await fileToText(file));
-    } catch {
-      setJsonQuizError('Unable to read quiz JSON file');
-    }
   };
 
   const handleOptionSelect = (index: number) => {
@@ -5310,40 +5266,6 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
       >
         <SectionHeader title="Choose Subject" />
         <p className="text-xs text-gray-500 mb-6 -mt-4">Select a subject to test your knowledge</p>
-        <div className="mb-5 rounded-[28px] border border-blue-100 bg-[linear-gradient(145deg,#eff8ff,#ffffff)] p-4 shadow-lg shadow-blue-100/50">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white">
-              <Upload size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-black text-slate-900">Render JSON Quiz</h3>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">Upload or paste existing JSON. MathJax, image options, answers, and explanations render directly.</p>
-            </div>
-          </div>
-          <label className="mt-4 block rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-4 text-sm text-slate-500">
-            <span className="mb-2 block font-bold text-slate-800">Upload JSON file</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => handleJsonQuizFile(event.target.files?.[0] || null)}
-              className="block w-full text-sm"
-            />
-          </label>
-          <textarea
-            value={jsonQuizText}
-            onChange={(event) => setJsonQuizText(event.target.value)}
-            placeholder='Paste quiz JSON here. Supports one object or an array.'
-            className="mt-3 min-h-32 w-full rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary"
-          />
-          {jsonQuizError && <div className="mt-2 rounded-2xl bg-red-50 px-4 py-3 text-xs font-bold text-red-700">{jsonQuizError}</div>}
-          <button
-            type="button"
-            onClick={() => loadJsonQuiz(jsonQuizText)}
-            className="mt-3 w-full rounded-2xl bg-primary px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-100"
-          >
-            Render JSON Quiz
-          </button>
-        </div>
         <div className="grid grid-cols-1 gap-4">
           {quizzes.map((quiz) => (
             <button 
