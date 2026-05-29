@@ -320,7 +320,12 @@ const isValidMeetingUrl = (value: unknown) => {
 
 const normalizeQuestion = (question: Partial<DbQuestion> & { options?: unknown }) => ({
   ...question,
-  options: parseJsonArray(question.options).map((option) => String(option)),
+  options: parseJsonArray(question.options).map((option) => {
+    if (option && typeof option === "object") {
+      return option;
+    }
+    return String(option);
+  }),
   correctAnswer: Number(question.correctAnswer || 0),
   image_url: String(question.image_url || ""),
   explanation: String(question.explanation || ""),
@@ -1137,13 +1142,50 @@ const getImportedQuestionSource = (payload: unknown) => {
     questions?: unknown[];
     quiz?: { questions?: unknown[] };
     data?: { questions?: unknown[] };
+    question?: unknown;
+    text?: unknown;
+    title?: unknown;
   };
-  return record.questions || record.quiz?.questions || record.data?.questions || [];
+  if (record.questions || record.quiz?.questions || record.data?.questions) {
+    return record.questions || record.quiz?.questions || record.data?.questions || [];
+  }
+  return record.question || record.text || record.title ? [record] : [];
+};
+
+const getQuizOptionText = (option: unknown) => {
+  if (option && typeof option === "object") {
+    const record = option as Record<string, unknown>;
+    const type = String(record.type || "").toLowerCase();
+    return String(record.text || record.label || record.option || (type !== "image" ? record.value : "") || "").trim();
+  }
+
+  return String(option || "").trim();
+};
+
+const normalizeStoredQuizOption = (option: unknown) => {
+  if (option && typeof option === "object") {
+    const record = option as Record<string, unknown>;
+    const type = String(record.type || "").trim();
+    const value = String(record.value || "").trim();
+    const imageUrl = String(record.image_url || record.imageUrl || record.image || (type.toLowerCase() === "image" ? value : "")).trim();
+    const text = String(record.text || record.label || record.option || (type.toLowerCase() !== "image" ? value : "")).trim();
+    if (imageUrl && !text) {
+      return { type: "image", value: imageUrl };
+    }
+    if (imageUrl) {
+      return { type: type || "text", value: text, image_url: imageUrl };
+    }
+    return text;
+  }
+
+  return String(option || "").trim();
 };
 
 const getImportedQuestionOptions = (record: Record<string, unknown>) => {
   if (Array.isArray(record.options)) {
-    return record.options.map((option) => String(option).trim()).filter(Boolean);
+    return record.options
+      .map((option) => normalizeStoredQuizOption(option))
+      .filter((option) => getQuizOptionText(option));
   }
   return [
     record.option1,
@@ -1171,7 +1213,7 @@ const normalizeImportedQuestions = (payload: unknown) => {
     const options = getImportedQuestionOptions(record);
     const explanation = String(record.explanation || "").trim();
     const image_url = String(record.image_url || record.imageUrl || record.image || record.questionImage || "").trim();
-    const answerValue = record.correctAnswer ?? record.answer ?? record.correct_option ?? record.correctOption ?? record.correct ?? 0;
+    const answerValue = record.correct_answer ?? record.correctAnswer ?? record.answer ?? record.correct_option ?? record.correctOption ?? record.correct ?? 0;
 
     let correctAnswer = 0;
     if (typeof answerValue === "number" && Number.isFinite(answerValue)) {
@@ -1182,7 +1224,7 @@ const normalizeImportedQuestions = (payload: unknown) => {
       if (/^[A-E]$/.test(normalizedLetter)) {
         correctAnswer = normalizedLetter.charCodeAt(0) - 65;
       } else {
-        const optionIndex = options.findIndex((option) => option.toLowerCase() === normalizedAnswer.toLowerCase());
+        const optionIndex = options.findIndex((option) => getQuizOptionText(option).toLowerCase() === normalizedAnswer.toLowerCase());
         correctAnswer = optionIndex >= 0 ? optionIndex : Number(normalizedAnswer) || 0;
       }
     }
@@ -2510,7 +2552,7 @@ export const createApiApp = async () => {
       return;
     }
 
-    const normalizedOptions = options.map((option: unknown) => String(option).trim()).filter(Boolean);
+    const normalizedOptions = options.map((option: unknown) => normalizeStoredQuizOption(option)).filter((option: unknown) => getQuizOptionText(option));
     const normalizedCorrectAnswer = Number(correctAnswer ?? 0);
     if (!Number.isInteger(normalizedCorrectAnswer) || normalizedCorrectAnswer < 0 || normalizedCorrectAnswer >= normalizedOptions.length) {
       res.status(400).json({ success: false, message: "Correct answer must match one of the provided options" });
@@ -2564,7 +2606,7 @@ export const createApiApp = async () => {
       return;
     }
 
-    const normalizedOptions = options.map((option: unknown) => String(option).trim()).filter(Boolean);
+    const normalizedOptions = options.map((option: unknown) => normalizeStoredQuizOption(option)).filter((option: unknown) => getQuizOptionText(option));
     const normalizedCorrectAnswer = Number(correctAnswer ?? 0);
     if (!Number.isInteger(normalizedCorrectAnswer) || normalizedCorrectAnswer < 0 || normalizedCorrectAnswer >= normalizedOptions.length) {
       res.status(400).json({ success: false, message: "Correct answer must match one of the provided options" });

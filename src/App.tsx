@@ -58,6 +58,14 @@ import { Browser } from '@capacitor/browser';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+declare global {
+  interface Window {
+    MathJax?: {
+      typesetPromise?: (elements?: HTMLElement[]) => Promise<void>;
+    };
+  }
+}
+
 // --- Types ---
 type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
 
@@ -149,13 +157,30 @@ interface Note {
   content?: string;
 }
 
+type QuizOption = string | {
+  type?: string;
+  value?: string;
+  text?: string;
+  label?: string;
+  option?: string;
+  image_url?: string;
+  imageUrl?: string;
+  image?: string;
+};
+
 interface Question {
   id: string;
   quiz_id?: string;
   text: string;
-  options: string[];
+  question?: string;
+  subject?: string;
+  chapter?: string;
+  question_type?: string;
+  difficulty?: string;
+  options: QuizOption[];
   option_images?: string[];
   correctAnswer: number;
+  correct_answer?: number;
   explanation?: string;
   image_url?: string;
 }
@@ -5027,6 +5052,13 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
   const [showResults, setShowResults] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [jsonQuizText, setJsonQuizText] = useState('');
+  const [jsonQuizError, setJsonQuizError] = useState('');
+  const quizContentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    typesetMath(quizContentRef.current);
+  }, [selectedQuiz, currentQuestionIndex, isAnswered]);
 
   const playSound = (type: 'correct' | 'incorrect') => {
     const correctSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3');
@@ -5053,13 +5085,55 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
     setIsQuizStarted(true);
   };
 
+  const resetQuizProgress = (quiz: Quiz | null = selectedQuiz) => {
+    setSelectedQuiz(quiz);
+    setCurrentQuestionIndex(0);
+    setScore(0);
+    setShowResults(false);
+    setSelectedOption(null);
+    setIsAnswered(false);
+  };
+
+  const loadJsonQuiz = (rawJson: string) => {
+    try {
+      const parsedJson = JSON.parse(rawJson);
+      const importedQuestions = normalizeImportedQuestions(parsedJson);
+      const firstQuestion = importedQuestions[0];
+      const nextQuiz: Quiz = {
+        id: `json-${Date.now()}`,
+        topic: firstQuestion.subject || firstQuestion.chapter || 'JSON Quiz',
+        questions: importedQuestions.map((question, index) => ({
+          id: String((question as any).id || `json-q-${index + 1}`),
+          quiz_id: 'json-renderer',
+          ...question,
+        })),
+      };
+
+      setJsonQuizError('');
+      setJsonQuizText(rawJson);
+      resetQuizProgress(nextQuiz);
+      setIsQuizStarted(true);
+    } catch (error) {
+      setJsonQuizError(error instanceof Error ? error.message : 'Invalid quiz JSON');
+    }
+  };
+
+  const handleJsonQuizFile = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      loadJsonQuiz(await fileToText(file));
+    } catch {
+      setJsonQuizError('Unable to read quiz JSON file');
+    }
+  };
+
   const handleOptionSelect = (index: number) => {
     if (isAnswered) return;
     
     setSelectedOption(index);
     setIsAnswered(true);
     
-    const isCorrect = index === selectedQuiz?.questions[currentQuestionIndex].correctAnswer;
+    const isCorrect = index === getQuestionCorrectAnswer(selectedQuiz?.questions[currentQuestionIndex] || {});
     if (isCorrect) {
       setScore(prev => prev + 1);
       playSound('correct');
@@ -5075,6 +5149,14 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
       setIsAnswered(false);
     } else {
       setShowResults(true);
+    }
+  };
+
+  const handlePreviousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+      setSelectedOption(null);
+      setIsAnswered(false);
     }
   };
 
@@ -5097,6 +5179,40 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
       >
         <SectionHeader title="Choose Subject" />
         <p className="text-xs text-gray-500 mb-6 -mt-4">Select a subject to test your knowledge</p>
+        <div className="mb-5 rounded-[28px] border border-blue-100 bg-[linear-gradient(145deg,#eff8ff,#ffffff)] p-4 shadow-lg shadow-blue-100/50">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white">
+              <Upload size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-black text-slate-900">Render JSON Quiz</h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">Upload or paste existing JSON. MathJax, image options, answers, and explanations render directly.</p>
+            </div>
+          </div>
+          <label className="mt-4 block rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-4 text-sm text-slate-500">
+            <span className="mb-2 block font-bold text-slate-800">Upload JSON file</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => handleJsonQuizFile(event.target.files?.[0] || null)}
+              className="block w-full text-sm"
+            />
+          </label>
+          <textarea
+            value={jsonQuizText}
+            onChange={(event) => setJsonQuizText(event.target.value)}
+            placeholder='Paste quiz JSON here. Supports one object or an array.'
+            className="mt-3 min-h-32 w-full rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary"
+          />
+          {jsonQuizError && <div className="mt-2 rounded-2xl bg-red-50 px-4 py-3 text-xs font-bold text-red-700">{jsonQuizError}</div>}
+          <button
+            type="button"
+            onClick={() => loadJsonQuiz(jsonQuizText)}
+            className="mt-3 w-full rounded-2xl bg-primary px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-100"
+          >
+            Render JSON Quiz
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-4">
           {quizzes.map((quiz) => (
             <button 
@@ -5185,9 +5301,11 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
 
   const currentQuestion = selectedQuiz.questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / selectedQuiz.questions.length) * 100;
+  const currentCorrectAnswer = getQuestionCorrectAnswer(currentQuestion);
 
   return (
     <motion.div 
+      ref={quizContentRef}
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
       className="flex-1 flex flex-col p-4 overflow-y-auto pb-24"
@@ -5207,7 +5325,29 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
       </div>
 
       <div className="flex-1">
-        <h2 className="text-xl font-bold text-gray-800 mb-8">{currentQuestion.text}</h2>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(currentQuestion.subject || selectedQuiz.topic) && (
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-blue-700">
+              {currentQuestion.subject || selectedQuiz.topic}
+            </span>
+          )}
+          {currentQuestion.chapter && (
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-sky-700">
+              {currentQuestion.chapter}
+            </span>
+          )}
+          {currentQuestion.difficulty && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-slate-600">
+              {currentQuestion.difficulty}
+            </span>
+          )}
+          {currentQuestion.question_type && (
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-indigo-700">
+              {currentQuestion.question_type}
+            </span>
+          )}
+        </div>
+        <h2 className="text-xl font-bold text-gray-800 mb-8">{renderMathText(getQuestionText(currentQuestion))}</h2>
         {currentQuestion.image_url && (
           <div className="mb-6 overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
             <img
@@ -5221,9 +5361,12 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
         <div className="space-y-3">
           {currentQuestion.options.map((option, idx) => {
             const optionImage = currentQuestion.option_images?.[idx];
+            const optionType = getQuizOptionType(option, optionImage);
+            const optionText = getQuizOptionText(option);
+            const optionImageUrl = getQuizOptionImage(option, optionImage);
             let variant = 'default';
             if (isAnswered) {
-              if (idx === currentQuestion.correctAnswer) variant = 'correct';
+              if (idx === currentCorrectAnswer) variant = 'correct';
               else if (idx === selectedOption) variant = 'incorrect';
             }
 
@@ -5249,11 +5392,13 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
                     {String.fromCharCode(65 + idx)}
                   </div>
                   <div className="min-w-0">
-                    <span className="font-medium block">{option}</span>
-                    {optionImage && (
+                    {optionType !== 'image' && optionText && (
+                      <span className="font-medium block">{renderMathText(optionText)}</span>
+                    )}
+                    {optionImageUrl && (
                       <img
-                        src={optionImage}
-                        alt={`${option} option`}
+                        src={optionImageUrl}
+                        alt={optionText || `Option ${idx + 1}`}
                         className="mt-3 w-full max-w-[180px] rounded-2xl border border-gray-100 object-contain bg-slate-50"
                         referrerPolicy="no-referrer"
                       />
@@ -5273,16 +5418,16 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`mt-6 p-4 rounded-xl border ${
-                selectedOption === currentQuestion.correctAnswer 
+                selectedOption === currentCorrectAnswer 
                   ? 'bg-green-50 border-green-100' 
                   : 'bg-red-50 border-red-100'
               }`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className={`flex items-center gap-2 font-bold text-sm ${
-                  selectedOption === currentQuestion.correctAnswer ? 'text-green-700' : 'text-red-700'
+                  selectedOption === currentCorrectAnswer ? 'text-green-700' : 'text-red-700'
                 }`}>
-                  {selectedOption === currentQuestion.correctAnswer ? (
+                  {selectedOption === currentCorrectAnswer ? (
                     <><CheckCircle2 size={18} /> Correct Answer!</>
                   ) : (
                     <><XCircle size={18} /> Wrong Answer!</>
@@ -5297,9 +5442,9 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
                   Explanation
                 </div>
                 <p className={`text-sm leading-relaxed ${
-                  selectedOption === currentQuestion.correctAnswer ? 'text-green-800/80' : 'text-red-800/80'
+                  selectedOption === currentCorrectAnswer ? 'text-green-800/80' : 'text-red-800/80'
                 }`}>
-                  {currentQuestion.explanation || "No explanation available for this question."}
+                  {renderMathText(currentQuestion.explanation || "No explanation available for this question.")}
                 </p>
               </div>
             </motion.div>
@@ -5307,18 +5452,29 @@ const QuizScreen = ({ quizzes, initialQuiz }: { quizzes: Quiz[], initialQuiz?: Q
         </AnimatePresence>
       </div>
 
-      <button 
-        disabled={!isAnswered}
-        onClick={handleNextQuestion}
-        className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
-          !isAnswered 
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-            : 'bg-primary text-white shadow-lg shadow-blue-100'
-        }`}
-      >
-        {currentQuestionIndex + 1 === selectedQuiz.questions.length ? 'Finish Quiz' : 'Next Question'}
-        <ArrowRight size={18} />
-      </button>
+      <div className="mt-8 grid grid-cols-2 gap-3">
+        <button
+          disabled={currentQuestionIndex === 0}
+          onClick={handlePreviousQuestion}
+          className={`w-full rounded-xl py-4 font-bold transition-all ${
+            currentQuestionIndex === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-primary border border-blue-100'
+          }`}
+        >
+          Previous
+        </button>
+        <button 
+          disabled={!isAnswered}
+          onClick={handleNextQuestion}
+          className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+            !isAnswered 
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+              : 'bg-primary text-white shadow-lg shadow-blue-100'
+          }`}
+        >
+          {currentQuestionIndex + 1 === selectedQuiz.questions.length ? 'Finish Quiz' : 'Next'}
+          <ArrowRight size={18} />
+        </button>
+      </div>
     </motion.div>
   );
 };
@@ -6261,6 +6417,46 @@ const fileToText = (file: File) =>
     reader.readAsText(file);
   });
 
+const getQuizOptionText = (option: QuizOption) => {
+  if (option && typeof option === 'object') {
+    return String(option.text || option.label || option.option || option.value || '').trim();
+  }
+
+  return String(option || '').trim();
+};
+
+const getQuizOptionImage = (option: QuizOption, fallback = '') => {
+  if (option && typeof option === 'object') {
+    const type = String(option.type || '').toLowerCase();
+    const value = String(option.value || '').trim();
+    return String(option.image_url || option.imageUrl || option.image || (type === 'image' ? value : '') || fallback || '').trim();
+  }
+
+  return String(fallback || '').trim();
+};
+
+const getQuizOptionType = (option: QuizOption, fallbackImage = '') => {
+  if (option && typeof option === 'object' && option.type) {
+    return String(option.type).toLowerCase();
+  }
+
+  return getQuizOptionImage(option, fallbackImage) ? 'image' : 'text';
+};
+
+const getQuestionText = (question: Partial<Question>) =>
+  String(question.question || question.text || '').trim();
+
+const getQuestionCorrectAnswer = (question: Partial<Question>) =>
+  Number(question.correct_answer ?? question.correctAnswer ?? 0);
+
+const renderMathText = (value?: string) => (
+  <span>{String(value || '')}</span>
+);
+
+const typesetMath = (element?: HTMLElement | null) => {
+  window.MathJax?.typesetPromise?.(element ? [element] : undefined).catch(() => {});
+};
+
 const getImportedQuestionSource = (payload: unknown) => {
   if (Array.isArray(payload)) {
     return payload;
@@ -6270,6 +6466,9 @@ const getImportedQuestionSource = (payload: unknown) => {
     questions?: unknown[];
     quiz?: { questions?: unknown[] };
     data?: { questions?: unknown[] };
+    question?: unknown;
+    text?: unknown;
+    title?: unknown;
   };
 
   if (Array.isArray(record.questions)) {
@@ -6284,6 +6483,10 @@ const getImportedQuestionSource = (payload: unknown) => {
     return record.data.questions;
   }
 
+  if (record.question || record.text || record.title) {
+    return [record];
+  }
+
   return [];
 };
 
@@ -6292,20 +6495,26 @@ const getImportedQuestionOptions = (record: Record<string, unknown>) => {
     const options = record.options.map((option) => {
       if (option && typeof option === 'object') {
         const item = option as Record<string, unknown>;
+        const type = String(item.type || '').trim();
+        const value = String(item.value || '').trim();
+        const imageUrl = String(item.image_url || item.image || item.imageUrl || (type.toLowerCase() === 'image' ? value : '')).trim();
+        const text = String(item.text || item.label || item.option || (type.toLowerCase() !== 'image' ? value : '')).trim();
         return {
-          text: String(item.text || item.label || item.option || '').trim(),
-          image_url: String(item.image_url || item.image || item.imageUrl || '').trim(),
+          option: type || imageUrl ? { type: imageUrl && !text ? 'image' : (type || 'text'), value: imageUrl && !text ? imageUrl : text, image_url: imageUrl } : text,
+          text: text || imageUrl,
+          image_url: imageUrl,
         };
       }
 
       return {
+        option: String(option).trim(),
         text: String(option).trim(),
         image_url: '',
       };
     }).filter((option) => option.text);
 
     return {
-      options: options.map((option) => option.text),
+      options: options.map((option) => option.option),
       option_images: options.map((option) => option.image_url),
     };
   }
@@ -6328,7 +6537,7 @@ const getImportedQuestionOptions = (record: Record<string, unknown>) => {
 
   if (keyedOptions.length >= 2) {
     return {
-      options: keyedOptions.map((option) => option.text),
+      options: keyedOptions.map((option) => option.image_url ? { type: 'text', value: option.text, image_url: option.image_url } : option.text),
       option_images: keyedOptions.map((option) => option.image_url),
     };
   }
@@ -6365,7 +6574,7 @@ const normalizeImportedQuestions = (payload: unknown) => {
       if (/^[A-E]$/.test(normalizedLetter)) {
         correctAnswer = normalizedLetter.charCodeAt(0) - 65;
       } else {
-        const optionIndex = options.findIndex((option) => option.toLowerCase() === normalizedAnswer.toLowerCase());
+        const optionIndex = options.findIndex((option) => getQuizOptionText(option as QuizOption).toLowerCase() === normalizedAnswer.toLowerCase());
         if (optionIndex >= 0) {
           correctAnswer = optionIndex;
         } else {
@@ -6388,6 +6597,11 @@ const normalizeImportedQuestions = (payload: unknown) => {
       options,
       option_images,
       correctAnswer,
+      correct_answer: correctAnswer,
+      subject: String(record.subject || '').trim(),
+      chapter: String(record.chapter || '').trim(),
+      question_type: String(record.question_type || record.type || '').trim(),
+      difficulty: String(record.difficulty || '').trim(),
       explanation: String(record.explanation || '').trim(),
       image_url: String(record.image_url || record.imageUrl || record.image || record.questionImage || '').trim(),
     };
@@ -6802,6 +7016,7 @@ const AdminPanelScreen = ({
   });
   const [questionImportQuizId, setQuestionImportQuizId] = useState('');
   const [questionImportFile, setQuestionImportFile] = useState<File | null>(null);
+  const [questionImportJson, setQuestionImportJson] = useState('');
   const [questionImageFile, setQuestionImageFile] = useState<File | null>(null);
   const [questionImagePreviewUrl, setQuestionImagePreviewUrl] = useState('');
   const [editingCourseId, setEditingCourseId] = useState('');
@@ -7375,15 +7590,15 @@ const AdminPanelScreen = ({
       return;
     }
 
-    if (!questionImportFile) {
-      setMessage('Choose a JSON file to import');
+    if (!questionImportFile && !questionImportJson.trim()) {
+      setMessage('Choose a JSON file or paste JSON to import');
       return;
     }
 
     setLoading(true);
     setMessage('');
     try {
-      const rawText = await fileToText(questionImportFile);
+      const rawText = questionImportFile ? await fileToText(questionImportFile) : questionImportJson;
       const parsedJson = JSON.parse(rawText);
       const importedQuestions = normalizeImportedQuestions(parsedJson);
       const response = await apiPost('importQuestions', {
@@ -7396,12 +7611,13 @@ const AdminPanelScreen = ({
       }
 
       setQuestionImportFile(null);
+      setQuestionImportJson('');
       setQuestionImportQuizId('');
       await onRefresh();
       setMessage(`${importedQuestions.length} questions imported successfully`);
     } catch (error) {
       try {
-        const rawText = await fileToText(questionImportFile);
+        const rawText = questionImportFile ? await fileToText(questionImportFile) : questionImportJson;
         const parsedJson = JSON.parse(rawText);
         const importedQuestions = normalizeImportedQuestions(parsedJson);
 
@@ -7422,6 +7638,7 @@ const AdminPanelScreen = ({
         }
 
         setQuestionImportFile(null);
+        setQuestionImportJson('');
         setQuestionImportQuizId('');
         await onRefresh();
         setMessage('Questions imported successfully');
@@ -10140,7 +10357,7 @@ const AdminPanelScreen = ({
                           key={`${question.id}-${index}`}
                           className={`rounded-2xl px-3 py-2 text-[11px] font-bold ${index === question.correctAnswer ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-600'}`}
                         >
-                          {String.fromCharCode(65 + index)}. {option}
+                          {String.fromCharCode(65 + index)}. {getQuizOptionText(option)}
                         </div>
                       ))}
                     </div>
@@ -10202,22 +10419,31 @@ const AdminPanelScreen = ({
                 {questionImportFile ? questionImportFile.name : 'Upload a JSON file with an array of questions'}
               </span>
             </label>
+            <textarea
+              className="w-full min-h-40 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm"
+              placeholder="Or paste existing quiz JSON here. Single object and array both work."
+              value={questionImportJson}
+              onChange={(event) => setQuestionImportJson(event.target.value)}
+            />
             <div className="admin-soft-panel px-4 py-3 text-xs text-gray-600 whitespace-pre-wrap">
               {`Supported JSON format:
 [
   {
-    "text": "Question text",
+    "subject": "Mathematics",
+    "chapter": "Probability",
+    "question": "What is the value of \\( P(A \\cup B) \\) ?",
+    "question_type": "mcq",
     "options": [
-      { "text": "Option 1", "image_url": "https://example.com/option-1.png" },
-      { "text": "Option 2", "image_url": "https://example.com/option-2.png" }
+      { "type": "text", "value": "\\( P(A)+P(B) \\)" },
+      { "type": "image", "value": "https://example.com/option.png" }
     ],
-    "correctAnswer": 1,
+    "correct_answer": 0,
     "explanation": "Optional explanation",
-    "image_url": "https://example.com/question-image.png"
+    "difficulty": "medium"
   }
 ]
 
-Questions will be imported into the selected quiz subject sheet, for example "Chemistry Quiz".`}
+Questions are read from your JSON and imported into the selected quiz subject sheet.`}
             </div>
             <button
               disabled={loading}
@@ -10316,11 +10542,11 @@ Questions will be imported into the selected quiz subject sheet, for example "Ch
                           key={`${question.id}-${index}`}
                           className={`rounded-2xl px-3 py-2 text-[11px] font-bold ${index === question.correctAnswer ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-600'}`}
                         >
-                          <div>{String.fromCharCode(65 + index)}. {option}</div>
-                          {question.option_images?.[index] && (
+                          <div>{String.fromCharCode(65 + index)}. {getQuizOptionText(option)}</div>
+                          {getQuizOptionImage(option, question.option_images?.[index]) && (
                             <img
-                              src={question.option_images[index]}
-                              alt={`${option} option`}
+                              src={getQuizOptionImage(option, question.option_images?.[index])}
+                              alt={`${getQuizOptionText(option) || `Option ${index + 1}`} option`}
                               className="mt-2 w-full max-w-[120px] rounded-xl border border-gray-100 object-contain bg-white"
                               referrerPolicy="no-referrer"
                             />

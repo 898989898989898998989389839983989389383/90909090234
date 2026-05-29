@@ -731,6 +731,9 @@ function deleteQuestion_(body) {
 }
 
 function normalizeImportedQuestions_(questions) {
+  if (!Array.isArray(questions) && questions && typeof questions === 'object') {
+    questions = [questions];
+  }
   if (!Array.isArray(questions) || !questions.length) {
     throw new Error('Questions array is required');
   }
@@ -738,8 +741,8 @@ function normalizeImportedQuestions_(questions) {
   return questions.map(function(item, index) {
     var normalizedOptions = normalizeQuestionOptions_(item);
     var options = normalizedOptions.options;
-    var correctAnswer = Number(item.correctAnswer || 0);
-    var text = String(item.text || '').trim();
+    var correctAnswer = Number(item.correct_answer !== undefined ? item.correct_answer : (item.correctAnswer || 0));
+    var text = String(item.text || item.question || '').trim();
     var explanation = String(item.explanation || '').trim();
     var imageUrl = String(item.image_url || item.image || item.questionImage || '').trim();
 
@@ -751,6 +754,11 @@ function normalizeImportedQuestions_(questions) {
       text: text,
       options: options,
       correctAnswer: correctAnswer,
+      correct_answer: correctAnswer,
+      subject: String(item.subject || '').trim(),
+      chapter: String(item.chapter || '').trim(),
+      question_type: String(item.question_type || item.type || '').trim(),
+      difficulty: String(item.difficulty || '').trim(),
       explanation: explanation,
       image_url: imageUrl,
       option_images: normalizedOptions.option_images,
@@ -1040,8 +1048,12 @@ function normalizeQuestionOptions_(item) {
   if (Array.isArray(item.options)) {
     item.options.forEach(function(option) {
       if (option && typeof option === 'object') {
-        options.push(String(option.text || option.label || option.option || '').trim());
-        optionImages.push(String(option.image_url || option.image || option.imageUrl || '').trim());
+        var type = String(option.type || '').trim();
+        var value = String(option.value || '').trim();
+        var imageUrl = String(option.image_url || option.image || option.imageUrl || (type.toLowerCase() === 'image' ? value : '')).trim();
+        var text = String(option.text || option.label || option.option || (type.toLowerCase() !== 'image' ? value : '')).trim();
+        options.push(text || imageUrl);
+        optionImages.push(imageUrl);
         return;
       }
       options.push(String(option || '').trim());
