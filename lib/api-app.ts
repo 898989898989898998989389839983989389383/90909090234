@@ -558,6 +558,24 @@ const normalizeLiveClass = (liveClass: Partial<DbLiveClass>) => ({
   created_at: liveClass.created_at ? new Date(liveClass.created_at).toISOString() : "",
 });
 
+const resolveLiveClassCourseId = async (audienceType: string, courseId: unknown) => {
+  if (audienceType !== "course") {
+    return null;
+  }
+
+  const normalizedCourseId = String(courseId || "").trim();
+  if (!normalizedCourseId) {
+    throw new Error("Choose a course for course-based live class visibility");
+  }
+
+  const course = await queryOne<RowDataPacket>("SELECT id FROM courses WHERE id = ?", [normalizedCourseId]);
+  if (!course) {
+    throw new Error("Selected course was not found. Refresh courses and choose again.");
+  }
+
+  return normalizedCourseId;
+};
+
 const parseImagePayload = (
   payload: Record<string, unknown>,
   options: { dataKey?: string; urlKeys?: string[] } = {},
@@ -2041,6 +2059,7 @@ export const createApiApp = async () => {
       : "all";
     const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
     const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
+    const normalizedCourseId = await resolveLiveClassCourseId(normalizedAudienceType, course_id);
     const id = createId("lc");
 
     await execute(
@@ -2053,7 +2072,7 @@ export const createApiApp = async () => {
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
-        normalizedAudienceType === "course" ? String(course_id || "").trim() : "",
+        normalizedCourseId,
         JSON.stringify(normalizedSelectedUserIds),
         String(is_active) === "false" ? 0 : 1,
       ],
@@ -2098,6 +2117,7 @@ export const createApiApp = async () => {
       : "all";
     const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
     const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
+    const normalizedCourseId = await resolveLiveClassCourseId(normalizedAudienceType, course_id);
 
     await execute(
       "UPDATE live_classes SET title = ?, description = ?, meeting_url = ?, scheduled_at = ?, access_type = ?, audience_type = ?, course_id = ?, selected_user_ids = ?, is_active = ? WHERE id = ?",
@@ -2108,7 +2128,7 @@ export const createApiApp = async () => {
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
-        normalizedAudienceType === "course" ? String(course_id || "").trim() : "",
+        normalizedCourseId,
         JSON.stringify(normalizedSelectedUserIds),
         String(is_active) === "false" ? 0 : 1,
         id,

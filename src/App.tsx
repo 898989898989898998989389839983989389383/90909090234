@@ -6457,6 +6457,81 @@ const typesetMath = (element?: HTMLElement | null) => {
   window.MathJax?.typesetPromise?.(element ? [element] : undefined).catch(() => {});
 };
 
+const getUserExportRows = (users: AdminUser[]) => users.map((user, index) => ({
+  sn: index + 1,
+  id: user.id || '',
+  name: user.name || '',
+  email: user.email || '',
+  phone: user.phone || '',
+  classLevel: getStudentClassLabel(user.classLevel),
+  status: user.status || 'active',
+  userCategory: user.userCategory || 'free',
+  grantedCourseIds: (user.grantedCourseIds || []).join(', '),
+  blockedCourseIds: (user.blockedCourseIds || []).join(', '),
+  deviceLocked: user.deviceLocked ? 'Yes' : 'No',
+  deviceId: user.deviceId || '',
+  deviceLabel: user.deviceLabel || '',
+  deviceBoundAt: user.deviceBoundAt || '',
+}));
+
+const userExportColumns = [
+  ['sn', 'S.N.'],
+  ['id', 'Student ID'],
+  ['name', 'Name'],
+  ['email', 'Email'],
+  ['phone', 'Phone'],
+  ['classLevel', 'Class'],
+  ['status', 'Status'],
+  ['userCategory', 'User Category'],
+  ['grantedCourseIds', 'Unlocked Course IDs'],
+  ['blockedCourseIds', 'Blocked Course IDs'],
+  ['deviceLocked', 'Device Locked'],
+  ['deviceId', 'Device ID'],
+  ['deviceLabel', 'Device Label'],
+  ['deviceBoundAt', 'Device Bound At'],
+] as const;
+
+const downloadBlob = (fileName: string, mimeType: string, content: string) => {
+  if (typeof window === 'undefined') return;
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const escapeCsvValue = (value: unknown) => {
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const escapeHtmlValue = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+const downloadUsersCsv = (users: AdminUser[]) => {
+  const rows = getUserExportRows(users);
+  const header = userExportColumns.map(([, label]) => escapeCsvValue(label)).join(',');
+  const body = rows.map((row) =>
+    userExportColumns.map(([key]) => escapeCsvValue(row[key])).join(',')
+  ).join('\n');
+  downloadBlob(`rbs-academy-users-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8', `${header}\n${body}`);
+};
+
+const downloadUsersExcel = (users: AdminUser[]) => {
+  const rows = getUserExportRows(users);
+  const head = userExportColumns.map(([, label]) => `<th>${escapeHtmlValue(label)}</th>`).join('');
+  const body = rows.map((row) => `<tr>${userExportColumns.map(([key]) => `<td>${escapeHtmlValue(row[key])}</td>`).join('')}</tr>`).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table border="1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+  downloadBlob(`rbs-academy-users-${new Date().toISOString().slice(0, 10)}.xls`, 'application/vnd.ms-excel;charset=utf-8', html);
+};
+
 const getImportedQuestionSource = (payload: unknown) => {
   if (Array.isArray(payload)) {
     return payload;
@@ -10768,8 +10843,28 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                 <h3 className="font-bold text-gray-800">Student Management</h3>
                 <p className="text-xs text-gray-500 mt-1">Open a student popup to unlock, block, or remove premium course access.</p>
               </div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
-                {users.length} students
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadUsersCsv(users)}
+                  disabled={!users.length}
+                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-[11px] font-black text-blue-700 disabled:opacity-50"
+                >
+                  <Download size={14} />
+                  CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadUsersExcel(users)}
+                  disabled={!users.length}
+                  className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-[11px] font-black text-emerald-700 disabled:opacity-50"
+                >
+                  <Download size={14} />
+                  Excel
+                </button>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  {users.length} students
+                </div>
               </div>
             </div>
 

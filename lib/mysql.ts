@@ -1249,6 +1249,14 @@ const createSchema = async (client: Pool | PoolClient) => {
   await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "selected_user_ids" TEXT DEFAULT '[]'`);
   await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "is_active" BOOLEAN DEFAULT TRUE`);
   await client.query(`ALTER TABLE "live_classes" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMPTZ DEFAULT NOW()`);
+  await client.query(`
+    UPDATE "live_classes"
+    SET "course_id" = NULL
+    WHERE NULLIF(TRIM(COALESCE("course_id", '')), '') IS NULL
+      OR NOT EXISTS (
+        SELECT 1 FROM "courses" WHERE "courses"."id" = "live_classes"."course_id"
+      )
+  `);
 
   await client.query(`
     UPDATE users
