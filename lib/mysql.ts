@@ -19,6 +19,7 @@ type SeedCourse = {
   title: string;
   lessons: number;
   image: string;
+  description?: string;
   price: number;
   oldPrice: number;
   type: "free" | "premium";
@@ -1025,6 +1026,7 @@ const createSchema = async (client: Pool | PoolClient) => {
       title TEXT,
       lessons INTEGER DEFAULT 0,
       image TEXT,
+      description TEXT DEFAULT '',
       price INTEGER DEFAULT 0,
       "oldPrice" INTEGER DEFAULT 0,
       type TEXT,
@@ -1032,6 +1034,7 @@ const createSchema = async (client: Pool | PoolClient) => {
       access_code TEXT DEFAULT ''
     )
   `);
+  await client.query(`ALTER TABLE "courses" ADD COLUMN IF NOT EXISTS "description" TEXT DEFAULT ''`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS lessons (

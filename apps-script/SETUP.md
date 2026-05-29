@@ -22,7 +22,7 @@ If you already have old mixed quiz data in the `Questions` sheet, run `migrateQu
 `id | title | subtitle | image_url | drive_file_id | sort_order | is_active`
 
 ### `Courses`
-`id | title | lessons | image | price | oldPrice | type | category | access_code`
+`id | title | lessons | image | description | price | oldPrice | type | category | access_code`
 
 ### `Lessons`
 `id | course_id | title | duration | note_content | note_url | video_url | thumbnail_url | download_url | download_label | download_enabled | sort_order`

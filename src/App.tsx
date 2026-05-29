@@ -131,6 +131,7 @@ interface Course {
   title: string;
   lessons: number;
   image: string;
+  description?: string;
   price?: number;
   oldPrice?: number;
   type: 'free' | 'premium';
@@ -1273,6 +1274,24 @@ const isValidMeetingUrl = (value: string) => {
 const openMeetingUrl = async (value: string) => {
   const url = normalizeMeetingUrl(value);
   if (!url || !isValidMeetingUrl(url)) {
+    return false;
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url, presentationStyle: 'fullscreen' });
+    return true;
+  }
+
+  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!openedWindow) {
+    window.location.href = url;
+  }
+  return true;
+};
+
+const openExternalUrl = async (value: string) => {
+  const url = String(value || '').trim();
+  if (!/^https?:\/\//i.test(url)) {
     return false;
   }
 
@@ -4549,6 +4568,8 @@ const CourseDetailsScreen = ({
 }) => {
   if (!course) return null;
   const isPremiumCourse = !isCourseFree(course);
+  const courseDescription = String(course.description || '').trim()
+    || `This comprehensive course on ${course.title} covers everything from fundamental concepts to advanced applications. Designed for students of ${course.category}, it includes high-quality video lectures, detailed notes, and practice quizzes to ensure complete mastery of the subject.`;
 
   return (
     <motion.div 
@@ -4658,8 +4679,7 @@ const CourseDetailsScreen = ({
           <section className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
             <h3 className="font-bold text-gray-800 mb-2">About this course</h3>
             <p className="text-sm text-gray-600 leading-relaxed">
-              This comprehensive course on {course.title} covers everything from fundamental concepts to advanced applications. 
-              Designed for students of {course.category}, it includes high-quality video lectures, detailed notes, and practice quizzes to ensure complete mastery of the subject.
+              {courseDescription}
             </p>
           </section>
         </div>
@@ -4829,11 +4849,7 @@ const NotesScreen = ({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1 }}
-      className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0%,#f4f8f2_48%,#fff8ee_100%)] px-4 pb-24 pt-4 text-slate-900"
-    >
+    <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0%,#f4f8f2_48%,#fff8ee_100%)] px-4 pb-24 pt-4 text-slate-900">
       <section className="relative overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#14325c_0%,#11615d_58%,#6d4b16_100%)] p-5 text-white shadow-xl shadow-slate-300/50">
         <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.12))]" />
         <div className="relative flex items-start justify-between gap-4">
@@ -4944,11 +4960,8 @@ const NotesScreen = ({
           const meta = getNoteMeta(note);
 
           return (
-            <motion.div
+            <div
               key={note.id}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.22, delay: Math.min(index * 0.025, 0.18) }}
               className={`rounded-2xl border border-white bg-gradient-to-br ${style.surface} p-4 shadow-md shadow-slate-200/70`}
             >
               <div className="flex gap-4">
@@ -4988,25 +5001,21 @@ const NotesScreen = ({
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           );
         })}
 
         {!filteredNotes.length && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-dashed border-slate-200 bg-white/72 px-6 py-12 text-center shadow-inner"
-          >
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/72 px-6 py-12 text-center shadow-inner">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
               <FileText size={28} />
             </div>
             <h3 className="text-lg font-black text-slate-950">No notes found</h3>
             <p className="mx-auto mt-2 max-w-xs text-sm text-slate-500">Try another keyword or open all categories.</p>
-          </motion.div>
+          </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
@@ -6468,8 +6477,12 @@ const isLegacyDriveUrl = (url?: string) => /(?:drive|docs)\.google\.com/i.test(S
 
 const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
   const value = String(url || '').trim();
-  if (!value || isLegacyDriveUrl(value)) {
+  if (!value) {
     return '';
+  }
+
+  if (isLegacyDriveUrl(value)) {
+    return getLegacyDrivePreviewUrl(value) || value;
   }
 
   return value;
@@ -6722,6 +6735,7 @@ const AdminPanelScreen = ({
 
   const [courseForm, setCourseForm] = useState({
     title: '',
+    description: '',
     lessons: '0',
     image: '',
     price: '0',
@@ -7101,6 +7115,7 @@ const AdminPanelScreen = ({
       setEditingCourseId('');
       setCourseForm({
         title: '',
+        description: '',
         lessons: '0',
         image: '',
         type: 'free',
@@ -7862,7 +7877,7 @@ const AdminPanelScreen = ({
   }, [activeTab]);
 
   const resetCourseForm = () => {
-    setCourseForm({ title: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'General' });
+    setCourseForm({ title: '', description: '', lessons: '0', image: '', price: '0', oldPrice: '0', type: 'free', category: 'General' });
     setCourseThumbnailFile(null);
     setEditingCourseId('');
   };
@@ -7908,6 +7923,7 @@ const AdminPanelScreen = ({
       const payload: Record<string, unknown> = {
         ...(editingCourseId ? { id: editingCourseId } : {}),
         title,
+        description: courseForm.description.trim(),
         image,
         category,
         type: courseType,
@@ -8710,6 +8726,7 @@ const AdminPanelScreen = ({
                       setEditingCourseId(course.id);
                       setCourseForm({
                         title: course.title,
+                        description: course.description || '',
                         lessons: String(course.lessons || 0),
                         image: course.image,
                         price: String(course.price || 0),
@@ -9160,6 +9177,15 @@ const AdminPanelScreen = ({
                   <input placeholder="Example: Complete Course Batch" value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} />
                 </label>
                 <label className="admin-course-field admin-course-field--wide">
+                  <span>About this course</span>
+                  <textarea
+                    placeholder="Write what students will learn in this course..."
+                    value={courseForm.description}
+                    onChange={(e) => setCourseForm({ ...courseForm, description: e.target.value })}
+                    className="min-h-24 resize-y"
+                  />
+                </label>
+                <label className="admin-course-field admin-course-field--wide">
                   <span>Thumbnail image URL</span>
                   <input placeholder="https://example.com/course-thumbnail.jpg" value={courseForm.image} onChange={(e) => setCourseForm({ ...courseForm, image: e.target.value })} />
                 </label>
@@ -9555,6 +9581,7 @@ const AdminPanelScreen = ({
                         setEditingCourseId(course.id);
                         setCourseForm({
                           title: course.title,
+                          description: course.description || '',
                           lessons: String(course.lessons || 0),
                           image: course.image,
                           price: String(course.price || 0),
@@ -9784,16 +9811,16 @@ const AdminPanelScreen = ({
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="Full-screen HTML/website URL (no Google Drive preview)" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="PDF, Google Drive, HTML, image, or website URL" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
             <label className="admin-slider-upload-box">
-              <span className="admin-slider-upload-title">HTML note file</span>
+              <span className="admin-slider-upload-title">Note file</span>
               <span className="admin-slider-upload-button">
                 <Upload size={18} />
-                Upload HTML note
+                Upload note
               </span>
               <input
                 type="file"
-                accept=".html,.htm,.txt,.md,image/*,text/html,text/plain,text/markdown"
+                accept=".pdf,.html,.htm,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/html,text/plain,text/markdown"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   if (!file) {
@@ -9813,7 +9840,7 @@ const AdminPanelScreen = ({
                 className="sr-only"
               />
               <span className="admin-slider-upload-hint">
-                {noteFile ? `${noteFile.name} • ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose HTML, image, TXT, or MD up to 15 MB'}
+                {noteFile ? `${noteFile.name} - ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose PDF, Drive, HTML, image, TXT, DOC, PPT, or XLS up to 15 MB'}
               </span>
             </label>
             <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Paste full HTML code here (optional)" value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
@@ -11034,7 +11061,8 @@ const NoteViewerScreen = ({
             title="Study note"
             className="h-full w-full border-0 bg-white"
             loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
           />
         )}
       </motion.div>
@@ -11058,6 +11086,26 @@ const NoteViewerScreen = ({
       >
         <ArrowLeft size={21} />
       </button>
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-sm rounded-3xl bg-white p-6 text-center shadow-xl">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+            <FileText size={28} />
+          </div>
+          <h2 className="text-lg font-black text-slate-950">{lesson.title}</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            This note needs to open from its hosted link.
+          </p>
+          {lesson.note_url && (
+            <button
+              type="button"
+              onClick={() => openExternalUrl(lesson.note_url || '')}
+              className="mt-5 w-full rounded-2xl bg-primary px-5 py-3 text-sm font-black text-white"
+            >
+              Open Note Link
+            </button>
+          )}
+        </div>
+      </div>
     </motion.div>
   );
 };

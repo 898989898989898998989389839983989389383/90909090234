@@ -119,7 +119,7 @@ type DbUser = RowDataPacket & {
   device_label?: string;
   device_bound_at?: Date | string | null;
 };
-type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
+type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; description?: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
 type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; download_url?: string; download_label?: string; download_enabled?: boolean; sort_order?: number };
 type DbNote = RowDataPacket & { id: string; title: string; lessons: number; category: string; type: string; url?: string; content?: string };
 type DbQuiz = RowDataPacket & { id: string; topic: string; type: string };
@@ -2088,7 +2088,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/createCourse", requireAdmin(), asyncHandler(async (req, res) => {
-    const { title, lessons, price, oldPrice, type, category, access_code } = req.body || {};
+    const { title, lessons, price, oldPrice, type, category, access_code, description } = req.body || {};
     if (!title || !type || !category) {
       res.status(400).json({ success: false, message: "Title, image, type, and category are required" });
       return;
@@ -2101,8 +2101,8 @@ export const createApiApp = async () => {
 
     const id = createId("c");
     await execute(
-      "INSERT INTO courses (id, title, lessons, image, price, oldPrice, type, category, access_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, title, Number(lessons || 0), image, Number(price || 0), Number(oldPrice || 0), type, category, access_code || ""],
+      "INSERT INTO courses (id, title, lessons, image, description, price, oldPrice, type, category, access_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, title, Number(lessons || 0), image, String(description || "").trim(), Number(price || 0), Number(oldPrice || 0), type, category, access_code || ""],
     );
 
     const course = await queryOne<DbCourse>("SELECT * FROM courses WHERE id = ?", [id]);
@@ -2110,7 +2110,7 @@ export const createApiApp = async () => {
   }));
 
   app.post("/api/updateCourse", requireAdmin(), asyncHandler(async (req, res) => {
-    const { id, title, lessons, price, oldPrice, type, category, access_code } = req.body || {};
+    const { id, title, lessons, price, oldPrice, type, category, access_code, description } = req.body || {};
     if (!id || !title || !type || !category) {
       res.status(400).json({ success: false, message: "Id, title, image, type, and category are required" });
       return;
@@ -2132,8 +2132,8 @@ export const createApiApp = async () => {
     }
 
     await execute(
-      "UPDATE courses SET title = ?, lessons = ?, image = ?, price = ?, oldPrice = ?, type = ?, category = ?, access_code = ? WHERE id = ?",
-      [title, Number(lessons || 0), image, Number(price || 0), Number(oldPrice || 0), type, category, access_code ?? current.access_code ?? "", id],
+      "UPDATE courses SET title = ?, lessons = ?, image = ?, description = ?, price = ?, oldPrice = ?, type = ?, category = ?, access_code = ? WHERE id = ?",
+      [title, Number(lessons || 0), image, String(description || "").trim(), Number(price || 0), Number(oldPrice || 0), type, category, access_code ?? current.access_code ?? "", id],
     );
 
     res.json({ success: true, message: "Course updated" });
