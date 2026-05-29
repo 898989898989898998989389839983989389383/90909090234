@@ -872,6 +872,42 @@ const formatLiveClassDate = (value: string) => {
   });
 };
 
+const getLiveClassStatus = (value: string) => {
+  if (!value) {
+    return { label: 'Open', tone: 'emerald', detail: 'Join when admin starts the class' };
+  }
+
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) {
+    return { label: 'Open', tone: 'emerald', detail: 'Join when admin starts the class' };
+  }
+
+  const now = Date.now();
+  const startsInMs = time - now;
+  const endsAfterMs = now - time;
+
+  if (startsInMs > 15 * 60 * 1000) {
+    return { label: 'Upcoming', tone: 'blue', detail: `Starts ${formatLiveClassDate(value)}` };
+  }
+
+  if (startsInMs > 0) {
+    return { label: 'Starting Soon', tone: 'amber', detail: 'Class is about to start' };
+  }
+
+  if (endsAfterMs <= 3 * 60 * 60 * 1000) {
+    return { label: 'Live Now', tone: 'emerald', detail: 'Join the session now' };
+  }
+
+  return { label: 'Completed', tone: 'slate', detail: 'This session time has passed' };
+};
+
+const getLiveClassStatusClass = (tone: string) => ({
+  emerald: 'bg-emerald-50 text-emerald-700',
+  amber: 'bg-amber-50 text-amber-700',
+  blue: 'bg-blue-50 text-blue-700',
+  slate: 'bg-slate-100 text-slate-600',
+}[tone] || 'bg-slate-100 text-slate-600');
+
 const formatNotificationTime = (value: number) => {
   if (!value) {
     return 'Just now';
@@ -3907,14 +3943,35 @@ const LiveClassesScreen = ({
   onJoinClass: (liveClass: LiveClass) => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
-  const visibleClasses = liveClasses.filter((item) => item.access_type === activeTab);
+  const visibleClasses = liveClasses
+    .filter((item) => item.access_type === activeTab)
+    .sort((left, right) => {
+      const leftTime = left.scheduled_at ? new Date(left.scheduled_at).getTime() : 0;
+      const rightTime = right.scheduled_at ? new Date(right.scheduled_at).getTime() : 0;
+      return (leftTime || Number.MAX_SAFE_INTEGER) - (rightTime || Number.MAX_SAFE_INTEGER);
+    });
+  const liveCount = liveClasses.filter((item) => getLiveClassStatus(item.scheduled_at).label === 'Live Now').length;
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4">
-      <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#0f766e_100%)] p-5 text-white shadow-xl shadow-slate-300/40">
+      <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#051B3B_0%,#0B5ED7_52%,#00A6C8_100%)] p-5 text-white shadow-xl shadow-blue-200/60">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Live Classes</p>
-        <h2 className="mt-2 text-2xl font-black">Join the right class at the right time</h2>
-        <p className="mt-2 text-sm text-white/75">Free students see open sessions. Premium students also see locked batch classes made for their subscribed courses.</p>
+        <h2 className="mt-2 text-2xl font-black leading-tight">Your classroom is ready</h2>
+        <p className="mt-2 text-sm leading-6 text-white/78">Join scheduled sessions, course batches, and selected-student classes from one clean live lobby.</p>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl bg-white/12 px-3 py-3">
+            <div className="text-xl font-black">{liveClasses.length}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Sessions</div>
+          </div>
+          <div className="rounded-2xl bg-white/12 px-3 py-3">
+            <div className="text-xl font-black">{liveCount}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Live Now</div>
+          </div>
+          <div className="rounded-2xl bg-white/12 px-3 py-3">
+            <div className="text-xl font-black">{liveClasses.filter((item) => item.access_type === 'premium').length}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Premium</div>
+          </div>
+        </div>
         <div className="mt-5 grid grid-cols-2 gap-3">
           {(['free', 'premium'] as const).map((tab) => (
             <button
@@ -3935,22 +3992,34 @@ const LiveClassesScreen = ({
       <div className="mt-5 space-y-4">
         {visibleClasses.map((liveClass) => {
           const linkedCourse = courses.find((course) => String(course.id) === String(liveClass.course_id || ''));
+          const status = getLiveClassStatus(liveClass.scheduled_at);
+          const isCompleted = status.label === 'Completed';
+          const audienceLabel = liveClass.audience_type === 'all'
+            ? 'All Students'
+            : liveClass.audience_type === 'course'
+              ? (linkedCourse ? 'Course Batch' : 'Course Missing')
+              : 'Selected Students';
           return (
-            <div key={liveClass.id} className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100">
+            <div key={liveClass.id} className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-lg shadow-slate-100/80">
+              <div className="h-1.5 bg-[linear-gradient(90deg,#0ea5e9,#2563eb,#14b8a6)]" />
+              <div className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                       {liveClass.access_type}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
-                      {liveClass.audience_type === 'all' ? 'All Students' : liveClass.audience_type === 'course' ? 'Course Students' : 'Selected Students'}
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getLiveClassStatusClass(status.tone)}`}>
+                      {status.label}
+                    </span>
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.audience_type === 'course' && !linkedCourse ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {audienceLabel}
                     </span>
                   </div>
                   <h3 className="mt-3 text-lg font-black text-slate-900">{liveClass.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-slate-600">{liveClass.description || 'Live session is ready for students. Join on time from the in-app class room.'}</p>
                 </div>
-                <div className="rounded-2xl bg-slate-100 p-3 text-slate-600">
+                <div className="rounded-2xl bg-blue-50 p-3 text-blue-700">
                   <Play size={18} />
                 </div>
               </div>
@@ -3959,6 +4028,7 @@ const LiveClassesScreen = ({
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Schedule</div>
                   <div className="mt-1 font-bold">{formatLiveClassDate(liveClass.scheduled_at)}</div>
+                  <div className="mt-1 text-xs font-semibold text-slate-500">{status.detail}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Course</div>
@@ -3969,11 +4039,13 @@ const LiveClassesScreen = ({
               <button
                 type="button"
                 onClick={() => onJoinClass(liveClass)}
-                className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
+                disabled={isCompleted}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-200 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
               >
-                Join Live Class
+                {isCompleted ? 'Class Completed' : 'Join Live Class'}
                 <Play size={16} />
               </button>
+              </div>
             </div>
           );
         })}
@@ -4003,6 +4075,8 @@ const LiveClassViewerScreen = ({
   }
 
   const meetingUrlIsValid = isValidMeetingUrl(liveClass.meeting_url);
+  const status = getLiveClassStatus(liveClass.scheduled_at);
+  const isCompleted = status.label === 'Completed';
   const handleOpenClass = async () => {
     setOpenError('');
     try {
@@ -4027,15 +4101,20 @@ const LiveClassViewerScreen = ({
           <h3 className="truncate text-sm font-black">{liveClass.title}</h3>
           <p className="truncate text-[11px] font-semibold text-white/55">{formatLiveClassDate(liveClass.scheduled_at)}</p>
         </div>
-        <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
-          Ready
+        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+          status.tone === 'emerald' ? 'bg-emerald-400/15 text-emerald-200' :
+          status.tone === 'amber' ? 'bg-amber-400/15 text-amber-100' :
+          status.tone === 'blue' ? 'bg-sky-400/15 text-sky-100' :
+          'bg-white/10 text-white/65'
+        }`}>
+          {status.label}
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,#1e40af_0%,#020617_46%,#020617_100%)] px-5 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,#1d4ed8_0%,#071d3d_42%,#020617_100%)] px-5 py-6">
         <div className="mx-auto flex min-h-full w-full max-w-xl flex-col justify-center">
           <div className="rounded-[32px] border border-white/10 bg-white/10 p-6 shadow-2xl shadow-black/30 backdrop-blur">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/30">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-[linear-gradient(135deg,#67e8f9,#22c55e)] text-slate-950 shadow-lg shadow-emerald-950/30">
               <Play size={28} fill="currentColor" />
             </div>
             <div className="mt-5 text-center">
@@ -4050,6 +4129,7 @@ const LiveClassViewerScreen = ({
               <div className="rounded-2xl bg-white/10 px-4 py-3">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Schedule</div>
                 <div className="mt-1 text-sm font-bold text-white">{formatLiveClassDate(liveClass.scheduled_at)}</div>
+                <div className="mt-1 text-xs font-semibold text-white/55">{status.detail}</div>
               </div>
               <div className="rounded-2xl bg-white/10 px-4 py-3">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Access</div>
@@ -4060,6 +4140,11 @@ const LiveClassViewerScreen = ({
             {!meetingUrlIsValid && (
               <div className="mt-5 rounded-2xl border border-red-300/20 bg-red-500/15 px-4 py-3 text-sm font-semibold leading-6 text-red-100">
                 This live class has an invalid meeting link. Ask the admin to edit the class and paste a valid Google Meet, Zoom, or YouTube Live URL.
+              </div>
+            )}
+            {isCompleted && (
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold leading-6 text-white/70">
+                This class time has passed. You can still open the meeting if admin keeps the room active.
               </div>
             )}
             {openError && (
@@ -7945,8 +8030,16 @@ const AdminPanelScreen = ({
       return;
     }
 
+    const selectedCourseExists = liveClassForm.audience_type !== 'course'
+      || courses.some((course) => String(course.id) === String(liveClassForm.course_id));
+
     if (liveClassForm.audience_type === 'course' && !liveClassForm.course_id) {
       setMessage('Choose a course for course-based live class visibility');
+      return;
+    }
+
+    if (!selectedCourseExists) {
+      setMessage('Selected course no longer exists. Refresh and choose another course.');
       return;
     }
 
@@ -10831,7 +10924,19 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                   <option value="free">Free Live Class</option>
                   <option value="premium">Premium Live Class</option>
                 </select>
-                <select className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" value={liveClassForm.audience_type} onChange={(e) => setLiveClassForm({ ...liveClassForm, audience_type: e.target.value as 'all' | 'course' | 'selected' })}>
+                <select
+                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm"
+                  value={liveClassForm.audience_type}
+                  onChange={(e) => {
+                    const audienceType = e.target.value as 'all' | 'course' | 'selected';
+                    setLiveClassForm({
+                      ...liveClassForm,
+                      audience_type: audienceType,
+                      course_id: audienceType === 'course' ? liveClassForm.course_id : '',
+                      selected_user_ids: audienceType === 'selected' ? liveClassForm.selected_user_ids : [],
+                    });
+                  }}
+                >
                   <option value="all">Show to all matching students</option>
                   <option value="course">Show to one course subscribers</option>
                   <option value="selected">Show to selected students</option>
@@ -10847,6 +10952,11 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                     <option key={course.id} value={course.id}>{course.title}</option>
                   ))}
                 </select>
+              )}
+              {liveClassForm.audience_type === 'course' && !courses.length && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  No courses found. Create a course first, then schedule a course-based live class.
+                </div>
               )}
 
               {liveClassForm.audience_type === 'selected' && (
@@ -10877,7 +10987,7 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                         >
                           <span>
                             <strong className="block">{userItem.name}</strong>
-                            <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-slate-500'}`}>{userItem.email}</span>
+                            <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-slate-500'}`}>{userItem.email} - {getStudentClassLabel(userItem.classLevel)}</span>
                           </span>
                           <span className="text-xs font-black uppercase tracking-[0.18em]">
                             {isSelected ? 'Selected' : 'Pick'}
@@ -10910,18 +11020,29 @@ Questions are read from your JSON and imported into the selected quiz subject sh
             <div className="space-y-3">
               {liveClasses.map((liveClass) => {
                 const linkedCourse = courses.find((course) => String(course.id) === String(liveClass.course_id || ''));
+                const liveStatus = getLiveClassStatus(liveClass.scheduled_at);
+                const hasCourseConflict = liveClass.audience_type === 'course' && !linkedCourse;
                 return (
-                  <div key={liveClass.id} className="border border-gray-100 rounded-2xl p-4">
+                  <div key={liveClass.id} className={`rounded-2xl border p-4 ${hasCourseConflict ? 'border-red-200 bg-red-50/60' : 'border-gray-100 bg-white'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap gap-2">
                           <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{liveClass.access_type}</span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">{liveClass.is_active ? 'Active' : 'Hidden'}</span>
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getLiveClassStatusClass(liveStatus.tone)}`}>{liveStatus.label}</span>
+                          {hasCourseConflict && (
+                            <span className="rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Fix course</span>
+                          )}
                         </div>
                         <div className="mt-2 font-bold text-sm text-gray-800">{liveClass.title}</div>
                         <div className="mt-1 text-xs text-gray-500">
-                          {formatLiveClassDate(liveClass.scheduled_at)} • {liveClass.audience_type === 'all' ? 'All matching students' : liveClass.audience_type === 'course' ? (linkedCourse?.title || 'Course students') : `${liveClass.selected_user_ids.length} selected students`}
+                          {formatLiveClassDate(liveClass.scheduled_at)} - {liveClass.audience_type === 'all' ? 'All matching students' : liveClass.audience_type === 'course' ? (linkedCourse?.title || 'Missing linked course') : `${liveClass.selected_user_ids.length} selected students`}
                         </div>
+                        {hasCourseConflict && (
+                          <div className="mt-2 text-xs font-bold text-red-700">
+                            This class is linked to a deleted course. Edit it and choose All, Selected, or a valid course.
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => {

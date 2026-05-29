@@ -637,6 +637,36 @@ const resolveLiveClassCourseId = (audienceType: string, courseId: unknown) => {
   return normalizedCourseId;
 };
 
+const resolveLiveClassAudience = async (audienceType: string, courseId: unknown, selectedUserIds: unknown) => {
+  const normalizedCourseId = resolveLiveClassCourseId(audienceType, courseId);
+  let normalizedSelectedUserIds: string[] = Array.from(new Set(parseJsonArray(selectedUserIds).map((item) => String(item)).filter(Boolean)));
+
+  if (audienceType === "course") {
+    const course = await queryOne<RowDataPacket>("SELECT id FROM courses WHERE id = ?", [normalizedCourseId]);
+    if (!course) {
+      throw new Error("Selected course was not found. Refresh courses and choose again.");
+    }
+    normalizedSelectedUserIds = [];
+  }
+
+  if (audienceType === "selected") {
+    if (!normalizedSelectedUserIds.length) {
+      throw new Error("Choose at least one student for selected live class visibility");
+    }
+    const existingUsers = await queryRows<RowDataPacket & { id: string }>("SELECT id FROM users WHERE id = ANY($1::text[])", [normalizedSelectedUserIds]);
+    const existingIds = new Set(existingUsers.map((user) => String(user.id)));
+    normalizedSelectedUserIds = normalizedSelectedUserIds.filter((userId) => existingIds.has(userId));
+    if (!normalizedSelectedUserIds.length) {
+      throw new Error("Selected students were not found. Refresh students and choose again.");
+    }
+  }
+
+  return {
+    courseId: audienceType === "course" ? normalizedCourseId : null,
+    selectedUserIds: audienceType === "selected" ? normalizedSelectedUserIds : [],
+  };
+};
+
 const parseImagePayload = (
   payload: Record<string, unknown>,
   options: { dataKey?: string; urlKeys?: string[] } = {},
@@ -2119,12 +2149,13 @@ export const createApiApp = async () => {
       ? String(audience_type).toLowerCase()
       : "all";
     const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
-    const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
-    if (normalizedAudienceType === "course" && !String(course_id || "").trim()) {
-      res.status(400).json({ success: false, message: "Choose a course for course-based live class visibility" });
+    let audience;
+    try {
+      audience = await resolveLiveClassAudience(normalizedAudienceType, course_id, selected_user_ids);
+    } catch (error) {
+      res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Invalid live class visibility" });
       return;
     }
-    const normalizedCourseId = resolveLiveClassCourseId(normalizedAudienceType, course_id);
     const id = createId("lc");
 
     await execute(
@@ -2137,8 +2168,8 @@ export const createApiApp = async () => {
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
-        normalizedCourseId,
-        JSON.stringify(normalizedSelectedUserIds),
+        audience.courseId,
+        JSON.stringify(audience.selectedUserIds),
         String(is_active) === "false" ? 0 : 1,
       ],
     );
@@ -2181,12 +2212,13 @@ export const createApiApp = async () => {
       ? String(audience_type).toLowerCase()
       : "all";
     const normalizedAccessType = String(access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
-    const normalizedSelectedUserIds = parseJsonArray(selected_user_ids).map((item) => String(item)).filter(Boolean);
-    if (normalizedAudienceType === "course" && !String(course_id || "").trim()) {
-      res.status(400).json({ success: false, message: "Choose a course for course-based live class visibility" });
+    let audience;
+    try {
+      audience = await resolveLiveClassAudience(normalizedAudienceType, course_id, selected_user_ids);
+    } catch (error) {
+      res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Invalid live class visibility" });
       return;
     }
-    const normalizedCourseId = resolveLiveClassCourseId(normalizedAudienceType, course_id);
 
     await execute(
       "UPDATE live_classes SET title = ?, description = ?, meeting_url = ?, scheduled_at = ?, access_type = ?, audience_type = ?, course_id = (SELECT id FROM courses WHERE id = ?), selected_user_ids = ?, is_active = ? WHERE id = ?",
@@ -2197,8 +2229,8 @@ export const createApiApp = async () => {
         scheduled_at ? new Date(String(scheduled_at)) : null,
         normalizedAccessType,
         normalizedAudienceType,
-        normalizedCourseId,
-        JSON.stringify(normalizedSelectedUserIds),
+        audience.courseId,
+        JSON.stringify(audience.selectedUserIds),
         String(is_active) === "false" ? 0 : 1,
         id,
       ],
