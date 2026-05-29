@@ -13040,13 +13040,7 @@ export default function App() {
       />
 
       {!isManagementRoute && showControlledSplash && (
-        <div className="controlled-splash" aria-hidden="true">
-          <div className="controlled-splash-mark">
-            <img src="/logo.png" alt="" />
-          </div>
-          <strong>{appControlSettings.appName}</strong>
-          <span>Premium Chemistry Learning</span>
-        </div>
+        <div className="controlled-splash" aria-hidden="true" />
       )}
 
       <AnimatePresence mode="wait">

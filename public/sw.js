@@ -1,9 +1,10 @@
-const CACHE_NAME = 'rbs-academy-app-v13';
+const CACHE_NAME = 'rbs-academy-app-v14';
 const OFFLINE_URL = '/offline.html';
 const CORE_ASSETS = [
   OFFLINE_URL,
   '/manifest.webmanifest',
   '/logo.png',
+  '/full-image-splash.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png'

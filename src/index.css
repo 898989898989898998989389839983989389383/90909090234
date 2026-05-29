@@ -168,44 +168,8 @@ body {
   position: fixed;
   inset: 0;
   z-index: 130;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 0.9rem;
-  background:
-    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.18), transparent 28%),
-    linear-gradient(145deg, #082847 0%, #0b56c4 52%, #15958c 100%);
-  color: #ffffff;
-  text-align: center;
+  background: #ffffff url("/full-image-splash.png") center / cover no-repeat;
   animation: softAppear 260ms ease both;
-}
-
-.controlled-splash-mark {
-  display: grid;
-  width: 7.2rem;
-  height: 7.2rem;
-  place-items: center;
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
-}
-
-.controlled-splash-mark img {
-  width: 5.9rem;
-  height: 5.9rem;
-}
-
-.controlled-splash strong {
-  font-size: 1.9rem;
-  font-weight: 900;
-}
-
-.controlled-splash span {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
 }
 
 .appcontrol-hero {
