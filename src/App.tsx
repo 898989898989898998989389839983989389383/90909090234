@@ -10042,9 +10042,8 @@ const AdminPanelScreen = ({
           <div className="admin-course-workspace">
               <div className="admin-course-workspace-head">
                 <div>
-                  <p className="admin-control-eyebrow">Selected Course Workspace</p>
-                  <h3>Videos and MCQs in one place</h3>
-                  <span>Choose any course, add ordered videos, edit lessons, and attach MCQ questions without leaving the builder.</span>
+                  <h3>{managedCourse ? managedCourse.title : 'Course Builder'}</h3>
+                  <span>Add videos, thumbnails, and manage lessons</span>
                 </div>
                 <select
                   value={managedCourse?.id || ''}
@@ -10056,7 +10055,7 @@ const AdminPanelScreen = ({
                     setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
                   }}
                 >
-                  <option value="">Choose course</option>
+                  <option value="">Select a course</option>
                   {courses.map((course) => (
                     <option key={course.id} value={course.id}>{course.title}</option>
                   ))}
