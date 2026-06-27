@@ -2377,6 +2377,8 @@ const showAppNotification = async (
       return true;
     } catch (error) {
       console.error('Unable to show native notification:', error);
+      // Silently fail - native notifications are optional
+      return false;
     }
   }
 
@@ -7785,8 +7787,9 @@ const AdminPanelScreen = ({
       reset();
       try {
         await onRefresh();
-      } catch (error) {
-        console.error(`${action} succeeded but dashboard refresh failed:`, error);
+      } catch (refreshError) {
+        console.error(`${action} succeeded but dashboard refresh failed:`, refreshError);
+        // Don't block success message even if refresh fails
       }
       setMessage(data.message || 'Saved successfully');
     } catch (error) {
@@ -8197,8 +8200,9 @@ const AdminPanelScreen = ({
       setGeneratedCustomerCode(String(data.accessCode || ''));
       try {
         await onRefresh();
-      } catch (error) {
-        console.error('Access code generated but dashboard refresh failed:', error);
+      } catch (refreshError) {
+        console.error('Access code generated but dashboard refresh failed:', refreshError);
+        // Don't block success message
       }
       setMessage('Customer access code generated successfully');
     } catch {
@@ -12095,8 +12099,9 @@ export default function App() {
           saveCachedAdminUsers(nextAdminUsers);
         }
       }
-    } catch (error) {
-      console.error("Error fetching data:", error);
+    } catch (fetchError) {
+      console.error("Error fetching data:", fetchError);
+      // Use cached data as fallback
       const preservedCourses = courses.length ? courses : (cachedAppData?.courses?.length ? cachedAppData.courses : fallbackCourses);
       setSliders(sliders.length ? sliders : fallbackSliders);
       setCourses(filterChemistryAppData({ courses: preservedCourses, notes: [], quizzes: [] }).courses);
@@ -12585,7 +12590,8 @@ export default function App() {
           const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
           blockCurrentStudentSession(user, message);
         } else {
-          console.error('Error loading user access:', error);
+          console.error('Error loading user access:', accessError);
+          // Continue with app - don't block user completely
         }
       } finally {
         setSessionChecking(false);
@@ -12625,7 +12631,8 @@ export default function App() {
           const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
           blockCurrentStudentSession(user, message);
         } else {
-          console.error('Error checking user status:', error);
+          console.error('Error checking user status:', statusError);
+          // Don't block app if status check fails
         }
       }
     };

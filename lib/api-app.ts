@@ -231,7 +231,138 @@ const assertSmtpConfigured = () => {
   }
 };
 
-const sendEmail = async (to: string, subject: string, text: string) => {
+const createPremiumEmailTemplate = (title: string, content: string, footerText = "") => `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 0; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" style="max-width: 600px; width: 100%; background: #ffffff; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0,0,0,0.2);">
+                RBS Academy
+              </h1>
+              <p style="margin: 8px 0 0; color: rgba(255,255,255,0.9); font-size: 14px; font-weight: 500; letter-spacing: 0.5px;">
+                Study Smart • Stay Focused • Keep Learning
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 50px 40px;">
+              ${content}
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="background: #f8f9fa; padding: 30px 40px; border-top: 3px solid #667eea;">
+              <p style="margin: 0 0 12px; color: #6c757d; font-size: 13px; line-height: 1.6; text-align: center;">
+                ${footerText || 'This is an automated message from RBS Academy. Please do not reply to this email.'}
+              </p>
+              <p style="margin: 0; color: #adb5bd; font-size: 12px; text-align: center;">
+                © ${new Date().getFullYear()} RBS Academy. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+const createOtpEmailContent = (otp: string, purpose: string) => `
+  <div style="text-align: center; margin-bottom: 30px;">
+    <div style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
+    </div>
+  </div>
+  
+  <h2 style="margin: 0 0 16px; color: #2d3748; font-size: 26px; font-weight: 700; text-align: center;">
+    ${purpose === 'signup' ? 'Welcome to RBS Academy!' : 'Password Reset Request'}
+  </h2>
+  
+  <p style="margin: 0 0 30px; color: #4a5568; font-size: 16px; line-height: 1.6; text-align: center;">
+    ${purpose === 'signup' 
+      ? 'Thank you for signing up! Use the OTP below to verify your email and complete your registration.' 
+      : 'We received a request to reset your password. Use the OTP below to proceed.'}
+  </p>
+  
+  <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 16px; padding: 30px; margin: 0 0 30px; text-align: center; box-shadow: 0 10px 30px rgba(240,147,251,0.3);">
+    <p style="margin: 0 0 12px; color: #ffffff; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+      Your Verification Code
+    </p>
+    <div style="font-size: 42px; font-weight: 800; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace; text-shadow: 0 2px 10px rgba(0,0,0,0.2);">
+      ${otp}
+    </div>
+  </div>
+  
+  <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 16px 20px; margin: 0 0 20px; border-radius: 8px;">
+    <p style="margin: 0; color: #856404; font-size: 14px; line-height: 1.6;">
+      <strong>⏱️ Important:</strong> This OTP will expire in <strong>10 minutes</strong>. If you didn't request this, please ignore this email.
+    </p>
+  </div>
+  
+  <p style="margin: 0; color: #718096; font-size: 14px; line-height: 1.6; text-align: center;">
+    Having trouble? Contact our support team for assistance.
+  </p>
+`;
+
+const createPasswordEmailContent = (password: string) => `
+  <div style="text-align: center; margin-bottom: 30px;">
+    <div style="display: inline-block; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        <path d="m9 12 2 2 4-4"></path>
+      </svg>
+    </div>
+  </div>
+  
+  <h2 style="margin: 0 0 16px; color: #2d3748; font-size: 26px; font-weight: 700; text-align: center;">
+    Your Temporary Password
+  </h2>
+  
+  <p style="margin: 0 0 30px; color: #4a5568; font-size: 16px; line-height: 1.6; text-align: center;">
+    Your password has been reset successfully. Use the temporary password below to login to your account.
+  </p>
+  
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 30px; margin: 0 0 30px; text-align: center; box-shadow: 0 10px 30px rgba(102,126,234,0.3);">
+    <p style="margin: 0 0 12px; color: #ffffff; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+      Temporary Password
+    </p>
+    <div style="font-size: 32px; font-weight: 800; color: #ffffff; letter-spacing: 4px; font-family: 'Courier New', monospace; text-shadow: 0 2px 10px rgba(0,0,0,0.2);">
+      ${password}
+    </div>
+  </div>
+  
+  <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 16px 20px; margin: 0 0 20px; border-radius: 8px;">
+    <p style="margin: 0; color: #0c5460; font-size: 14px; line-height: 1.6;">
+      <strong>🔒 Security Tip:</strong> After logging in, please change your password immediately from your Profile Settings.
+    </p>
+  </div>
+  
+  <div style="text-align: center; margin-top: 30px;">
+    <a href="#" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 15px; box-shadow: 0 10px 25px rgba(102,126,234,0.3);">
+      Login to RBS Academy
+    </a>
+  </div>
+`;
+
+const sendEmail = async (to: string, subject: string, text: string, html?: string) => {
   assertSmtpConfigured();
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -247,6 +378,7 @@ const sendEmail = async (to: string, subject: string, text: string) => {
     to,
     subject,
     text,
+    html: html || undefined,
   });
 };
 
@@ -1579,8 +1711,13 @@ export const createApiApp = async () => {
     });
     await sendEmail(
       normalizedEmail,
-      "RBS Academy email verification OTP",
+      "RBS Academy Email Verification",
       `Your RBS Academy signup OTP is ${otp}. It expires in 10 minutes.`,
+      createPremiumEmailTemplate(
+        "Email Verification",
+        createOtpEmailContent(otp, "signup"),
+        "Welcome to RBS Academy! We're excited to have you onboard."
+      ),
     );
     res.json({ success: true, message: "OTP sent to your email" });
   }));
@@ -1665,8 +1802,13 @@ export const createApiApp = async () => {
     await saveOtp(normalizedEmail, "password-reset", otp);
     await sendEmail(
       normalizedEmail,
-      "RBS Academy password reset OTP",
+      "RBS Academy Password Reset",
       `Your RBS Academy password reset OTP is ${otp}. It expires in 10 minutes.`,
+      createPremiumEmailTemplate(
+        "Password Reset",
+        createOtpEmailContent(otp, "password-reset"),
+        "If you didn't request this password reset, please contact support immediately."
+      ),
     );
     res.json({ success: true, message: "Password reset OTP sent to your email" });
   }));
@@ -1695,8 +1837,13 @@ export const createApiApp = async () => {
     await execute("UPDATE users SET password = ? WHERE id = ?", [hashPassword(temporaryPassword), user.id]);
     await sendEmail(
       normalizedEmail,
-      "RBS Academy temporary password",
+      "RBS Academy Temporary Password",
       `Your RBS Academy temporary password is ${temporaryPassword}. Login with this password and change it from Profile Information.`,
+      createPremiumEmailTemplate(
+        "Temporary Password",
+        createPasswordEmailContent(temporaryPassword),
+        "For security reasons, please change your password after logging in."
+      ),
     );
     res.json({ success: true, message: "A temporary password has been sent to your email" });
   }));
