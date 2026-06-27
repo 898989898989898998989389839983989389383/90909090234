@@ -9012,10 +9012,6 @@ const AdminPanelScreen = ({
             </nav>
 
             <div className="admin-sidebar-footer">
-              <div className="admin-sidebar-status">
-                <span>{isSuperAdmin ? 'Superadmin Mode' : 'Admin Mode'}</span>
-                <strong>{contentHealthScore}% system health</strong>
-              </div>
               <button onClick={onRefresh} className="admin-sidebar-link">
                 <span className="admin-sidebar-link-icon"><ShieldCheck size={18} /></span>
                 <span>{activeTabLabel}</span>
