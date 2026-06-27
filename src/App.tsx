@@ -7829,46 +7829,6 @@ const AdminPanelScreen = ({
     { label: 'Students', value: users.length.toLocaleString(), note: `${studentAccessCount} course grants issued`, tone: 'green', icon: <User size={20} /> },
     { label: 'Health', value: `${contentHealthScore}%`, note: alertCount ? `${alertCount} homepage attention items` : 'Publishing system balanced', tone: alertCount ? 'danger' : 'blue', icon: <ShieldCheck size={20} /> },
   ] as const;
-  const adminInsights = [
-    {
-      title: 'Course Coverage',
-      value: `${coursesWithVideos}/${courses.length || 0}`,
-      detail: emptyCourseCount ? `${emptyCourseCount} courses still need videos` : 'Every course has attached lessons',
-      tone: emptyCourseCount ? 'amber' : 'emerald',
-      action: 'Open Builder',
-      tab: 'course' as typeof activeTab,
-    },
-    {
-      title: 'Free Learning',
-      value: freeCourseCount.toLocaleString(),
-      detail: 'Courses students can open without access codes',
-      tone: 'green',
-      action: 'Manage Courses',
-      tab: 'course' as typeof activeTab,
-    },
-    {
-      title: 'Quiz Depth',
-      value: quizQuestionAverage ? `${quizQuestionAverage}/quiz` : '0/quiz',
-      detail: `${questions.length} questions across ${quizzes.length} quizzes`,
-      tone: 'blue',
-      action: 'Review MCQs',
-      tab: 'quiz' as typeof activeTab,
-    },
-    {
-      title: 'Homepage Readiness',
-      value: `${activeSliderCount}`,
-      detail: activeSliderCount ? 'Active banners are visible to students' : 'Add one active slider for the home screen',
-      tone: activeSliderCount ? 'violet' : 'rose',
-      action: 'Edit Slider',
-      tab: 'slider' as typeof activeTab,
-    },
-  ];
-  const overviewMetrics = [
-    { label: 'Notes', value: notes.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'blue' },
-    { label: 'Courses', value: courses.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'emerald' },
-    { label: 'Lessons', value: lessons.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'amber' },
-    { label: 'Quizzes', value: quizzes.length, max: Math.max(notes.length, courses.length, lessons.length, quizzes.length, 1), tone: 'rose' },
-  ];
   const chartLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
   const overviewSeries = [
     {
@@ -9380,66 +9340,6 @@ const AdminPanelScreen = ({
                 <div className="admin-reference-kpi-note">{item.note}</div>
               </div>
             ))}
-          </div>
-
-          <div className="admin-overview-grid">
-            <div className="admin-insight-panel">
-              <div className="admin-reference-panel-head">
-                <div>
-                  <p className="admin-control-eyebrow">Overview Insights</p>
-                  <h3>What needs attention</h3>
-                </div>
-                <button type="button" onClick={onRefresh}>Refresh</button>
-              </div>
-              <div className="admin-insight-grid">
-                {adminInsights.map((insight) => (
-                  <button
-                    key={insight.title}
-                    type="button"
-                    onClick={() => openAdminTab(insight.tab)}
-                    className={`admin-insight-card admin-insight-card--${insight.tone}`}
-                  >
-                    <span>
-                      <strong>{insight.title}</strong>
-                      <em>{insight.detail}</em>
-                    </span>
-                    <b>{insight.value}</b>
-                    <small>{insight.action}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="admin-activity-panel">
-              <div className="admin-reference-panel-head">
-                <div>
-                  <p className="admin-control-eyebrow">Content Mix</p>
-                  <h3>Publishing balance</h3>
-                </div>
-                <span
-                  className="admin-health-ring"
-                  style={{ '--score': contentHealthScore } as React.CSSProperties}
-                >
-                  {contentHealthScore}%
-                </span>
-              </div>
-              <div className="admin-metric-bars">
-                {overviewMetrics.map((metric) => (
-                  <div key={metric.label} className="admin-metric-bar-row">
-                    <div>
-                      <span>{metric.label}</span>
-                      <strong>{metric.value}</strong>
-                    </div>
-                    <i>
-                      <b
-                        className={`admin-metric-fill admin-metric-fill--${metric.tone}`}
-                        style={{ width: `${Math.max(8, Math.round((metric.value / metric.max) * 100))}%` }}
-                      />
-                    </i>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="admin-control-center">
