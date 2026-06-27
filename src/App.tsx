@@ -10042,8 +10042,8 @@ const AdminPanelScreen = ({
           <div className="admin-course-workspace">
               <div className="admin-course-workspace-head">
                 <div>
-                  <h3>{managedCourse ? managedCourse.title : 'Course Builder'}</h3>
-                  <span>Add videos, thumbnails, and manage lessons</span>
+                  <h3>{managedCourse ? `📚 ${managedCourse.title}` : '📚 Course Builder'}</h3>
+                  <span>{managedCourse ? `${managedCourseLessons.length} videos added` : 'Select a course to start adding videos'}</span>
                 </div>
                 <select
                   value={managedCourse?.id || ''}
@@ -10055,7 +10055,7 @@ const AdminPanelScreen = ({
                     setCourseQuizForm({ quiz_id: '', text: '', optionsText: '', correctAnswer: '0', explanation: '' });
                   }}
                 >
-                  <option value="">Select a course</option>
+                  <option value="">🎯 Select a course to manage</option>
                   {courses.map((course) => (
                     <option key={course.id} value={course.id}>{course.title}</option>
                   ))}
@@ -10068,29 +10068,33 @@ const AdminPanelScreen = ({
                     <div className="admin-course-workspace-title">
                       <Play size={20} />
                       <div>
-                        <strong>Add videos to {managedCourse.title}</strong>
-                        <span>{managedCourseLessons.length} videos added</span>
+                        <strong>📹 Add Videos</strong>
+                        <span>Add lessons one by one or import from YouTube playlist</span>
                       </div>
                     </div>
+
+                    {/* Quick Import from YouTube Playlist */}
                     <div className="admin-video-custom-control mb-4">
                       <div className="admin-course-workspace-title">
-                        <Play size={18} />
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                        </svg>
                         <div>
-                          <strong>Import YouTube playlist</strong>
-                          <span>Paste a public playlist link. All videos will become ordered lessons in this course.</span>
+                          <strong>Quick Import (Optional)</strong>
+                          <span>Have a YouTube playlist? Import all videos at once</span>
                         </div>
                       </div>
                       <input
                         value={playlistImportForm.course_id === managedCourse.id ? playlistImportForm.playlist_url : ''}
                         onChange={(event) => setPlaylistImportForm({ ...playlistImportForm, course_id: managedCourse.id, playlist_url: event.target.value })}
-                        placeholder="https://www.youtube.com/playlist?list=..."
+                        placeholder="🔗 Paste YouTube playlist URL here"
                       />
                       <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                         <input
                           inputMode="numeric"
                           value={playlistImportForm.course_id === managedCourse.id ? playlistImportForm.start_order : ''}
                           onChange={(event) => setPlaylistImportForm({ ...playlistImportForm, course_id: managedCourse.id, start_order: event.target.value.replace(/[^\d]/g, '') })}
-                          placeholder={`Start order optional, next is ${managedCourseLessons.length + 1}`}
+                          placeholder={`Starting position (leave empty for ${managedCourseLessons.length + 1})`}
                         />
                         <button
                           type="button"
@@ -10098,139 +10102,185 @@ const AdminPanelScreen = ({
                           onClick={submitPlaylistImport}
                           className="admin-secondary-button px-5 py-3 text-sm font-bold"
                         >
-                          {loading ? 'Importing...' : 'Import Playlist'}
+                          {loading ? '⏳ Importing...' : '⚡ Import Playlist'}
                         </button>
                       </div>
                     </div>
+                    {/* Add Single Video Form */}
                     <div className="admin-course-mini-form">
-                      <input
-                        value={lessonForm.course_id === managedCourse.id ? lessonForm.title : ''}
-                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, title: event.target.value })}
-                        placeholder="Video title"
-                      />
-                      <div className="grid gap-3 md:grid-cols-[1fr_120px]">
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">
+                          1️⃣ Video Title <span className="text-red-500">*</span>
+                        </label>
                         <input
-                          value={lessonForm.course_id === managedCourse.id ? lessonForm.duration : ''}
-                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, duration: event.target.value })}
-                          placeholder="Duration e.g. 18:20"
-                        />
-                        <input
-                          inputMode="numeric"
-                          value={lessonForm.course_id === managedCourse.id ? lessonForm.sort_order : String(managedCourseLessons.length + 1)}
-                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, sort_order: event.target.value.replace(/[^\d]/g, '') })}
-                          placeholder="Order"
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.title : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, title: event.target.value })}
+                          placeholder="Example: Introduction to Chemistry"
                         />
                       </div>
-                      <input
-                        value={lessonForm.course_id === managedCourse.id ? lessonForm.video_url : ''}
-                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, video_url: event.target.value })}
-                        placeholder="YouTube URL"
-                      />
-                      <input
-                        value={lessonForm.course_id === managedCourse.id ? lessonForm.thumbnail_url : ''}
-                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, thumbnail_url: event.target.value })}
-                        placeholder="Video thumbnail URL optional"
-                      />
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-sm font-bold text-gray-700">2️⃣ Duration</label>
+                          <input
+                            value={lessonForm.course_id === managedCourse.id ? lessonForm.duration : ''}
+                            onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, duration: event.target.value })}
+                            placeholder="Example: 15:30"
+                          />
+                          <span className="text-xs text-gray-500">⏱️ Format: minutes:seconds</span>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-bold text-gray-700">3️⃣ Lesson Number</label>
+                          <input
+                            inputMode="numeric"
+                            value={lessonForm.course_id === managedCourse.id ? lessonForm.sort_order : String(managedCourseLessons.length + 1)}
+                            onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, sort_order: event.target.value.replace(/[^\d]/g, '') })}
+                            placeholder={String(managedCourseLessons.length + 1)}
+                          />
+                          <span className="text-xs text-gray-500">📋 Position in course</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">
+                          4️⃣ YouTube Video URL <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.video_url : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, video_url: event.target.value })}
+                          placeholder="https://www.youtube.com/watch?v=..."
+                        />
+                        <span className="text-xs text-gray-500">🎥 Paste the full YouTube link</span>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">5️⃣ Video Thumbnail (Optional)</label>
+                        <label className="admin-slider-upload-box cursor-pointer">
+                          <span className="admin-slider-upload-button">
+                            <Upload size={18} />
+                            {lessonThumbnailFile ? '✅ Change Thumbnail' : '📤 Upload Thumbnail Image'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0] || null;
+                              if (!file) {
+                                setLessonThumbnailFile(null);
+                                return;
+                              }
+                              if (!file.type.startsWith('image/')) {
+                                setMessage('Please choose an image file');
+                                event.target.value = '';
+                                return;
+                              }
+                              if (file.size > 5 * 1024 * 1024) {
+                                setMessage('Image must be smaller than 5 MB');
+                                event.target.value = '';
+                                return;
+                              }
+                              setMessage('');
+                              setLessonThumbnailFile(file);
+                            }}
+                            className="sr-only"
+                          />
+                          <span className="admin-slider-upload-hint">
+                            {lessonThumbnailFile 
+                              ? `✅ ${lessonThumbnailFile.name} (${(lessonThumbnailFile.size / 1024 / 1024).toFixed(2)} MB)` 
+                              : '🖼️ JPG, PNG, WEBP, GIF (max 5 MB) - Or paste URL below'}
+                          </span>
+                        </label>
+                        <input
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.thumbnail_url : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, thumbnail_url: event.target.value })}
+                          placeholder="Or paste image URL here"
+                        />
+                      </div>
+                      {/* Downloadable Resources Section */}
                       <div className="admin-video-custom-control">
                         <div className="admin-course-workspace-title">
                           <Download size={18} />
                           <div>
-                            <strong>Secure download section</strong>
-                            <span>Add your own downloadable file/resource URL for this lesson. YouTube links stay embedded and protected.</span>
+                            <strong>6️⃣ Downloadable Resources (Optional)</strong>
+                            <span>Let students download PDFs, notes, or other files</span>
                           </div>
                         </div>
                         <input
                           value={lessonForm.course_id === managedCourse.id ? lessonForm.download_label : ''}
                           onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_label: event.target.value })}
-                          placeholder="Download button label e.g. Download lesson video"
+                          placeholder="Button text (e.g., Download PDF Notes)"
                         />
                         <input
                           value={lessonForm.course_id === managedCourse.id ? lessonForm.download_url : ''}
                           onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_url: event.target.value })}
-                          placeholder="Secure download/resource URL optional"
+                          placeholder="File URL (Google Drive, Dropbox, etc.)"
                         />
                         <button
                           type="button"
                           className={`admin-video-toggle ${lessonForm.download_enabled ? 'is-on' : ''}`}
                           onClick={() => setLessonForm({ ...lessonForm, course_id: managedCourse.id, download_enabled: !lessonForm.download_enabled })}
                         >
-                          <span>{lessonForm.download_enabled ? 'Download section on' : 'Download section off'}</span>
+                          <span>{lessonForm.download_enabled ? '✅ Download enabled' : '❌ Download disabled'}</span>
                           <i />
                         </button>
                       </div>
-                      <label className="admin-slider-upload-box">
-                        <span className="admin-slider-upload-title">Video thumbnail</span>
-                        <span className="admin-slider-upload-button">
-                          <Upload size={18} />
-                          Upload video thumbnail
-                        </span>
+
+                      {/* Notes Section */}
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">7️⃣ Lesson Notes (Optional)</label>
                         <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0] || null;
-                            if (!file) {
-                              setLessonThumbnailFile(null);
-                              return;
-                            }
-                            if (!file.type.startsWith('image/')) {
-                              setMessage('Please choose a valid video thumbnail image');
-                              event.target.value = '';
-                              return;
-                            }
-                            if (file.size > 5 * 1024 * 1024) {
-                              setMessage('Video thumbnail must be 5 MB or smaller');
-                              event.target.value = '';
-                              return;
-                            }
-                            setMessage('');
-                            setLessonThumbnailFile(file);
-                          }}
-                          className="sr-only"
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.note_url : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_url: event.target.value })}
+                          placeholder="Note website URL (if you have study material online)"
                         />
-                        <span className="admin-slider-upload-hint">
-                          {lessonThumbnailFile ? `${lessonThumbnailFile.name} • ${(lessonThumbnailFile.size / 1024 / 1024).toFixed(2)} MB` : 'Paste URL above or upload JPG, PNG, WEBP, GIF'}
-                        </span>
-                      </label>
-                      <input
-                        value={lessonForm.course_id === managedCourse.id ? lessonForm.note_url : ''}
-                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_url: event.target.value })}
-                        placeholder="Full-screen HTML/website URL optional"
-                      />
-                      <textarea
-                        value={lessonForm.course_id === managedCourse.id ? lessonForm.note_content : ''}
-                        onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_content: event.target.value })}
-                        placeholder="Paste full HTML code optional"
-                      />
-                      <button type="button" onClick={submitLessonForm} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                        {editingLessonId ? 'Update Video' : 'Add Video'}
+                        <span className="text-xs text-gray-500">🔗 Or add custom HTML below:</span>
+                        <textarea
+                          value={lessonForm.course_id === managedCourse.id ? lessonForm.note_content : ''}
+                          onChange={(event) => setLessonForm({ ...lessonForm, course_id: managedCourse.id, note_content: event.target.value })}
+                          placeholder="Paste HTML code for custom notes (advanced users only)"
+                          rows={3}
+                        />
+                      </div>
+
+                      <button 
+                        type="button" 
+                        onClick={submitLessonForm} 
+                        className="admin-primary-button px-6 py-4 text-base font-bold"
+                      >
+                        {editingLessonId ? '💾 Update Video' : '➕ Add Video to Course'}
                       </button>
                     </div>
 
+                    {/* Video List */}
                     <div className="admin-course-video-list">
+                      <div className="mb-3 font-bold text-gray-700 flex items-center gap-2">
+                        <span>📋 All Videos</span>
+                        <span className="bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">{managedCourseLessons.length}</span>
+                      </div>
                       {managedCourseLessons.map((lesson, index) => (
                         <div key={lesson.id} className="admin-course-video-row">
                           {lesson.thumbnail_url ? (
                             <img src={lesson.thumbnail_url} alt={lesson.title} className="h-12 w-16 rounded-xl object-cover bg-slate-100" referrerPolicy="no-referrer" />
                           ) : (
-                            <b>{Number(lesson.sort_order || index + 1)}</b>
+                            <b className="text-primary">#{Number(lesson.sort_order || index + 1)}</b>
                           )}
                           <span>
                             <strong>{lesson.title}</strong>
-                            <em>{lesson.duration || 'No duration'} • {lesson.video_url ? 'Video ready' : 'Missing URL'}</em>
+                            <em>⏱️ {lesson.duration || 'No duration'} • {lesson.video_url ? '✅ Ready' : '⚠️ Missing URL'}</em>
                           </span>
                           <div>
                             <button
                               type="button"
                               onClick={() => submitAction('updateLesson', { ...lesson, sort_order: Math.max(1, Number(lesson.sort_order || index + 1) - 1) }, () => {})}
+                              title="Move up"
                             >
-                              Up
+                              ⬆️
                             </button>
                             <button
                               type="button"
                               onClick={() => submitAction('updateLesson', { ...lesson, sort_order: Number(lesson.sort_order || index + 1) + 1 }, () => {})}
+                              title="Move down"
                             >
-                              Down
+                              ⬇️
                             </button>
                             <button
                               type="button"
@@ -10251,21 +10301,27 @@ const AdminPanelScreen = ({
                                 });
                                 setLessonThumbnailFile(null);
                               }}
+                              title="Edit"
                             >
-                              Edit
+                              ✏️ Edit
                             </button>
                             <button
                               type="button"
                               className="is-danger"
-                              onClick={() => confirmDelete('Delete video?', `This will delete "${lesson.title}".`, () => submitAction('deleteLesson', { id: lesson.id }, () => {}))}
+                              onClick={() => confirmDelete('Delete this video?', `"${lesson.title}" will be removed from the course.`, () => submitAction('deleteLesson', { id: lesson.id }, () => {}))}
+                              title="Delete"
                             >
-                              Delete
+                              🗑️ Delete
                             </button>
                           </div>
                         </div>
                       ))}
                       {!managedCourseLessons.length && (
-                        <div className="admin-empty-control">No videos yet. Add the first ordered video for this paid course.</div>
+                        <div className="admin-empty-control">
+                          <div className="text-4xl mb-2">📹</div>
+                          <div className="font-bold">No videos yet</div>
+                          <div className="text-sm text-gray-500">Fill in the form above to add your first video</div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -10274,65 +10330,102 @@ const AdminPanelScreen = ({
                     <div className="admin-course-workspace-title">
                       <HelpCircle size={20} />
                       <div>
-                        <strong>Course MCQs</strong>
-                        <span>{managedCourseQuestions.length} questions linked</span>
+                        <strong>❓ Course Quiz Questions</strong>
+                        <span>Test your students with multiple choice questions</span>
                       </div>
                     </div>
                     <div className="admin-course-mini-form">
-                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                        <select
-                          value={courseQuizForm.quiz_id || managedCourseQuiz?.id || ''}
-                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, quiz_id: event.target.value })}
-                        >
-                          <option value="">Choose MCQ quiz</option>
-                          {quizzes.map((quiz) => (
-                            <option key={quiz.id} value={quiz.id}>{quiz.topic}</option>
-                          ))}
-                        </select>
-                        <button type="button" onClick={handleCreateManagedCourseQuiz} className="admin-secondary-button px-4 py-3 text-sm font-bold">
-                          Create Quiz
-                        </button>
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">Select or Create Quiz</label>
+                        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                          <select
+                            value={courseQuizForm.quiz_id || managedCourseQuiz?.id || ''}
+                            onChange={(event) => setCourseQuizForm({ ...courseQuizForm, quiz_id: event.target.value })}
+                          >
+                            <option value="">📝 Choose existing quiz</option>
+                            {quizzes.map((quiz) => (
+                              <option key={quiz.id} value={quiz.id}>{quiz.topic}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={handleCreateManagedCourseQuiz} className="admin-secondary-button px-4 py-3 text-sm font-bold">
+                            ➕ New Quiz
+                          </button>
+                        </div>
                       </div>
-                      <textarea
-                        value={courseQuizForm.text}
-                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, text: event.target.value })}
-                        placeholder="MCQ question text"
-                      />
-                      <textarea
-                        value={courseQuizForm.optionsText}
-                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, optionsText: event.target.value })}
-                        placeholder={'Options, one per line\nOption A\nOption B\nOption C\nOption D'}
-                      />
-                      <input
-                        inputMode="numeric"
-                        value={courseQuizForm.correctAnswer}
-                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, correctAnswer: event.target.value.replace(/[^\d]/g, '') })}
-                        placeholder="Correct answer index, e.g. 0"
-                      />
-                      <textarea
-                        value={courseQuizForm.explanation}
-                        onChange={(event) => setCourseQuizForm({ ...courseQuizForm, explanation: event.target.value })}
-                        placeholder="Explanation"
-                      />
+
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">Question Text</label>
+                        <textarea
+                          value={courseQuizForm.text}
+                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, text: event.target.value })}
+                          placeholder="Example: What is the chemical formula for water?"
+                          rows={2}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">Answer Options (one per line)</label>
+                        <textarea
+                          value={courseQuizForm.optionsText}
+                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, optionsText: event.target.value })}
+                          placeholder={'H2O\nCO2\nNaCl\nO2'}
+                          rows={4}
+                        />
+                        <span className="text-xs text-gray-500">💡 Type each answer option on a new line</span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">Correct Answer Number</label>
+                        <input
+                          inputMode="numeric"
+                          value={courseQuizForm.correctAnswer}
+                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, correctAnswer: event.target.value.replace(/[^\d]/g, '') })}
+                          placeholder="0 for first option, 1 for second, etc."
+                        />
+                        <span className="text-xs text-gray-500">📌 Start counting from 0 (first option = 0, second = 1...)</span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-700">Explanation (Optional)</label>
+                        <textarea
+                          value={courseQuizForm.explanation}
+                          onChange={(event) => setCourseQuizForm({ ...courseQuizForm, explanation: event.target.value })}
+                          placeholder="Explain why this is the correct answer"
+                          rows={2}
+                        />
+                      </div>
+
                       <button type="button" onClick={submitManagedCourseQuestion} className="admin-primary-button px-5 py-3 text-sm font-bold">
-                        Add MCQ
+                        ➕ Add Question
                       </button>
                     </div>
                     <div className="admin-course-mcq-list">
+                      <div className="mb-3 font-bold text-gray-700 flex items-center gap-2">
+                        <span>📝 Questions</span>
+                        <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-full text-xs">{managedCourseQuestions.length}</span>
+                      </div>
                       {managedCourseQuestions.slice(0, 8).map((question, index) => (
                         <div key={question.id} className="admin-course-mcq-row">
-                          <b>{index + 1}</b>
+                          <b className="text-primary">Q{index + 1}</b>
                           <span>{question.text}</span>
                         </div>
                       ))}
                       {!managedCourseQuestions.length && (
-                        <div className="admin-empty-control">No MCQs yet. Create or choose a quiz, then add questions here.</div>
+                        <div className="admin-empty-control">
+                          <div className="text-4xl mb-2">❓</div>
+                          <div className="font-bold">No questions yet</div>
+                          <div className="text-sm text-gray-500">Create a quiz and add questions to test your students</div>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="admin-empty-control">No courses available yet. Create a course first, then add videos and MCQs here.</div>
+                <div className="admin-empty-control">
+                  <div className="text-6xl mb-4">🎓</div>
+                  <div className="text-lg font-bold mb-2">Welcome to Course Builder!</div>
+                  <div className="text-gray-600">Select a course from the dropdown above to start adding videos and quiz questions</div>
+                </div>
               )}
             </div>
 
