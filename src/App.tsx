@@ -67,7 +67,7 @@ declare global {
 }
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'offline-storage' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
 
 const APP_SHARE_URL = 'https://play.google.com/store/apps/details?id=com.rbs.academy';
 const APP_SHARE_TEXT = 'Download RBS Academy for premium chemistry learning, notes, quizzes, and live classes.';
@@ -701,6 +701,133 @@ const saveCachedAppControlSettings = (settings: AppControlSettings) => {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(APP_CONTROL_CACHE_KEY, JSON.stringify(settings));
   }
+};
+
+// --- IndexedDB for Offline Notes ---
+
+const OFFLINE_NOTES_DB = 'rbs-academy-offline-notes';
+const OFFLINE_NOTES_STORE = 'notes';
+const OFFLINE_NOTES_VERSION = 1;
+
+interface OfflineNote {
+  id: string;
+  title: string;
+  content: string;
+  contentType: string;
+  downloadedAt: number;
+  url: string;
+}
+
+const openOfflineNotesDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(OFFLINE_NOTES_DB, OFFLINE_NOTES_VERSION);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(OFFLINE_NOTES_STORE)) {
+        const store = db.createObjectStore(OFFLINE_NOTES_STORE, { keyPath: 'id' });
+        store.createIndex('downloadedAt', 'downloadedAt', { unique: false });
+      }
+    };
+  });
+};
+
+const saveOfflineNote = async (note: OfflineNote): Promise<void> => {
+  const db = await openOfflineNotesDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([OFFLINE_NOTES_STORE], 'readwrite');
+    const store = transaction.objectStore(OFFLINE_NOTES_STORE);
+    const request = store.put(note);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const loadOfflineNote = async (noteId: string): Promise<string | null> => {
+  try {
+    const db = await openOfflineNotesDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([OFFLINE_NOTES_STORE], 'readonly');
+      const store = transaction.objectStore(OFFLINE_NOTES_STORE);
+      const request = store.get(noteId);
+
+      request.onsuccess = () => {
+        const note = request.result as OfflineNote | undefined;
+        resolve(note?.content || null);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error('Failed to load offline note:', error);
+    return null;
+  }
+};
+
+const checkOfflineAvailability = async (noteId: string): Promise<boolean> => {
+  try {
+    const db = await openOfflineNotesDB();
+    return new Promise((resolve) => {
+      const transaction = db.transaction([OFFLINE_NOTES_STORE], 'readonly');
+      const store = transaction.objectStore(OFFLINE_NOTES_STORE);
+      const request = store.get(noteId);
+
+      request.onsuccess = () => resolve(Boolean(request.result));
+      request.onerror = () => resolve(false);
+    });
+  } catch (error) {
+    return false;
+  }
+};
+
+const deleteOfflineNote = async (noteId: string): Promise<void> => {
+  const db = await openOfflineNotesDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([OFFLINE_NOTES_STORE], 'readwrite');
+    const store = transaction.objectStore(OFFLINE_NOTES_STORE);
+    const request = store.delete(noteId);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const getAllOfflineNotes = async (): Promise<OfflineNote[]> => {
+  try {
+    const db = await openOfflineNotesDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([OFFLINE_NOTES_STORE], 'readonly');
+      const store = transaction.objectStore(OFFLINE_NOTES_STORE);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error('Failed to get offline notes:', error);
+    return [];
+  }
+};
+
+const getOfflineNotesSize = async (): Promise<number> => {
+  try {
+    const notes = await getAllOfflineNotes();
+    return notes.reduce((total, note) => total + (note.content?.length || 0), 0);
+  } catch {
+    return 0;
+  }
+};
+
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
 const loadJsonResource = async <T,>(resource: 'sliders' | 'courses' | 'notes' | 'quizzes' | 'users' | 'live-classes', fallbackValue: T): Promise<T> => {
@@ -4909,6 +5036,24 @@ const CourseDetailsScreen = ({
   isUnlocked: boolean,
   videoNotesEnabled?: boolean
 }) => {
+  const [offlineNotesMap, setOfflineNotesMap] = useState<Map<string, boolean>>(new Map());
+
+  // Check which notes are available offline
+  useEffect(() => {
+    const checkOfflineNotes = async () => {
+      if (!course?.lessonList) return;
+      
+      const map = new Map<string, boolean>();
+      for (const lesson of course.lessonList) {
+        const available = await checkOfflineAvailability(lesson.id);
+        map.set(lesson.id, available);
+      }
+      setOfflineNotesMap(map);
+    };
+
+    checkOfflineNotes();
+  }, [course?.lessonList]);
+
   if (!course) return null;
   const isPremiumCourse = !isCourseFree(course);
   const courseDescription = String(course.description || '').trim()
@@ -4969,7 +5114,17 @@ const CourseDetailsScreen = ({
                     {idx + 1}
                   </div>
                   <div className="flex-1">
-                    <h4 className="text-sm font-bold text-gray-800">{lesson.title}</h4>
+                    <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                      {lesson.title}
+                      {offlineNotesMap.get(lesson.id) && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          Offline
+                        </span>
+                      )}
+                    </h4>
                     <p className="text-[10px] text-gray-500">{lesson.duration} mins</p>
                   </div>
                   {isUnlocked && videoNotesEnabled && (
@@ -5808,7 +5963,8 @@ const SettingsScreen = ({
   onToggleDarkMode,
   onEnableNotifications,
   onOpenProfileInfo,
-  onOpenHelpCenter
+  onOpenHelpCenter,
+  onOpenOfflineStorage
 }: {
   user: any,
   darkModeEnabled: boolean,
@@ -5818,7 +5974,8 @@ const SettingsScreen = ({
   onToggleDarkMode: () => void,
   onEnableNotifications: () => void,
   onOpenProfileInfo: () => void,
-  onOpenHelpCenter: () => void
+  onOpenHelpCenter: () => void,
+  onOpenOfflineStorage: () => void
 }) => {
   const [downloadOnWifi, setDownloadOnWifi] = useState(true);
 
@@ -5913,6 +6070,7 @@ const SettingsScreen = ({
           <SectionHeader title="Account" />
           <div className="space-y-3">
             {infoRow('Profile Information', 'Change student name and password. Email stays fixed.', onOpenProfileInfo)}
+            {infoRow('Offline Storage', 'Manage downloaded notes for offline access', onOpenOfflineStorage)}
             {infoRow('Security', 'Password and account protection settings')}
             {infoRow('Language', 'English')}
           </div>
@@ -5926,6 +6084,210 @@ const SettingsScreen = ({
             {infoRow('App Version', 'RBS Academy v1.0.0')}
           </div>
         </section>
+      </div>
+    </motion.div>
+  );
+};
+
+const OfflineStorageScreen = ({
+  onBack
+}: {
+  onBack: () => void
+}) => {
+  const [offlineNotes, setOfflineNotes] = useState<OfflineNote[]>([]);
+  const [totalSize, setTotalSize] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const loadOfflineNotes = async () => {
+    setLoading(true);
+    try {
+      const notes = await getAllOfflineNotes();
+      const size = await getOfflineNotesSize();
+      setOfflineNotes(notes.sort((a, b) => b.downloadedAt - a.downloadedAt));
+      setTotalSize(size);
+    } catch (error) {
+      console.error('Failed to load offline notes:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOfflineNotes();
+  }, []);
+
+  const handleDelete = async (noteId: string) => {
+    setDeleting(noteId);
+    try {
+      await deleteOfflineNote(noteId);
+      await loadOfflineNotes();
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      alert('Failed to delete note. Please try again.');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!confirm(`Delete all ${offlineNotes.length} downloaded notes?`)) return;
+
+    setLoading(true);
+    try {
+      for (const note of offlineNotes) {
+        await deleteOfflineNote(note.id);
+      }
+      await loadOfflineNotes();
+    } catch (error) {
+      console.error('Failed to delete all notes:', error);
+      alert('Failed to delete all notes. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="flex-1 overflow-y-auto bg-gray-50"
+    >
+      {/* Header */}
+      <div className="bg-[linear-gradient(135deg,#0b56c4_0%,#00357f_100%)] p-5 text-white shadow-lg">
+        <button
+          onClick={onBack}
+          className="mb-4 flex items-center gap-2 text-white/80 hover:text-white transition-colors"
+        >
+          <ArrowLeft size={20} />
+          <span className="text-sm font-bold">Back</span>
+        </button>
+        <h2 className="text-2xl font-bold mb-2">Offline Storage</h2>
+        <p className="text-sm text-white/75">Manage downloaded notes for offline access</p>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Storage Summary */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">Storage Used</h3>
+              <p className="text-sm text-gray-500 mt-1">{offlineNotes.length} notes downloaded</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-primary">{formatBytes(totalSize)}</div>
+            </div>
+          </div>
+          {offlineNotes.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              disabled={loading}
+              className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors disabled:opacity-50"
+            >
+              Delete All Downloads
+            </button>
+          )}
+        </div>
+
+        {/* Downloaded Notes List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-3"></div>
+              <p className="text-sm text-gray-500">Loading offline notes...</p>
+            </div>
+          </div>
+        ) : offlineNotes.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">No Offline Notes</h3>
+            <p className="text-sm text-gray-500">
+              Download notes from course lessons to access them offline
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider px-1">
+              Downloaded Notes ({offlineNotes.length})
+            </h3>
+            {offlineNotes.map((note) => (
+              <div
+                key={note.id}
+                className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600">
+                    <FileText size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-gray-800 mb-1 truncate">
+                      {note.title}
+                    </h4>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>{formatBytes(note.content?.length || 0)}</span>
+                      <span>•</span>
+                      <span>{formatDate(note.downloadedAt)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(note.id)}
+                    disabled={deleting === note.id}
+                    className="flex-shrink-0 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    aria-label="Delete"
+                  >
+                    {deleting === note.id ? (
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-solid border-red-500 border-r-transparent"></div>
+                    ) : (
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div className="text-xs text-blue-800">
+              <p className="font-bold mb-1">About Offline Storage</p>
+              <p>Downloaded notes are stored locally on your device and can be accessed without internet connection. They don't count against your data usage.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
@@ -11691,12 +12053,105 @@ const NoteViewerScreen = ({
   protectedMode?: boolean,
   watermark?: string
 }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
+  const [offlineContent, setOfflineContent] = useState<string | null>(null);
+  const [showOfflineIndicator, setShowOfflineIndicator] = useState(false);
+
   if (!lesson) return null;
 
   const previewUrl = getNoteHtmlPreviewUrl(lesson.note_url, lesson.title);
   const imagePreview = isImageNoteUrl(lesson.note_url, lesson.title);
   const htmlContent = isHtmlNoteContent(lesson.note_content) ? lesson.note_content : '';
   const hasFullPageHtml = Boolean(previewUrl || htmlContent);
+
+  // Check if note is available offline on mount
+  useEffect(() => {
+    if (lesson?.id) {
+      checkOfflineAvailability(lesson.id).then((available) => {
+        setIsOfflineAvailable(available);
+        if (available && !navigator.onLine) {
+          setShowOfflineIndicator(true);
+          // Load offline content
+          loadOfflineNote(lesson.id).then((content) => {
+            if (content) setOfflineContent(content);
+          });
+        }
+      });
+    }
+  }, [lesson?.id]);
+
+  // Handle download for offline access
+  const handleDownloadOffline = async () => {
+    if (!lesson || isDownloading) return;
+    
+    setIsDownloading(true);
+    setDownloadProgress(0);
+
+    try {
+      let contentToSave = '';
+      let contentType = 'text/html';
+
+      if (previewUrl) {
+        // Download from URL
+        const response = await fetch(previewUrl);
+        const blob = await response.blob();
+        contentType = blob.type;
+        
+        if (imagePreview) {
+          // Convert image to base64 for offline storage
+          contentToSave = await blobToBase64(blob);
+        } else {
+          // For HTML/PDF, store as blob URL
+          contentToSave = await blob.text();
+        }
+        setDownloadProgress(50);
+      } else if (htmlContent) {
+        contentToSave = htmlContent;
+        setDownloadProgress(50);
+      }
+
+      // Save to IndexedDB
+      await saveOfflineNote({
+        id: lesson.id,
+        title: lesson.title,
+        content: contentToSave,
+        contentType,
+        downloadedAt: Date.now(),
+        url: lesson.note_url || '',
+      });
+
+      setDownloadProgress(100);
+      setIsOfflineAvailable(true);
+      
+      // Show success message
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+      }, 500);
+    } catch (error) {
+      console.error('Failed to download note:', error);
+      setIsDownloading(false);
+      setDownloadProgress(0);
+      alert('Failed to download note for offline access. Please try again.');
+    }
+  };
+
+  // Handle delete offline note
+  const handleDeleteOffline = async () => {
+    if (!lesson) return;
+    
+    try {
+      await deleteOfflineNote(lesson.id);
+      setIsOfflineAvailable(false);
+      setOfflineContent(null);
+      setShowOfflineIndicator(false);
+    } catch (error) {
+      console.error('Failed to delete offline note:', error);
+      alert('Failed to delete offline note.');
+    }
+  };
 
   if (hasFullPageHtml) {
     return (
@@ -11708,6 +12163,15 @@ const NoteViewerScreen = ({
         onContextMenu={protectedMode ? (event) => event.preventDefault() : undefined}
       >
         {protectedMode && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
+        
+        {/* Offline indicator */}
+        {showOfflineIndicator && (
+          <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full bg-green-500 px-3 py-2 text-xs font-bold text-white shadow-lg">
+            <div className="h-2 w-2 rounded-full bg-white animate-pulse"></div>
+            Offline Mode
+          </div>
+        )}
+        
         <button
           type="button"
           onClick={onBack}
@@ -11716,10 +12180,53 @@ const NoteViewerScreen = ({
         >
           <ArrowLeft size={21} />
         </button>
+
+        {/* Download/Delete button */}
+        <div className="absolute right-3 top-16 z-20 flex flex-col gap-2">
+          {isOfflineAvailable ? (
+            <button
+              type="button"
+              onClick={handleDeleteOffline}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-xl backdrop-blur-md hover:bg-red-600 transition-colors"
+              aria-label="Delete offline note"
+              title="Delete offline copy"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleDownloadOffline}
+              disabled={isDownloading}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl backdrop-blur-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Download for offline"
+              title="Download for offline access"
+            >
+              {isDownloading ? (
+                <div className="relative h-5 w-5">
+                  <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold">
+                    {downloadProgress}
+                  </span>
+                </div>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
+
         {imagePreview ? (
           <div className="h-full w-full overflow-auto bg-slate-950">
             <img
-              src={previewUrl}
+              src={showOfflineIndicator && offlineContent ? offlineContent : previewUrl}
               alt=""
               className="mx-auto min-h-full max-w-full object-contain"
               referrerPolicy="no-referrer"
@@ -11727,8 +12234,8 @@ const NoteViewerScreen = ({
           </div>
         ) : (
           <iframe
-            src={previewUrl || undefined}
-            srcDoc={htmlContent || undefined}
+            src={showOfflineIndicator && offlineContent ? undefined : previewUrl || undefined}
+            srcDoc={showOfflineIndicator && offlineContent ? offlineContent : (htmlContent || undefined)}
             title="Study note"
             className="h-full w-full border-0 bg-white"
             loading="lazy"
@@ -12995,6 +13502,12 @@ export default function App() {
           onEnableNotifications={handleEnableNotifications}
           onOpenProfileInfo={() => setScreen('profile-edit')}
           onOpenHelpCenter={() => setScreen('help-center')}
+          onOpenOfflineStorage={() => setScreen('offline-storage')}
+        />
+      );
+      case 'offline-storage': return (
+        <OfflineStorageScreen
+          onBack={() => setScreen('settings')}
         />
       );
       case 'profile-edit': return user ? <ProfileEditScreen user={user} onSave={handleProfileUpdate} /> : null;
@@ -13100,6 +13613,7 @@ export default function App() {
       case 'profile': return 'My Profile';
       case 'settings': return 'Settings';
       case 'profile-edit': return 'Profile Information';
+      case 'offline-storage': return 'Offline Storage';
       case 'help-center': return 'Help Center';
       case 'support-chat': return 'Support Chat';
       case 'about-us': return 'About Us';
@@ -13123,6 +13637,7 @@ export default function App() {
       case 'profile-edit':
       case 'help-center':
       case 'support-chat':
+      case 'offline-storage':
         return 'settings';
       case 'about-us':
       case 'about-developer':
