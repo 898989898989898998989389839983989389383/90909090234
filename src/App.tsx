@@ -3687,7 +3687,7 @@ const EmptyState = ({
   );
 };
 
-const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, onSearchClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, onSearchClick?: () => void, notificationCount?: number }) => (
+const Header = ({ title, user, showBack, onBack, onMenuClick, onSearchClick, onProfileClick }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onSearchClick?: () => void, onProfileClick?: () => void }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
       {showBack ? (
@@ -3718,28 +3718,13 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
           <Search size={20} />
         </button>
       )}
-      <button onClick={onNotificationClick} className="relative w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center" aria-label="Open notifications">
-        <Bell size={20} />
-        {notificationCount > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">
-            {notificationCount > 9 ? '9+' : notificationCount}
-          </span>
-        )}
-      </button>
       <button
-        onClick={() => {
-          if (typeof window !== 'undefined') {
-            window.open('https://wa.me/9779823415625', '_blank', 'noopener,noreferrer');
-          }
-        }}
-        className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center"
-        aria-label="Contact on WhatsApp"
+        onClick={onProfileClick}
+        className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border-2 border-white/30 hover:border-white/60 transition-all hover:scale-105 active:scale-95"
+        aria-label="Go to Profile"
       >
-        <MessageSquare size={20} />
-      </button>
-      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border border-white/30">
         <img src={getUserAvatarUrl(user || { name: 'RBS Academy' })} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-      </div>
+      </button>
     </div>
   </header>
 );
@@ -14439,9 +14424,8 @@ export default function App() {
           showBack={screen !== 'home'} 
           onBack={goBackOneStep} 
           onMenuClick={() => setIsDrawerOpen(true)}
-          onNotificationClick={handleNotificationIconClick}
           onSearchClick={screen !== 'search' ? () => setScreen('search') : undefined}
-          notificationCount={studentNotifications.length}
+          onProfileClick={() => setScreen('profile')}
         />
       )}
       
