@@ -502,6 +502,59 @@ const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: strin
   superadmin: { username: 'adminsachin', password: 'admin123' },
 };
 
+// User-friendly error messages
+const getUserFriendlyError = (error: unknown): string => {
+  if (!error) return 'Something went wrong. Please try again.';
+  
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Network errors
+  if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+    return '📡 No internet connection. Please check your network and try again.';
+  }
+  if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+    return '⏱️ Request took too long. Please try again.';
+  }
+  
+  // Authentication errors
+  if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
+    return '🔐 Session expired. Please login again.';
+  }
+  if (errorMessage.includes('Forbidden') || errorMessage.includes('403')) {
+    return '⛔ You don\'t have permission to do this.';
+  }
+  
+  // Server errors
+  if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
+    return '🔧 Server error. Our team has been notified. Please try again later.';
+  }
+  if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+    return '⚠️ Service temporarily unavailable. Please try again in a few minutes.';
+  }
+  
+  // File upload errors
+  if (errorMessage.includes('upload') && errorMessage.includes('failed')) {
+    return '📤 File upload failed. Please check your internet and file size (max 5MB).';
+  }
+  
+  // Database errors
+  if (errorMessage.includes('database') || errorMessage.includes('query')) {
+    return '💾 Database error. Please try again or contact support.';
+  }
+  
+  // Validation errors
+  if (errorMessage.includes('required') || errorMessage.includes('invalid')) {
+    return `❌ ${errorMessage}`;
+  }
+  
+  // Default: return original message if it's already user-friendly
+  if (errorMessage.length < 100 && !errorMessage.includes('Error:')) {
+    return errorMessage;
+  }
+  
+  return '❌ Something went wrong. Please try again or contact support.';
+};
+
 const apiUrl = (path: string) => {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -3093,12 +3146,50 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   );
 };
 
-const Loading = () => (
-  <div className="flex-1 flex flex-col items-center justify-center">
-    <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-    <p className="text-gray-500 text-sm animate-pulse">Loading Academy...</p>
+const Loading = ({ message = 'Loading Academy...' }: { message?: string }) => (
+  <div className="flex-1 flex flex-col items-center justify-center p-8">
+    <div className="relative">
+      <div className="w-16 h-16 border-4 border-primary/20 rounded-full"></div>
+      <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+    </div>
+    <p className="text-gray-600 text-sm mt-6 animate-pulse font-medium">{message}</p>
   </div>
 );
+
+const LoadingButton = ({ 
+  loading, 
+  children, 
+  loadingText = 'Loading...', 
+  ...props 
+}: { 
+  loading: boolean; 
+  children: React.ReactNode; 
+  loadingText?: string;
+  [key: string]: any;
+}) => (
+  <button {...props} disabled={loading || props.disabled}>
+    {loading ? (
+      <span className="flex items-center justify-center gap-2">
+        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        {loadingText}
+      </span>
+    ) : children}
+  </button>
+);
+
+const LoadingSpinner = ({ size = 'md', className = '' }: { size?: 'sm' | 'md' | 'lg'; className?: string }) => {
+  const sizeClasses = {
+    sm: 'h-4 w-4 border-2',
+    md: 'h-8 w-8 border-3',
+    lg: 'h-12 w-12 border-4'
+  };
+  return (
+    <div className={`${sizeClasses[size]} border-primary border-t-transparent rounded-full animate-spin ${className}`}></div>
+  );
+};
 
 const NoInternetScreen = ({ onRetry }: { onRetry: () => void }) => (
   <motion.div
