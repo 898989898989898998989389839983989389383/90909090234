@@ -13,6 +13,37 @@ body {
   transition: background-color 180ms ease, color 180ms ease;
 }
 
+/* Ensure all interactive elements meet 44px minimum touch target */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+.nav-item,
+[role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Exception for icon-only buttons that already have proper sizing */
+.course-video-control-btn,
+.admin-feature-card button,
+button[aria-label] {
+  /* These already have explicit sizing */
+}
+
+/* Touch-friendly tap targets for mobile */
+@media (hover: none) and (pointer: coarse) {
+  button,
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"] {
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+}
+
 @keyframes floatY {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
@@ -532,12 +563,17 @@ body {
   color: #ffffff;
   box-shadow: 0 10px 25px rgba(14, 165, 233, 0.28);
   cursor: pointer;
-  transition: transform 0.22s ease, background 0.22s ease;
+  transition: transform 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
 }
 
 .course-video-control-btn:hover {
   transform: scale(1.08);
   background: linear-gradient(135deg, #38bdf8, #2563eb);
+  box-shadow: 0 12px 30px rgba(14, 165, 233, 0.35);
+}
+
+.course-video-control-btn:active {
+  transform: scale(0.95);
 }
 
 .course-video-controls--pod.hide {
@@ -599,6 +635,7 @@ body {
   background: rgba(15, 23, 42, 0.96);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  min-width: 140px;
 }
 
 .course-video-speed-menu button {
@@ -611,10 +648,16 @@ body {
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .course-video-speed-menu button:hover {
   background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  transform: translateX(3px);
+}
+
+.course-video-speed-menu button:active {
+  transform: translateX(1px) scale(0.98);
 }
 
 @media (max-width: 700px) {

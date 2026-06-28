@@ -134,6 +134,20 @@ interface Lesson {
   sort_order?: number;
 }
 
+interface CourseProgress {
+  courseId: string;
+  userId: string;
+  totalLessons: number;
+  completedLessons: string[];
+  inProgressLesson?: {
+    lessonId: string;
+    watchedSeconds: number;
+    totalSeconds: number;
+  };
+  lastAccessedAt: number;
+  progressPercentage: number;
+}
+
 interface Course {
   id: string;
   title: string;
@@ -359,6 +373,7 @@ const PUSH_TOKEN_STORAGE_KEY = 'rbs-academy-push-token';
 const PUSH_LAST_MESSAGE_STORAGE_KEY = 'rbs-academy-push-last-message';
 const STUDENT_NOTIFICATIONS_STORAGE_KEY = 'rbs-academy-student-notifications';
 const DEVICE_ID_STORAGE_KEY = 'rbs-academy-device-id';
+const COURSE_PROGRESS_STORAGE_KEY = 'rbs-academy-course-progress';
 const NOTIFICATION_SOUND_FILE = 'rbs_wow_tone.wav';
 const NOTIFICATION_CHANNEL_UPDATES = 'rbs-wow-updates';
 const NOTIFICATION_CHANNEL_COURSE_ACCESS = 'rbs-wow-course-access';
@@ -881,6 +896,110 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+};
+
+// Course Progress Tracking Functions
+const getCourseProgress = (courseId: string, userId: string): CourseProgress | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const stored = window.localStorage.getItem(COURSE_PROGRESS_STORAGE_KEY);
+    if (!stored) return null;
+    
+    const allProgress: CourseProgress[] = JSON.parse(stored);
+    return allProgress.find(p => p.courseId === courseId && p.userId === userId) || null;
+  } catch {
+    return null;
+  }
+};
+
+const saveCourseProgress = (progress: CourseProgress) => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const stored = window.localStorage.getItem(COURSE_PROGRESS_STORAGE_KEY);
+    const allProgress: CourseProgress[] = stored ? JSON.parse(stored) : [];
+    
+    const existingIndex = allProgress.findIndex(
+      p => p.courseId === progress.courseId && p.userId === progress.userId
+    );
+    
+    if (existingIndex >= 0) {
+      allProgress[existingIndex] = progress;
+    } else {
+      allProgress.push(progress);
+    }
+    
+    window.localStorage.setItem(COURSE_PROGRESS_STORAGE_KEY, JSON.stringify(allProgress));
+  } catch (error) {
+    console.error('Failed to save course progress:', error);
+  }
+};
+
+const markLessonComplete = (courseId: string, lessonId: string, userId: string, totalLessons: number) => {
+  const existing = getCourseProgress(courseId, userId);
+  const completedLessons = existing?.completedLessons || [];
+  
+  if (!completedLessons.includes(lessonId)) {
+    completedLessons.push(lessonId);
+  }
+  
+  const progressPercentage = Math.round((completedLessons.length / totalLessons) * 100);
+  
+  const updated: CourseProgress = {
+    courseId,
+    userId,
+    totalLessons,
+    completedLessons,
+    inProgressLesson: existing?.inProgressLesson,
+    lastAccessedAt: Date.now(),
+    progressPercentage,
+  };
+  
+  saveCourseProgress(updated);
+  return updated;
+};
+
+const updateLessonProgress = (
+  courseId: string,
+  lessonId: string,
+  userId: string,
+  watchedSeconds: number,
+  totalSeconds: number,
+  totalLessons: number
+) => {
+  const existing = getCourseProgress(courseId, userId);
+  
+  const updated: CourseProgress = {
+    courseId,
+    userId,
+    totalLessons,
+    completedLessons: existing?.completedLessons || [],
+    inProgressLesson: {
+      lessonId,
+      watchedSeconds,
+      totalSeconds,
+    },
+    lastAccessedAt: Date.now(),
+    progressPercentage: existing?.progressPercentage || 0,
+  };
+  
+  saveCourseProgress(updated);
+  return updated;
+};
+
+const getAllCourseProgress = (userId: string): CourseProgress[] => {
+  if (typeof window === 'undefined') return [];
+  
+  try {
+    const stored = window.localStorage.getItem(COURSE_PROGRESS_STORAGE_KEY);
+    if (!stored) return [];
+    
+    const allProgress: CourseProgress[] = JSON.parse(stored);
+    return allProgress.filter(p => p.userId === userId);
+  } catch {
+    return [];
+  }
 };
 
 const loadJsonResource = async <T,>(resource: 'sliders' | 'courses' | 'notes' | 'quizzes' | 'users' | 'live-classes', fallbackValue: T): Promise<T> => {
@@ -4211,7 +4330,7 @@ const HomeScreen = ({
                   className="premium-mini-card min-w-[190px] overflow-hidden rounded-xl border text-left shadow-sm"
                 >
                   <div className="relative h-24">
-                    <img src={course.image} alt={course.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={course.image} alt={course.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                     <div className={`absolute left-3 top-3 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-black ${isUnlocked ? 'text-emerald-700' : 'text-amber-700'}`}>
                       {isUnlocked ? 'Admin Access' : `Rs ${course.price || 0}`}
@@ -4576,18 +4695,60 @@ const CoursesScreen = ({
           const isAccessible = isCourseAccessible(course, unlockedCourseIds);
           
           return (
-            <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${isFree ? 'border-gray-100' : 'border-amber-100'}`}>
+            <div key={course.id} className={`course-list-card bg-white rounded-xl overflow-hidden border shadow-sm flex flex-col ${isFree ? 'border-emerald-100 bg-gradient-to-br from-white to-emerald-50/30' : 'border-amber-200 bg-gradient-to-br from-white to-amber-50/30'}`}>
               <div className="relative h-40">
-                <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                {!isFree && (
-                    <div className={`absolute left-3 top-3 rounded-full bg-white/92 px-3 py-1 text-[10px] font-black uppercase shadow-sm ${isUnlocked ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {isUnlocked ? 'Admin Access' : 'Premium'}
+                <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                
+                {/* Free/Premium Badge - Top Left */}
+                <div className={`absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase shadow-lg ${
+                  isFree 
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white' 
+                    : isUnlocked
+                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white'
+                    : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white'
+                }`}>
+                  {isFree ? (
+                    <>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      🆓 Free
+                    </>
+                  ) : isUnlocked ? (
+                    <>
+                      <CheckCircle2 size={12} />
+                      Unlocked
+                    </>
+                  ) : (
+                    <>
+                      💎 Premium
+                    </>
+                  )}
+                </div>
+                
+                {/* Lock Status - Top Right */}
+                <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black backdrop-blur-md ${
+                  isAccessible 
+                    ? 'bg-emerald-500/95 text-white' 
+                    : 'bg-red-500/95 text-white'
+                }`}>
+                  {isAccessible ? <CheckCircle2 size={12} /> : <Lock size={12} />}
+                  {isAccessible ? 'Accessible' : 'Locked'}
+                </div>
+                
+                {/* Price Tag - Bottom Right (Premium only) */}
+                {!isFree && course.price && (
+                  <div className="absolute right-3 bottom-3 bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Price</div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg font-black text-gray-900">₹{course.price}</span>
+                      {course.oldPrice && (
+                        <span className="text-xs text-gray-400 line-through">₹{course.oldPrice}</span>
+                      )}
+                    </div>
                   </div>
                 )}
-                <div className={`absolute right-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${isAccessible ? 'bg-emerald-500 text-white' : 'bg-black/55 text-white backdrop-blur-sm'}`}>
-                  {isAccessible ? <CheckCircle2 size={12} /> : <Lock size={12} />}
-                  {isFree ? 'Free Access' : isUnlocked ? 'Unlocked' : 'Locked'}
-                </div>
+                
                 <button 
                   onClick={() => {
                     onCourseSelect(course);
@@ -4595,24 +4756,28 @@ const CoursesScreen = ({
                   }}
                   className="absolute inset-0 flex items-center justify-center bg-black/20 group hover:bg-black/40 transition-all"
                 >
-                  <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center text-primary shadow-lg group-hover:scale-110 transition-transform">
-                    {isAccessible ? <Play size={24} fill="currentColor" /> : <ShieldCheck size={24} />}
+                  <div className="w-14 h-14 bg-white/95 rounded-full flex items-center justify-center text-primary shadow-xl group-hover:scale-110 transition-transform">
+                    {isAccessible ? <Play size={26} fill="currentColor" /> : <ShieldCheck size={26} />}
                   </div>
                 </button>
               </div>
-              <div className="p-4 flex justify-between items-center gap-4">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-gray-800">{course.title}</h3>
-                  <p className="text-xs text-gray-500">{course.lessons}+ Video Lessons & Notes</p>
-                  {!isFree && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${isUnlocked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                        {isUnlocked ? 'Admin Access Active' : `Rs ${course.price} Only`}
-                      </span>
-                      {!!course.oldPrice && <span className="text-gray-400 text-[10px] line-through">Rs {course.oldPrice}</span>}
-                    </div>
-                  )}
+              <div className="p-4">
+                <div className="mb-3">
+                  <h3 className="font-bold text-gray-900 mb-1">{course.title}</h3>
+                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                    <BookOpen size={12} className="text-primary" />
+                    {course.lessons}+ Lessons • {course.category}
+                  </p>
                 </div>
+                
+                {!isFree && !isUnlocked && (
+                  <div className="mb-3 p-2 rounded-lg bg-amber-50 border border-amber-100">
+                    <p className="text-[10px] font-bold text-amber-800">
+                      🔐 Unlock for ₹{course.price} to access all lessons
+                    </p>
+                  </div>
+                )}
+                
                 <button 
                   onClick={() => {
                     if (isAccessible) {
@@ -4622,9 +4787,23 @@ const CoursesScreen = ({
                     }
                     onBuyClick(course);
                   }}
-                  className={`${isAccessible ? 'bg-primary shadow-blue-100' : 'premium-buy-button shadow-amber-100'} shrink-0 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95`}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold shadow-lg transition-all active:scale-95 ${
+                    isAccessible 
+                      ? 'bg-gradient-to-r from-primary to-blue-600 text-white shadow-blue-200 hover:shadow-xl' 
+                      : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-amber-200 hover:shadow-xl'
+                  }`}
                 >
-                  {isFree ? 'Open Course' : isUnlocked ? 'Open Course' : 'Buy Now'}
+                  {isAccessible ? (
+                    <>
+                      <Play size={16} fill="currentColor" />
+                      Start Learning
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={16} />
+                      Unlock for ₹{course.price}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -4652,7 +4831,8 @@ const VideoPlayerScreen = ({
   protectedMode = false,
   videoNotesEnabled = true,
   videoDownloadEnabled = false,
-  watermark = 'RBS Academy'
+  watermark = 'RBS Academy',
+  userId = 'guest'
 }: { 
   onBack: () => void, 
   course: Course | null,
@@ -4661,7 +4841,8 @@ const VideoPlayerScreen = ({
   protectedMode?: boolean,
   videoNotesEnabled?: boolean,
   videoDownloadEnabled?: boolean,
-  watermark?: string
+  watermark?: string,
+  userId?: string
 }) => {
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(course?.lessonList?.[0] || null);
   const [customEmbedStarted, setCustomEmbedStarted] = useState(false);
@@ -4702,6 +4883,41 @@ const VideoPlayerScreen = ({
     setYoutubeSpeedMenuOpen(false);
     setCustomEmbedFullscreen(false);
   }, [currentLesson?.id]);
+
+  // Track video progress
+  useEffect(() => {
+    if (!course || !currentLesson || !userId) return;
+    
+    const interval = setInterval(() => {
+      const watchedSeconds = customEmbedTime;
+      const totalSeconds = customEmbedDuration;
+      
+      if (watchedSeconds > 0 && totalSeconds > 0) {
+        // Update progress every 5 seconds
+        updateLessonProgress(
+          course.id,
+          currentLesson.id,
+          userId,
+          watchedSeconds,
+          totalSeconds,
+          course.lessonList?.length || 0
+        );
+        
+        // Mark as complete if watched 90% or more
+        const watchPercentage = (watchedSeconds / totalSeconds) * 100;
+        if (watchPercentage >= 90) {
+          markLessonComplete(
+            course.id,
+            currentLesson.id,
+            userId,
+            course.lessonList?.length || 0
+          );
+        }
+      }
+    }, 5000); // Update every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [course, currentLesson, userId, customEmbedTime, customEmbedDuration]);
 
   useEffect(() => {
     const videoId = getYoutubeVideoId(currentLesson?.video_url);
@@ -4830,7 +5046,7 @@ const VideoPlayerScreen = ({
         setYoutubeControlsHidden(true);
         setYoutubeSpeedMenuOpen(false);
       }
-    }, 2500);
+    }, 5000); // Increased from 2500ms to 5000ms for better UX
   };
   const startCustomEmbed = () => {
     if (!youtubePlayerRef.current) {
@@ -4923,9 +5139,17 @@ const VideoPlayerScreen = ({
         </button>
         {youtubeSpeedMenuOpen && (
           <div className="course-video-speed-menu">
-            {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
-              <button key={speed} type="button" onClick={() => setYoutubePlaybackSpeed(speed)}>
-                {speed === 1 ? 'Normal' : `${speed}x`}
+            {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((speed) => (
+              <button 
+                key={speed} 
+                type="button" 
+                onClick={() => setYoutubePlaybackSpeed(speed)}
+                style={{
+                  fontWeight: customEmbedSpeed === speed ? '900' : '600',
+                  background: customEmbedSpeed === speed ? 'linear-gradient(135deg, #0ea5e9, #2563eb)' : 'transparent'
+                }}
+              >
+                {speed === 1 ? 'Normal (1x)' : `${speed}x`}
               </button>
             ))}
           </div>
@@ -5117,7 +5341,8 @@ const CourseDetailsScreen = ({
   onViewNotes, 
   onTakeQuiz,
   isUnlocked,
-  videoNotesEnabled = true
+  videoNotesEnabled = true,
+  userId = 'guest'
 }: { 
   course: Course | null, 
   onBack: () => void,
@@ -5125,9 +5350,11 @@ const CourseDetailsScreen = ({
   onViewNotes: (lesson: Lesson) => void,
   onTakeQuiz: () => void,
   isUnlocked: boolean,
-  videoNotesEnabled?: boolean
+  videoNotesEnabled?: boolean,
+  userId?: string
 }) => {
   const [offlineNotesMap, setOfflineNotesMap] = useState<Map<string, boolean>>(new Map());
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null);
 
   // Check which notes are available offline
   useEffect(() => {
@@ -5145,6 +5372,13 @@ const CourseDetailsScreen = ({
     checkOfflineNotes();
   }, [course?.lessonList]);
 
+  // Load course progress
+  useEffect(() => {
+    if (!course || !userId) return;
+    const progress = getCourseProgress(course.id, userId);
+    setCourseProgress(progress);
+  }, [course, userId]);
+
   if (!course) return null;
   const isPremiumCourse = !isCourseFree(course);
   const courseDescription = String(course.description || '').trim()
@@ -5158,7 +5392,7 @@ const CourseDetailsScreen = ({
       className="flex-1 overflow-y-auto pb-24"
     >
       <div className="relative h-56">
-        <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        <img src={course.image} alt={course.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
           <div className="flex items-center gap-2 mb-2">
             <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">{course.category}</span>
@@ -5166,6 +5400,22 @@ const CourseDetailsScreen = ({
           </div>
           <h2 className="text-2xl font-bold text-white mb-1">{course.title}</h2>
           <p className="text-white/70 text-sm">{course.lessons}+ Video Lessons • {isUnlocked ? 'Unlocked' : 'Locked'}</p>
+          
+          {/* Progress Bar */}
+          {isUnlocked && courseProgress && courseProgress.progressPercentage > 0 && (
+            <div className="mt-3 space-y-1">
+              <div className="flex items-center justify-between text-white/90 text-xs">
+                <span className="font-semibold">{courseProgress.progressPercentage}% Complete</span>
+                <span>{courseProgress.completedLessons.length} / {courseProgress.totalLessons} lessons</span>
+              </div>
+              <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                  style={{ width: `${courseProgress.progressPercentage}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
         <button 
           onClick={onBack}
@@ -5196,38 +5446,60 @@ const CourseDetailsScreen = ({
           <section>
             <SectionHeader title="Course Lessons" />
             <div className="space-y-3">
-              {course.lessonList?.map((lesson, idx) => (
-                <div 
-                  key={lesson.id}
-                  className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 bg-white shadow-sm"
-                >
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 font-bold text-sm">
-                    {idx + 1}
+              {course.lessonList?.map((lesson, idx) => {
+                const isCompleted = courseProgress?.completedLessons.includes(lesson.id);
+                const isInProgress = courseProgress?.inProgressLesson?.lessonId === lesson.id;
+                
+                return (
+                  <div 
+                    key={lesson.id}
+                    className={`flex items-center gap-4 p-3 rounded-xl border shadow-sm ${
+                      isCompleted 
+                        ? 'border-emerald-100 bg-emerald-50' 
+                        : isInProgress 
+                        ? 'border-blue-100 bg-blue-50'
+                        : 'border-gray-100 bg-white'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm ${
+                      isCompleted 
+                        ? 'bg-emerald-500 text-white' 
+                        : isInProgress
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {isCompleted ? '✓' : idx + 1}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                        {lesson.title}
+                        {isInProgress && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                            ⏸️ In Progress
+                          </span>
+                        )}
+                        {offlineNotesMap.get(lesson.id) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Offline
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-[10px] text-gray-500">{lesson.duration} mins</p>
+                    </div>
+                    {isUnlocked && videoNotesEnabled && (
+                      <button 
+                        onClick={() => onViewNotes(lesson)}
+                        className="text-primary p-2 hover:bg-primary/5 rounded-full transition-colors"
+                      >
+                        <FileText size={18} />
+                      </button>
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      {lesson.title}
-                      {offlineNotesMap.get(lesson.id) && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          Offline
-                        </span>
-                      )}
-                    </h4>
-                    <p className="text-[10px] text-gray-500">{lesson.duration} mins</p>
-                  </div>
-                  {isUnlocked && videoNotesEnabled && (
-                    <button 
-                      onClick={() => onViewNotes(lesson)}
-                      className="text-primary p-2 hover:bg-primary/5 rounded-full transition-colors"
-                    >
-                      <FileText size={18} />
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -6983,7 +7255,7 @@ const MyCoursesScreen = ({
             onClick={() => onCourseSelect(course)}
             className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 text-left"
           >
-            <img src={course.image} alt={course.title} className="w-20 h-20 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+            <img src={course.image} alt={course.title} className="w-20 h-20 rounded-2xl object-cover" referrerPolicy="no-referrer" loading="lazy" />
             <div className="flex-1">
               <div className="text-base font-bold text-gray-800">{course.title}</div>
               <div className="text-sm text-gray-500 mt-1">{course.category}</div>
@@ -9556,7 +9828,7 @@ const AdminPanelScreen = ({
                 {courses.slice(0, 4).map((course) => (
                   <div key={course.id} className="admin-list-card p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
-                      <img src={course.image} alt={course.title} className="w-28 h-16 object-cover" referrerPolicy="no-referrer" />
+                      <img src={course.image} alt={course.title} className="w-28 h-16 object-cover" referrerPolicy="no-referrer" loading="lazy" />
                       <div className="min-w-0">
                         <div className="font-bold text-lg text-slate-900 truncate">{course.title}</div>
                         <div className="text-sm text-slate-500 mt-1">{course.category} • {course.type} • {course.lessons} lessons</div>
@@ -13531,6 +13803,7 @@ export default function App() {
           videoNotesEnabled={appControlSettings.videoNotesEnabled}
           videoDownloadEnabled={appControlSettings.videoDownloadEnabled}
           watermark={`${user?.name || 'Student'} - ${user?.email || 'RBS Academy'}`}
+          userId={user?.id || 'guest'}
           onLessonSelect={(lesson) => setSelectedLesson(lesson)}
           onViewNotes={(lesson) => {
             setSelectedLesson(lesson);
@@ -13571,6 +13844,7 @@ export default function App() {
             setScreen('quiz');
           }}
           isUnlocked={isCourseAccessible(selectedCourse, unlockedCourseIds)}
+          userId={user?.id || 'guest'}
           videoNotesEnabled={appControlSettings.videoNotesEnabled}
         />
       );
