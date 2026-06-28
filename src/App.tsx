@@ -2881,6 +2881,57 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [touched, setTouched] = useState({
+    email: false,
+    password: false,
+    confirmPassword: false,
+    name: false,
+    phone: false
+  });
+
+  // Real-time validation
+  const validateEmail = (value: string) => {
+    if (!value) return '';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(value)) return '📧 Please enter a valid email address';
+    return '';
+  };
+
+  const validatePassword = (value: string) => {
+    if (!value) return '';
+    if (value.length < 6) return '🔒 Password must be at least 6 characters';
+    return '';
+  };
+
+  const validateConfirmPassword = (value: string) => {
+    if (!value) return '';
+    if (value !== password) return '❌ Passwords do not match';
+    return '✅ Passwords match';
+  };
+
+  const validateName = (value: string) => {
+    if (!value) return '';
+    if (!isValidStudentName(value.trim())) return '👤 Name should contain only letters';
+    if (value.trim().length < 3) return '👤 Name should be at least 3 characters';
+    return '';
+  };
+
+  const validatePhone = (value: string) => {
+    if (!value) return '';
+    const normalized = normalizePhoneNumber(value);
+    if (normalized.length < 10) return '📱 Please enter a valid 10-digit phone number';
+    return '';
+  };
+
+  const emailError = touched.email ? validateEmail(email) : '';
+  const passwordError = touched.password ? validatePassword(password) : '';
+  const confirmPasswordError = touched.confirmPassword && confirmPassword ? validateConfirmPassword(confirmPassword) : '';
+  const nameError = touched.name ? validateName(name) : '';
+  const phoneError = touched.phone ? validatePhone(phone) : '';
+
+  const isFormValid = isSignup
+    ? !emailError && !passwordError && !confirmPasswordError && !nameError && !phoneError && email && password && confirmPassword && name && phone
+    : !emailError && !passwordError && email && password;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2889,7 +2940,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
     setInfo('');
 
     if (isSignup && password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('❌ Passwords do not match');
       setLoading(false);
       return;
     }
@@ -2898,13 +2949,13 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
     const normalizedPhone = normalizePhoneNumber(phone);
 
     if (isSignup && !isValidStudentName(trimmedName)) {
-      setError('Name must contain letters only');
+      setError('👤 Name must contain letters only');
       setLoading(false);
       return;
     }
 
     if (isSignup && normalizedPhone.length < 10) {
-      setError('Phone number is required');
+      setError('📱 Phone number is required (10 digits)');
       setLoading(false);
       return;
     }
@@ -2925,18 +2976,18 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
           setAuthStep('signup-otp');
           setOtp('');
           setError('');
-          setInfo('OTP sent to your email.');
+          setInfo('✅ OTP sent to your email. Check your inbox!');
           setLoading(false);
           return;
         }
         const normalizedUser = normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel });
         onLogin(normalizedUser);
       } else {
-        setError(data.message || (isSignup ? 'Signup failed' : 'Login failed'));
+        setError(getUserFriendlyError(data.message || (isSignup ? 'Signup failed' : 'Login failed')));
       }
     } catch (err) {
       if (isSignup) {
-        setError(err instanceof Error ? err.message : 'Email verification is required. Please try again online.');
+        setError(getUserFriendlyError(err instanceof Error ? err.message : 'Email verification is required. Please try again online.'));
         return;
       }
       const localResult = runLocalStudentAuth(isSignup ? 'signup' : 'login', {
@@ -3153,33 +3204,48 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
       <form onSubmit={handleSubmit} className="w-full space-y-4">
         {isSignup && (
           <label className="auth-login-field">
-            <span className="auth-login-label">Full Name</span>
+            <span className="auth-login-label">Full Name *</span>
             <input
               type="text"
               required
-              className="auth-scenic-input auth-login-input text-sm"
+              className={`auth-scenic-input auth-login-input text-sm ${nameError && nameError.includes('❌') ? 'border-red-300 focus:border-red-500' : nameError ? 'border-gray-300' : touched.name && name ? 'border-emerald-300' : ''}`}
               placeholder="Rahul Sharma"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => setTouched(prev => ({ ...prev, name: true }))}
             />
+            {nameError && (
+              <p className={`text-xs mt-1 font-semibold ${nameError.includes('❌') ? 'text-red-600' : 'text-amber-600'}`}>
+                {nameError}
+              </p>
+            )}
           </label>
         )}
         {isSignup && (
           <label className="auth-login-field">
-            <span className="auth-login-label">Mobile Number</span>
+            <span className="auth-login-label">Mobile Number *</span>
             <input
               type="tel"
               required
-              className="auth-scenic-input auth-login-input text-sm"
-              placeholder="Enter mobile number"
+              className={`auth-scenic-input auth-login-input text-sm ${phoneError && phoneError.includes('❌') ? 'border-red-300 focus:border-red-500' : phoneError ? 'border-gray-300' : touched.phone && phone ? 'border-emerald-300' : ''}`}
+              placeholder="9876543210"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
             />
+            {phoneError && (
+              <p className={`text-xs mt-1 font-semibold ${phoneError.includes('❌') ? 'text-red-600' : 'text-amber-600'}`}>
+                {phoneError}
+              </p>
+            )}
+            {!phoneError && touched.phone && phone && normalizePhoneNumber(phone).length === 10 && (
+              <p className="text-xs mt-1 font-semibold text-emerald-600">✅ Valid phone number</p>
+            )}
           </label>
         )}
         {isSignup && (
           <label className="auth-login-field">
-            <span className="auth-login-label">Class</span>
+            <span className="auth-login-label">Class *</span>
             <select
               required
               className="auth-scenic-input auth-login-input text-sm"
@@ -3193,42 +3259,60 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
           </label>
         )}
         <label className="auth-login-field">
-          <span className="auth-login-label">Email</span>
+          <span className="auth-login-label">Email *</span>
           <input
             type="email"
             required
-            className="auth-scenic-input auth-login-input text-sm"
-            placeholder="name@example.com"
+            className={`auth-scenic-input auth-login-input text-sm ${emailError && emailError.includes('📧') ? 'border-red-300 focus:border-red-500' : touched.email && email && !emailError ? 'border-emerald-300' : ''}`}
+            placeholder="your.email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setTouched(prev => ({ ...prev, email: true }))}
           />
+          {emailError && (
+            <p className="text-xs mt-1 font-semibold text-red-600">{emailError}</p>
+          )}
+          {!emailError && touched.email && email && (
+            <p className="text-xs mt-1 font-semibold text-emerald-600">✅ Valid email</p>
+          )}
         </label>
         <label className="auth-login-field">
-          <span className="auth-login-label">Password</span>
+          <span className="auth-login-label">Password *</span>
           <input 
             type="password" 
             required
-            className="auth-scenic-input auth-login-input text-sm"
-            placeholder="••••••••"
+            className={`auth-scenic-input auth-login-input text-sm ${passwordError && passwordError.includes('🔒') ? 'border-red-300 focus:border-red-500' : touched.password && password && !passwordError ? 'border-emerald-300' : ''}`}
+            placeholder={isSignup ? 'Create a strong password (min 6 characters)' : 'Enter your password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onBlur={() => setTouched(prev => ({ ...prev, password: true }))}
           />
+          {passwordError && (
+            <p className="text-xs mt-1 font-semibold text-red-600">{passwordError}</p>
+          )}
+          {!passwordError && touched.password && password && (
+            <p className="text-xs mt-1 font-semibold text-emerald-600">✅ Strong password</p>
+          )}
         </label>
-
         {isSignup && (
           <label className="auth-login-field">
-            <span className="auth-login-label">Confirm Password</span>
+            <span className="auth-login-label">Confirm Password *</span>
             <input
               type="password"
               required
-              className="auth-scenic-input auth-login-input text-sm"
+              className={`auth-scenic-input auth-login-input text-sm ${confirmPasswordError && confirmPasswordError.includes('❌') ? 'border-red-300 focus:border-red-500' : confirmPasswordError && confirmPasswordError.includes('✅') ? 'border-emerald-300' : ''}`}
               placeholder="Re-enter password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onBlur={() => setTouched(prev => ({ ...prev, confirmPassword: true }))}
             />
+            {confirmPasswordError && (
+              <p className={`text-xs mt-1 font-semibold ${confirmPasswordError.includes('❌') ? 'text-red-600' : 'text-emerald-600'}`}>
+                {confirmPasswordError}
+              </p>
+            )}
           </label>
         )}
-        
         <div className="auth-login-meta">
           <div className="auth-login-note">{isSignup ? 'Use a password you will remember.' : 'Use the same email and password you signed up with.'}</div>
           {!isSignup && <button type="button" onClick={() => { setAuthStep('forgot-email'); setError(''); }} className="auth-scenic-link text-sm">Forgot password?</button>}
@@ -3239,8 +3323,8 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
 
         <button 
           type="submit"
-          disabled={loading}
-          className="auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2"
+          disabled={loading || !isFormValid}
+          className={`auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2 ${!isFormValid && !loading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isSignup ? 'Create Account' : 'Log In')}
         </button>
