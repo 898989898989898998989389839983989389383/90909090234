@@ -67,7 +67,7 @@ declare global {
 }
 
 // --- Types ---
-type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'offline-storage' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer';
+type Screen = 'home' | 'courses' | 'notes' | 'quiz' | 'profile' | 'settings' | 'profile-edit' | 'help-center' | 'support-chat' | 'my-courses' | 'offline-notes' | 'offline-storage' | 'about-us' | 'about-developer' | 'privacy-policy' | 'admin' | 'video-player' | 'note-viewer' | 'course-details' | 'binaural-beats' | 'live-classes' | 'live-class-viewer' | 'search';
 
 const APP_SHARE_URL = 'https://play.google.com/store/apps/details?id=com.rbs.academy';
 const APP_SHARE_TEXT = 'Download RBS Academy for premium chemistry learning, notes, quizzes, and live classes.';
@@ -3556,7 +3556,7 @@ const BottomNav = ({
   );
 };
 
-const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, notificationCount?: number }) => (
+const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, onSearchClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, onSearchClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
       {showBack ? (
@@ -3581,7 +3581,12 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
         )}
       </div>
     </div>
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-2">
+      {onSearchClick && (
+        <button onClick={onSearchClick} className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-colors" aria-label="Search">
+          <Search size={20} />
+        </button>
+      )}
       <button onClick={onNotificationClick} className="relative w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center" aria-label="Open notifications">
         <Bell size={20} />
         {notificationCount > 0 && (
@@ -4607,6 +4612,296 @@ const LiveClassViewerScreen = ({
             </p>
           </div>
         </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const SearchScreen = ({
+  onBack,
+  courses,
+  notes,
+  quizzes,
+  onCourseSelect,
+  onNoteSelect,
+  onQuizSelect,
+  setScreen
+}: {
+  onBack: () => void;
+  courses: Course[];
+  notes: Note[];
+  quizzes: Quiz[];
+  onCourseSelect: (course: Course) => void;
+  onNoteSelect: (note: Note) => void;
+  onQuizSelect: (quiz: Quiz) => void;
+  setScreen: (screen: Screen) => void;
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'courses' | 'notes' | 'quizzes'>('all');
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('rbs-recent-searches');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const addRecentSearch = (query: string) => {
+    if (!query.trim()) return;
+    const updated = [query, ...recentSearches.filter(q => q !== query)].slice(0, 5);
+    setRecentSearches(updated);
+    localStorage.setItem('rbs-recent-searches', JSON.stringify(updated));
+  };
+
+  const clearRecentSearches = () => {
+    setRecentSearches([]);
+    localStorage.removeItem('rbs-recent-searches');
+  };
+
+  const query = searchQuery.toLowerCase().trim();
+  
+  const searchResults = {
+    courses: courses.filter(c => 
+      c.title.toLowerCase().includes(query) || 
+      c.category.toLowerCase().includes(query) ||
+      c.description?.toLowerCase().includes(query)
+    ),
+    notes: notes.filter(n => 
+      n.title.toLowerCase().includes(query) || 
+      n.category.toLowerCase().includes(query) ||
+      n.content?.toLowerCase().includes(query)
+    ),
+    quizzes: quizzes.filter(q => 
+      q.topic.toLowerCase().includes(query) ||
+      q.questions.some(ques => ques.text.toLowerCase().includes(query))
+    )
+  };
+
+  const totalResults = searchResults.courses.length + searchResults.notes.length + searchResults.quizzes.length;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      className="flex-1 flex flex-col overflow-hidden"
+    >
+      {/* Header with Search Bar */}
+      <div className="px-4 pt-4 pb-3 bg-gradient-to-br from-primary to-blue-600 text-white">
+        <div className="flex items-center gap-3 mb-4">
+          <button 
+            onClick={onBack}
+            className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h1 className="text-xl font-bold">Search</h1>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input 
+            type="text"
+            placeholder="Search courses, notes, quizzes..."
+            className="w-full bg-white rounded-xl py-3.5 pl-12 pr-12 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && query) {
+                addRecentSearch(query);
+              }
+            }}
+            autoFocus
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+
+        {/* Category Filters */}
+        <div className="flex gap-2 mt-3 overflow-x-auto no-scrollbar">
+          {[
+            { id: 'all' as const, label: 'All', count: totalResults },
+            { id: 'courses' as const, label: 'Courses', count: searchResults.courses.length },
+            { id: 'notes' as const, label: 'Notes', count: searchResults.notes.length },
+            { id: 'quizzes' as const, label: 'Quizzes', count: searchResults.quizzes.length }
+          ].map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
+                activeCategory === cat.id
+                  ? 'bg-white text-primary shadow-lg'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+              }`}
+            >
+              {cat.label} {query && `(${cat.count})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto p-4 pb-24">
+        {!query ? (
+          <div>
+            {/* Recent Searches */}
+            {recentSearches.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-gray-700">Recent Searches</h3>
+                  <button
+                    onClick={clearRecentSearches}
+                    className="text-xs font-bold text-primary hover:text-blue-700"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {recentSearches.map((search, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setSearchQuery(search);
+                        addRecentSearch(search);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-primary hover:shadow-sm transition-all text-left"
+                    >
+                      <Clock size={16} className="text-gray-400" />
+                      <span className="flex-1 text-sm text-gray-700">{search}</span>
+                      <ChevronRight size={16} className="text-gray-300" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Search Suggestions */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3">Popular Topics</h3>
+              <div className="flex flex-wrap gap-2">
+                {['Chemistry', 'Organic', 'Inorganic', 'Physical Chemistry', 'Class 11', 'Class 12'].map((topic) => (
+                  <button
+                    key={topic}
+                    onClick={() => setSearchQuery(topic)}
+                    className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-primary hover:text-white hover:border-primary transition-all"
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : totalResults === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search size={28} className="text-gray-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">No results found</h3>
+            <p className="text-sm text-gray-500">Try different keywords or check spelling</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Courses Results */}
+            {(activeCategory === 'all' || activeCategory === 'courses') && searchResults.courses.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-3">Courses ({searchResults.courses.length})</h3>
+                <div className="space-y-3">
+                  {searchResults.courses.map(course => (
+                    <button
+                      key={course.id}
+                      onClick={() => {
+                        onCourseSelect(course);
+                        setScreen('course-details');
+                        addRecentSearch(query);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-primary hover:shadow-md transition-all text-left"
+                    >
+                      <img 
+                        src={course.image} 
+                        alt={course.title}
+                        className="w-16 h-16 rounded-lg object-cover"
+                        loading="lazy"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 text-sm mb-1 truncate">{course.title}</h4>
+                        <p className="text-xs text-gray-500">{course.lessons}+ Lessons • {course.category}</p>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isCourseFree(course) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {isCourseFree(course) ? '🆓 Free' : '💎 Premium'}
+                        </span>
+                      </div>
+                      <ChevronRight size={20} className="text-gray-300" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes Results */}
+            {(activeCategory === 'all' || activeCategory === 'notes') && searchResults.notes.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-3">Notes ({searchResults.notes.length})</h3>
+                <div className="space-y-3">
+                  {searchResults.notes.map(note => (
+                    <button
+                      key={note.id}
+                      onClick={() => {
+                        onNoteSelect(note);
+                        addRecentSearch(query);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-primary hover:shadow-md transition-all text-left"
+                    >
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
+                        <FileText size={24} className="text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 text-sm mb-1 truncate">{note.title}</h4>
+                        <p className="text-xs text-gray-500">{note.category}</p>
+                      </div>
+                      <ChevronRight size={20} className="text-gray-300" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quiz Results */}
+            {(activeCategory === 'all' || activeCategory === 'quizzes') && searchResults.quizzes.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-3">Quizzes ({searchResults.quizzes.length})</h3>
+                <div className="space-y-3">
+                  {searchResults.quizzes.map(quiz => (
+                    <button
+                      key={quiz.id}
+                      onClick={() => {
+                        onQuizSelect(quiz);
+                        addRecentSearch(query);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-primary hover:shadow-md transition-all text-left"
+                    >
+                      <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
+                        <HelpCircle size={24} className="text-red-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 text-sm mb-1 truncate">{quiz.topic}</h4>
+                        <p className="text-xs text-gray-500">{quiz.questions.length} Questions</p>
+                      </div>
+                      <ChevronRight size={20} className="text-gray-300" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -13719,6 +14014,32 @@ export default function App() {
         />
       );
       case 'binaural-beats': return <BinauralBeatsScreen />;
+      case 'search': return (
+        <SearchScreen
+          onBack={() => setScreen('home')}
+          courses={visibleCourses}
+          notes={visibleNotes}
+          quizzes={visibleQuizzes}
+          onCourseSelect={(course) => setSelectedCourse(course)}
+          onNoteSelect={(note) => {
+            setSelectedLesson({
+              id: note.id,
+              course_id: '',
+              title: note.title,
+              duration: '',
+              note_content: note.content || 'This is a detailed study material for ' + note.title,
+              note_url: note.url
+            });
+            setPreviousScreen('search');
+            setScreen('note-viewer');
+          }}
+          onQuizSelect={(quiz) => {
+            setSelectedQuizTopic(quiz);
+            setScreen('quiz');
+          }}
+          setScreen={setScreen}
+        />
+      );
       case 'notes': return (
         <NotesScreen 
           notes={visibleNotes} 
@@ -13872,6 +14193,7 @@ export default function App() {
       case 'notes': return 'Notes';
       case 'quiz': return 'Practice Quiz';
       case 'live-classes': return 'Live Classes';
+      case 'search': return 'Search';
       case 'profile': return 'My Profile';
       case 'settings': return 'Settings';
       case 'profile-edit': return 'Profile Information';
@@ -13987,6 +14309,7 @@ export default function App() {
           onBack={goBackOneStep} 
           onMenuClick={() => setIsDrawerOpen(true)}
           onNotificationClick={handleNotificationIconClick}
+          onSearchClick={screen !== 'search' ? () => setScreen('search') : undefined}
           notificationCount={studentNotifications.length}
         />
       )}
