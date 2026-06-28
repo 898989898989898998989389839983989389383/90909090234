@@ -3556,6 +3556,53 @@ const BottomNav = ({
   );
 };
 
+const EmptyState = ({ 
+  icon, 
+  title, 
+  message, 
+  actionLabel, 
+  onAction,
+  size = 'md'
+}: { 
+  icon: React.ReactNode; 
+  title: string; 
+  message: string; 
+  actionLabel?: string; 
+  onAction?: () => void;
+  size?: 'sm' | 'md' | 'lg';
+}) => {
+  const sizeClasses = {
+    sm: 'py-8',
+    md: 'py-12',
+    lg: 'py-16'
+  };
+
+  const iconSizes = {
+    sm: 'w-12 h-12 text-4xl',
+    md: 'w-16 h-16 text-6xl',
+    lg: 'w-20 h-20 text-7xl'
+  };
+
+  return (
+    <div className={`text-center ${sizeClasses[size]}`}>
+      <div className={`${iconSizes[size]} bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400`}>
+        {icon}
+      </div>
+      <h3 className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
+      <p className="text-sm text-gray-500 max-w-sm mx-auto mb-4">{message}</p>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-100 hover:shadow-xl transition-all active:scale-95"
+        >
+          {actionLabel}
+          <ChevronRight size={16} />
+        </button>
+      )}
+    </div>
+  );
+};
+
 const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, onSearchClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, onSearchClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
@@ -4799,13 +4846,12 @@ const SearchScreen = ({
             </div>
           </div>
         ) : totalResults === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search size={28} className="text-gray-400" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">No results found</h3>
-            <p className="text-sm text-gray-500">Try different keywords or check spelling</p>
-          </div>
+          <EmptyState
+            icon={<Search size={32} />}
+            title="No results found"
+            message="Try different keywords or check your spelling. You can also browse by category."
+            size="md"
+          />
         ) : (
           <div className="space-y-6">
             {/* Courses Results */}
@@ -5105,13 +5151,14 @@ const CoursesScreen = ({
           );
         })}
         {!filteredCourses.length && (
-          <div className="bg-white rounded-xl border border-gray-100 p-6 text-center shadow-sm">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-              <BookOpen size={22} />
-            </div>
-            <h3 className="font-bold text-gray-800">No {activeTab} courses found</h3>
-            <p className="mt-1 text-sm text-gray-500">Try another search or check back after new courses are added.</p>
-          </div>
+          <EmptyState
+            icon={<BookOpen size={32} />}
+            title={`No ${activeTab} courses found`}
+            message="Try adjusting your search or check back later for new courses."
+            actionLabel="Browse All Courses"
+            onAction={() => setActiveTab(activeTab === 'free' ? 'premium' : 'free')}
+            size="md"
+          />
         )}
       </div>
     </motion.div>
