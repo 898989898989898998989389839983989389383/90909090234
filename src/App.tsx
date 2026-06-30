@@ -3773,17 +3773,6 @@ const BottomNav = ({
         <HelpCircle size={24} />
         <span className="text-[10px] font-medium">Quiz</span>
       </button>
-      <button 
-        onClick={() => {
-          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
-            (window as any).Tawk_API.toggle();
-          }
-        }} 
-        className="nav-item"
-      >
-        <MessageSquare size={24} />
-        <span className="text-[10px] font-medium">Chat</span>
-      </button>
       <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
         <User size={24} />
         <span className="text-[10px] font-medium">Profile</span>
