@@ -3773,6 +3773,17 @@ const BottomNav = ({
         <HelpCircle size={24} />
         <span className="text-[10px] font-medium">Quiz</span>
       </button>
+      <button 
+        onClick={() => {
+          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
+            (window as any).Tawk_API.toggle();
+          }
+        }} 
+        className="nav-item"
+      >
+        <MessageSquare size={24} />
+        <span className="text-[10px] font-medium">Chat</span>
+      </button>
       <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
         <User size={24} />
         <span className="text-[10px] font-medium">Profile</span>
@@ -3866,18 +3877,6 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
             {notificationCount > 9 ? '9+' : notificationCount}
           </span>
         )}
-      </button>
-      <button
-        onClick={() => {
-          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
-            // Open Tawk.to chat widget
-            (window as any).Tawk_API.toggle();
-          }
-        }}
-        className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center"
-        aria-label="Open Support Chat"
-      >
-        <MessageSquare size={20} />
       </button>
     </div>
   </header>
