@@ -9,3 +9,12 @@ coverage/
 academy.db
 
 .vercel
+
+# Android Signing Keys (SECURITY: Never commit these!)
+android/key.properties
+android/app/upload-keystore.jks
+android/app/*.jks
+android/app/*.keystore
+android/app/upload_certificate.pem
+*.jks
+*.keystore

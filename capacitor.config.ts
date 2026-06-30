@@ -4,7 +4,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.rbsacademy.app',
+  appId: 'com.rbs.academy',
   appName: 'RBS Academy',
   webDir: 'dist',
   server: {

@@ -507,11 +507,81 @@ const DEFAULT_APP_CONTROL_SETTINGS: AppControlSettings = {
   notificationId: '',
   notificationSentAt: '',
 };
-const DEFAULT_NATIVE_API_BASE_URL = 'https://rbs-academy-current.vercel.app';
-const API_BASE_URL = String(
-  import.meta.env.VITE_API_BASE_URL ||
-  (Capacitor.isNativePlatform() ? DEFAULT_NATIVE_API_BASE_URL : '')
-).trim().replace(/\/+$/, '');
+
+// Dynamic API Configuration System
+const DEFAULT_API_URLS = [
+  'https://rbs-academy-current.vercel.app',
+  'https://rbs-academy.vercel.app',
+  // Add more backup URLs here
+];
+
+const API_CONFIG_STORAGE_KEY = 'rbs-academy-api-config';
+const API_CONFIG_REMOTE_URL = 'https://raw.githubusercontent.com/rbsacademy/config/main/api-config.json'; // Optional: remote config
+
+interface DynamicApiConfig {
+  primaryUrl: string;
+  backupUrls: string[];
+  lastUpdated: number;
+  forceUpdate: boolean;
+}
+
+const getStoredApiConfig = (): DynamicApiConfig | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = window.localStorage.getItem(API_CONFIG_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveApiConfig = (config: DynamicApiConfig) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(API_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  }
+};
+
+const getActiveApiBaseUrl = (): string => {
+  // Priority 1: Check for stored dynamic config
+  const storedConfig = getStoredApiConfig();
+  if (storedConfig?.primaryUrl) {
+    return storedConfig.primaryUrl.trim().replace(/\/+$/, '');
+  }
+  
+  // Priority 2: Environment variable
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return String(import.meta.env.VITE_API_BASE_URL).trim().replace(/\/+$/, '');
+  }
+  
+  // Priority 3: Default for native platform
+  if (Capacitor.isNativePlatform()) {
+    return DEFAULT_API_URLS[0].trim().replace(/\/+$/, '');
+  }
+  
+  // Priority 4: Empty string (relative URLs for web)
+  return '';
+};
+
+let ACTIVE_API_BASE_URL = getActiveApiBaseUrl();
+
+const updateApiBaseUrl = (newUrl: string) => {
+  const config: DynamicApiConfig = {
+    primaryUrl: newUrl,
+    backupUrls: DEFAULT_API_URLS.filter(url => url !== newUrl),
+    lastUpdated: Date.now(),
+    forceUpdate: false,
+  };
+  saveApiConfig(config);
+  ACTIVE_API_BASE_URL = newUrl.trim().replace(/\/+$/, '');
+  
+  // Reload app data with new URL
+  if (typeof window !== 'undefined') {
+    window.location.reload();
+  }
+};
+
+const API_BASE_URL = ACTIVE_API_BASE_URL;
+
 const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
   admin: { username: 'admin', password: 'admin123' },
   superadmin: { username: 'adminsachin', password: 'admin123' },
@@ -570,20 +640,91 @@ const getUserFriendlyError = (error: unknown): string => {
   return '❌ Something went wrong. Please try again or contact support.';
 };
 
-const apiUrl = (path: string) => {
+const apiUrl = (path: string, baseUrl?: string) => {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
+  const base = baseUrl || ACTIVE_API_BASE_URL;
+  return `${base}${normalizedPath}`;
 };
 
-const apiGet = async (resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders' | 'live-classes', params?: Record<string, string>) => {
+// API Health Check with automatic fallback
+const checkApiHealth = async (url: string): Promise<boolean> => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(apiUrl('/api/health', url) || `${url}/api/health`, {
+      signal: controller.signal,
+      method: 'HEAD',
+    });
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+const apiGetWithFallback = async (
+  resource: 'courses' | 'notes' | 'quizzes' | 'users' | 'sliders' | 'live-classes',
+  params?: Record<string, string>
+): Promise<Response> => {
   const query = new URLSearchParams(params || {});
   const suffix = query.toString();
-  return fetch(apiUrl(`/api/${resource}${suffix ? `?${suffix}` : ''}`));
+  const endpoint = `/api/${resource}${suffix ? `?${suffix}` : ''}`;
+  
+  // Try primary URL
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DATA_REQUEST_TIMEOUT_MS);
+    
+    const response = await fetch(apiUrl(endpoint), {
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      return response;
+    }
+  } catch (primaryError) {
+    console.warn('Primary API failed, trying backups:', primaryError);
+  }
+  
+  // Try backup URLs
+  const storedConfig = getStoredApiConfig();
+  const backupUrls = storedConfig?.backupUrls || DEFAULT_API_URLS.slice(1);
+  
+  for (const backupUrl of backupUrls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), DATA_REQUEST_TIMEOUT_MS);
+      
+      const response = await fetch(apiUrl(endpoint, backupUrl), {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        // Auto-update to working backup URL
+        console.log('Switched to backup URL:', backupUrl);
+        updateApiBaseUrl(backupUrl);
+        return response;
+      }
+    } catch {
+      continue;
+    }
+  }
+  
+  // All failed, throw error
+  throw new Error('All API endpoints failed. Please check your internet connection.');
 };
+
+const apiGet = apiGetWithFallback;
 
 const normalizeAdminUser = (value: unknown): AdminUser | null => {
   if (!value || typeof value !== 'object') {
@@ -3687,7 +3828,7 @@ const EmptyState = ({
   );
 };
 
-const Header = ({ title, user, showBack, onBack, onMenuClick, onSearchClick, onProfileClick }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onSearchClick?: () => void, onProfileClick?: () => void }) => (
+const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClick, onSearchClick, onProfileClick, notificationCount = 0 }: { title: string, user?: AuthUser | null, showBack?: boolean, onBack?: () => void, onMenuClick?: () => void, onNotificationClick?: () => void, onSearchClick?: () => void, onProfileClick?: () => void, notificationCount?: number }) => (
   <header className="hero-gradient text-white px-4 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-blue-900/10">
     <div className="flex items-center gap-3">
       {showBack ? (
@@ -3718,10 +3859,29 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onSearchClick, onP
           <Search size={20} />
         </button>
       )}
+      <button onClick={onNotificationClick} className="relative w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center" aria-label="Open notifications">
+        <Bell size={20} />
+        {notificationCount > 0 && (
+          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">
+            {notificationCount > 9 ? '9+' : notificationCount}
+          </span>
+        )}
+      </button>
+      <button
+        onClick={() => {
+          if (typeof window !== 'undefined') {
+            window.open('https://wa.me/9779823415625', '_blank', 'noopener,noreferrer');
+          }
+        }}
+        className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center"
+        aria-label="Contact on WhatsApp"
+      >
+        <MessageSquare size={20} />
+      </button>
       <button
         onClick={onProfileClick}
-        className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border-2 border-white/30 hover:border-white/60 transition-all hover:scale-105 active:scale-95"
-        aria-label="Go to Profile"
+        className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border border-white/30 hover:bg-white/30 transition-colors cursor-pointer"
+        aria-label="Open profile"
       >
         <img src={getUserAvatarUrl(user || { name: 'RBS Academy' })} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
       </button>
@@ -4417,18 +4577,6 @@ const HomeScreen = ({
             <p className="font-bold">Practice Quiz</p>
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Test Skills</span>
           </div>
-        </button>
-        <button onClick={() => setScreen('binaural-beats')} className="binaural-action-card col-span-2 p-4 rounded-xl text-white text-left flex items-center justify-between shadow-lg shadow-cyan-100">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/16">
-              <Headphones size={24} />
-            </div>
-            <div>
-              <p className="font-bold">Binaural Beats</p>
-              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">One Shot Focus Audio</span>
-            </div>
-          </div>
-          <ChevronRight size={22} />
         </button>
       </div>
 
@@ -9930,6 +10078,116 @@ const AdminPanelScreen = ({
             <div className="admin-control-center">
               <div className="admin-control-center-head">
                 <div>
+                  <h2>API Configuration</h2>
+                  <span>Manage backend URL and test API connectivity</span>
+                </div>
+              </div>
+              <div className="grid gap-4">
+                <div className="admin-login-field">
+                  <span className="admin-login-label">Current API URL</span>
+                  <div className="flex gap-2">
+                    <input 
+                      value={ACTIVE_API_BASE_URL || 'Using relative URLs'} 
+                      readOnly
+                      className="flex-1 opacity-75"
+                    />
+                    <button
+                      type="button"
+                      className="admin-secondary-button px-4 text-sm"
+                      onClick={async () => {
+                        const newUrl = prompt('Enter new API URL:', ACTIVE_API_BASE_URL);
+                        if (newUrl && newUrl.trim()) {
+                          const isHealthy = await checkApiHealth(newUrl.trim());
+                          if (isHealthy) {
+                            updateApiBaseUrl(newUrl.trim());
+                            showNotice('API URL updated successfully! Reloading app...', 'success');
+                          } else {
+                            const confirmChange = confirm('API health check failed. Do you still want to use this URL?');
+                            if (confirmChange) {
+                              updateApiBaseUrl(newUrl.trim());
+                              showNotice('API URL updated! Reloading app...', 'success');
+                            }
+                          }
+                        }
+                      }}
+                    >
+                      Change URL
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <button
+                    type="button"
+                    className="admin-secondary-button px-4 py-3 text-sm"
+                    onClick={async () => {
+                      showNotice('Testing API connection...', 'info');
+                      const isHealthy = await checkApiHealth(ACTIVE_API_BASE_URL);
+                      showNotice(
+                        isHealthy ? '✅ API is healthy and responding!' : '❌ API health check failed',
+                        isHealthy ? 'success' : 'error'
+                      );
+                    }}
+                  >
+                    Test Connection
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-secondary-button px-4 py-3 text-sm"
+                    onClick={() => {
+                      const config = getStoredApiConfig();
+                      if (config) {
+                        const info = `Primary: ${config.primaryUrl}\nBackups: ${config.backupUrls.join(', ')}\nLast Updated: ${new Date(config.lastUpdated).toLocaleString()}`;
+                        alert(info);
+                      } else {
+                        alert('Using default configuration');
+                      }
+                    }}
+                  >
+                    View Config
+                  </button>
+                </div>
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                  <strong className="block mb-2 text-blue-900">💡 Auto-Fallback Active</strong>
+                  <span className="text-blue-700">
+                    If primary URL fails, app automatically switches to backup URLs. This ensures the app keeps working even if Vercel URL changes.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
+                  <h2>Backup URLs</h2>
+                  <span>Fallback endpoints</span>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                {DEFAULT_API_URLS.map((url, index) => (
+                  <div key={url} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs text-gray-500 font-medium">
+                          {index === 0 ? 'Primary' : `Backup ${index}`}
+                        </div>
+                        <div className="text-sm text-gray-900 truncate">{url}</div>
+                      </div>
+                      {ACTIVE_API_BASE_URL === url && (
+                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="admin-control-center">
+              <div className="admin-control-center-head">
+                <div>
                   <h2>Global App Settings</h2>
                   <span>These settings are saved to the backend and loaded by the student app.</span>
                 </div>
@@ -14424,8 +14682,10 @@ export default function App() {
           showBack={screen !== 'home'} 
           onBack={goBackOneStep} 
           onMenuClick={() => setIsDrawerOpen(true)}
+          onNotificationClick={handleNotificationIconClick}
           onSearchClick={screen !== 'search' ? () => setScreen('search') : undefined}
           onProfileClick={() => setScreen('profile')}
+          notificationCount={studentNotifications.length}
         />
       )}
       

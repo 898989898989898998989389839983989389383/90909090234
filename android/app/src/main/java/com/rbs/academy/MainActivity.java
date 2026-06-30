@@ -1,4 +1,4 @@
-package com.rbsacademy.app;
+package com.rbs.academy;
 
 import android.app.PictureInPictureParams;
 import android.content.SharedPreferences;
