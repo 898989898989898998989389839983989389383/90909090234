@@ -3773,6 +3773,17 @@ const BottomNav = ({
         <HelpCircle size={24} />
         <span className="text-[10px] font-medium">Quiz</span>
       </button>
+      <button 
+        onClick={() => {
+          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
+            (window as any).Tawk_API.toggle();
+          }
+        }} 
+        className="nav-item"
+      >
+        <MessageSquare size={24} />
+        <span className="text-[10px] font-medium">Chat</span>
+      </button>
       <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
         <User size={24} />
         <span className="text-[10px] font-medium">Profile</span>
@@ -13894,6 +13905,36 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Initialize Tawk.to chat widget
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) return;
+
+    // Tawk.to configuration
+    const Tawk_API: any = (window as any).Tawk_API || {};
+    const Tawk_LoadStart = new Date();
+    (window as any).Tawk_API = Tawk_API;
+    (window as any).Tawk_LoadStart = Tawk_LoadStart;
+
+    // Load Tawk.to script
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = 'https://embed.tawk.to/6a410df7eafe991d4bfa0736/1js71t3u7';
+    script.charset = 'UTF-8';
+    script.setAttribute('crossorigin', '*');
+    
+    const firstScript = document.getElementsByTagName('script')[0];
+    if (firstScript && firstScript.parentNode) {
+      firstScript.parentNode.insertBefore(script, firstScript);
+    }
+
+    return () => {
+      // Cleanup: remove script when component unmounts
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [isManagementRoute]);
 
   useEffect(() => {
     if (isManagementRoute) {
