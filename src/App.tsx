@@ -3869,12 +3869,13 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
       </button>
       <button
         onClick={() => {
-          if (typeof window !== 'undefined') {
-            window.open('https://wa.me/9779823415625', '_blank', 'noopener,noreferrer');
+          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
+            // Open Tawk.to chat widget
+            (window as any).Tawk_API.toggle();
           }
         }}
         className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center"
-        aria-label="Contact on WhatsApp"
+        aria-label="Open Support Chat"
       >
         <MessageSquare size={20} />
       </button>
@@ -13905,6 +13906,36 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Initialize Tawk.to chat widget
+  useEffect(() => {
+    if (typeof window === 'undefined' || isManagementRoute) return;
+
+    // Tawk.to configuration
+    const Tawk_API: any = (window as any).Tawk_API || {};
+    const Tawk_LoadStart = new Date();
+    (window as any).Tawk_API = Tawk_API;
+    (window as any).Tawk_LoadStart = Tawk_LoadStart;
+
+    // Load Tawk.to script
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = 'https://embed.tawk.to/6a410df7eafe991d4bfa0736/1js71t3u7';
+    script.charset = 'UTF-8';
+    script.setAttribute('crossorigin', '*');
+    
+    const firstScript = document.getElementsByTagName('script')[0];
+    if (firstScript && firstScript.parentNode) {
+      firstScript.parentNode.insertBefore(script, firstScript);
+    }
+
+    return () => {
+      // Cleanup: remove script when component unmounts
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [isManagementRoute]);
 
   useEffect(() => {
     if (isManagementRoute) {
