@@ -3878,13 +3878,6 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
       >
         <MessageSquare size={20} />
       </button>
-      <button
-        onClick={onProfileClick}
-        className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border border-white/30 hover:bg-white/30 transition-colors cursor-pointer"
-        aria-label="Open profile"
-      >
-        <img src={getUserAvatarUrl(user || { name: 'RBS Academy' })} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-      </button>
     </div>
   </header>
 );
