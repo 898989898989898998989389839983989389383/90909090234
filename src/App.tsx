@@ -7526,154 +7526,119 @@ const HelpCenterScreen = () => {
   );
 };
 
-const AboutUsScreen = () => {
-  const chemistryPoints = ['Concept Clarity', 'Smart Notes', 'Exam Practice'];
-
-  const affiliations = [
-    {
-      name: 'Kathmandu Model College',
-      role: 'Academic Association',
-      logo: 'https://merocollege.com/wp-content/uploads/2020/01/Kathmandu-Model-College-KMC-Logo.png',
-    },
-    {
-      name: 'Saral Shikshya',
-      role: 'Learning Platform Partner',
-      logo: 'https://saralgate.saralshikshya.org/backend/media/Saral%20Shikshya%20Academy/Saral_Shikshya_8z2DQTn.png',
-    },
-  ];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,#d9f2ff_0%,#f8fcff_38%,#eef8f2_100%)] p-4 pb-24"
-    >
-      <div className="overflow-hidden rounded-[36px] border border-white/80 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.16)]">
-        <div className="relative h-[320px] sm:h-[360px]">
+const AboutUsScreen = () => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50"
+  >
+    <div className="overflow-hidden rounded-[32px] border border-gray-100 bg-white shadow-xl shadow-slate-200/60">
+      <div className="relative h-56">
+        <img
+          src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhvgoKhcfed24WTxNsPHaWpVqqAX3Utkpbx32ag9aeE_8B_Bqv0j9fwP_vJNGgamPjvw7vYmzkxX4-Od6AuyAY9bNud5O2nwybZJ3axd4Krfx18vj2raht8vdB8_abprhfauSRH6CDMMw0RkOcU2ZNV4eIQcobQ8d_jxeDDd0vaTj1eB1IZ9q27PzMeog/s1600/ma.png"
+          alt="RBS Academy Founder"
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,23,42,0.82)_0%,rgba(11,86,196,0.72)_100%)]" />
+        <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-6 text-white">
           <img
             src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhvgoKhcfed24WTxNsPHaWpVqqAX3Utkpbx32ag9aeE_8B_Bqv0j9fwP_vJNGgamPjvw7vYmzkxX4-Od6AuyAY9bNud5O2nwybZJ3axd4Krfx18vj2raht8vdB8_abprhfauSRH6CDMMw0RkOcU2ZNV4eIQcobQ8d_jxeDDd0vaTj1eB1IZ9q27PzMeog/s1600/ma.png"
-            alt="Ravi Bhushna Sharma"
-            className="h-full w-full object-cover object-top"
+            alt="Founder portrait"
+            className="h-20 w-20 rounded-3xl border-4 border-white/25 object-cover shadow-lg"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(6,28,52,0.68)_0%,rgba(9,74,117,0.56)_48%,rgba(13,148,136,0.40)_100%)]" />
-          <div className="absolute -left-8 top-10 h-28 w-28 rounded-full bg-cyan-300/25 blur-3xl" />
-          <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-emerald-300/20 blur-3xl" />
-
-          <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-5 text-white sm:p-6">
-            <div className="rounded-[28px] border-4 border-white/20 bg-white/10 p-1 shadow-2xl backdrop-blur-sm">
-              <img
-                src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhvgoKhcfed24WTxNsPHaWpVqqAX3Utkpbx32ag9aeE_8B_Bqv0j9fwP_vJNGgamPjvw7vYmzkxX4-Od6AuyAY9bNud5O2nwybZJ3axd4Krfx18vj2raht8vdB8_abprhfauSRH6CDMMw0RkOcU2ZNV4eIQcobQ8d_jxeDDd0vaTj1eB1IZ9q27PzMeog/s1600/ma.png"
-                alt="Ravi Bhushna Sharma portrait"
-                className="h-20 w-20 rounded-[22px] object-cover object-top sm:h-24 sm:w-24"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100 backdrop-blur-sm">
-                <FlaskConical size={13} />
-                Chemistry Faculty
-              </div>
-              <h2 className="mt-3 text-3xl font-black leading-none sm:text-[2.75rem]">Ravi Bhushna Sharma</h2>
-              <p className="mt-2 text-sm font-semibold text-white/80 sm:text-base">Kathmandu Chemistry Lecturer</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-[linear-gradient(140deg,#082847_0%,#0f4a76_48%,#15958c_100%)] px-5 py-5 text-white sm:px-6">
-          <div className="flex flex-wrap gap-3">
-            {chemistryPoints.map((point) => (
-              <div key={point} className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-white/92 backdrop-blur-sm">
-                {point}
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[22px] border border-white/12 bg-white/10 px-4 py-4 backdrop-blur-sm">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Subject</div>
-              <div className="mt-2 text-lg font-black">Chemistry</div>
-            </div>
-            <div className="rounded-[22px] border border-white/12 bg-white/10 px-4 py-4 backdrop-blur-sm">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Role</div>
-              <div className="mt-2 text-lg font-black">Lecturer</div>
-            </div>
-            <div className="rounded-[22px] border border-white/12 bg-white/10 px-4 py-4 backdrop-blur-sm">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">City</div>
-              <div className="mt-2 text-lg font-black">Kathmandu</div>
-            </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70">Founded By</p>
+            <h2 className="text-2xl font-black">Ravi Bhushna Sharma</h2>
+            <p className="text-sm text-white/75">Chemistry Lecturer, Kathmandu</p>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.72fr]">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.1 }}
-          className="rounded-[32px] border border-slate-100 bg-white/92 p-5 shadow-[0_20px_55px_rgba(15,23,42,0.08)] backdrop-blur-sm"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Affiliations</div>
-              <h3 className="mt-2 text-2xl font-black text-slate-950">Trusted Learning Links</h3>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#d8f3ff_0%,#e7fff7_100%)] text-cyan-700">
-              <BookOpen size={22} />
-            </div>
-          </div>
+      <div className="p-5 space-y-4">
+        <div className="rounded-[24px] bg-blue-50 p-5">
+          <h3 className="text-base font-black text-slate-900">About RBS Academy</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            RBS Academy is a premier online education platform specializing in chemistry education for Class 11 and Class 12 students. Founded by Ravi Bhushna Sharma, an experienced chemistry lecturer from Kathmandu, we focus on concept clarity, smart learning, and exam excellence.
+          </p>
+        </div>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {affiliations.map((item, index) => (
-              <motion.div
-                key={item.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.18 + index * 0.08 }}
-                className="rounded-[28px] border border-slate-100 bg-slate-50 p-4"
-              >
-                <div className="flex h-24 items-center justify-center rounded-[22px] bg-white p-4 shadow-sm">
-                  <img
-                    src={item.logo}
-                    alt={item.name}
-                    className="max-h-full w-auto object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <div className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">{item.role}</div>
-                <div className="mt-2 text-lg font-black text-slate-950">{item.name}</div>
-              </motion.div>
-            ))}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="rounded-[24px] border border-gray-100 bg-white p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Students</div>
+            <div className="mt-2 text-lg font-black text-slate-900">10,000+</div>
+            <div className="mt-1 text-xs text-slate-500">Active learners</div>
           </div>
-        </motion.div>
+          <div className="rounded-[24px] border border-gray-100 bg-white p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Success</div>
+            <div className="mt-2 text-lg font-black text-slate-900">95%</div>
+            <div className="mt-1 text-xs text-slate-500">Pass rate</div>
+          </div>
+          <div className="rounded-[24px] border border-gray-100 bg-white p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Courses</div>
+            <div className="mt-2 text-lg font-black text-slate-900">50+</div>
+            <div className="mt-1 text-xs text-slate-500">Chemistry topics</div>
+          </div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.16 }}
-          className="rounded-[32px] border border-slate-100 bg-white/92 p-5 shadow-[0_20px_55px_rgba(15,23,42,0.08)] backdrop-blur-sm"
-        >
-          <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Contact</div>
-          <div className="mt-3 rounded-[28px] bg-[linear-gradient(145deg,#081a32_0%,#143f68_100%)] p-5 text-white shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-white">
-              <Phone size={24} />
+        <div className="rounded-[24px] bg-blue-50 p-5">
+          <h3 className="text-base font-black text-slate-900">Our Mission</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            To make quality chemistry education accessible to every student preparing for competitive exams like JEE, NEET, and Board Exams. We believe in concept clarity, practical learning, and continuous practice.
+          </p>
+        </div>
+
+        <div className="rounded-[24px] bg-blue-50 p-5">
+          <h3 className="text-base font-black text-slate-900">What We Offer</h3>
+          <div className="mt-3 space-y-2 text-sm text-slate-600">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              <span>Comprehensive video lectures</span>
             </div>
-            <div className="mt-5 text-sm text-white/70">Call for chemistry guidance</div>
-            <div className="mt-2 text-3xl font-black tracking-tight">9819239480</div>
-            <button
-              type="button"
-              onClick={() => openExternalResource('tel:9819239480')}
-              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-900"
-            >
-              <Phone size={16} />
-              Contact Now
-            </button>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              <span>Detailed study notes and PDFs</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              <span>Practice quizzes and tests</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              <span>Live classes and doubt sessions</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              <span>Progress tracking and analytics</span>
+            </div>
           </div>
-        </motion.div>
+        </div>
+
+        <div className="rounded-[24px] border border-gray-100 bg-slate-950 p-5 text-white">
+          <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/60">Contact Us</div>
+          <div className="mt-3 space-y-2 text-sm text-white/80">
+            <div>Phone: +977-9819239480</div>
+            <div>Email: contact@rbsacademy.com</div>
+            <div>Location: Kathmandu, Nepal</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.open('https://wa.me/9779819239480', '_blank', 'noopener,noreferrer');
+              }
+            }}
+            className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-900"
+          >
+            <MessageSquare size={16} />
+            Chat on WhatsApp
+          </button>
+        </div>
       </div>
-    </motion.div>
-  );
-};
+    </div>
+  </motion.div>
+);
 
 const AboutDeveloperScreen = () => (
   <motion.div
