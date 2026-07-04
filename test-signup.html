@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Signup - RBS Academy</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        .message.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+            display: block;
+        }
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+            display: block;
+        }
+        .message.info {
+            background: #eef;
+            color: #33c;
+            border: 1px solid #ccf;
+            display: block;
+        }
+        .logs {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid #667eea;
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Signup</h1>
+        <p class="subtitle">Test RBS Academy Signup API</p>
+
+        <form id="signupForm">
+            <div class="form-group">
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" value="Test Student" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" value="test@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Mobile Number *</label>
+                <input type="tel" id="phone" value="9876543210" required>
+            </div>
+
+            <div class="form-group">
+                <label for="classLevel">Class *</label>
+                <select id="classLevel" required>
+                    <option value="class-11">Class 11</option>
+                    <option value="class-12" selected>Class 12</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password *</label>
+                <input type="password" id="password" value="test123" required>
+            </div>
+
+            <button type="submit" id="submitBtn">Test Signup</button>
+        </form>
+
+        <div id="message" class="message"></div>
+
+        <div class="logs">
+            <strong>📊 Logs:</strong>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+        const logsDiv = document.getElementById('logs');
+        const messageDiv = document.getElementById('message');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function showMessage(message, type) {
+            messageDiv.textContent = message;
+            messageDiv.className = `message ${type}`;
+        }
+
+        function generateDeviceId() {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID();
+            }
+            return `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+
+        function getDeviceLabel() {
+            return `${navigator.platform || 'Unknown'} - ${navigator.userAgent.slice(0, 80)}`;
+        }
+
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Testing...';
+            
+            logsDiv.innerHTML = '';
+            messageDiv.className = 'message';
+
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const phone = document.getElementById('phone').value.replace(/\D/g, '');
+            const classLevel = document.getElementById('classLevel').value;
+            const password = document.getElementById('password').value;
+
+            log('🔍 Starting signup test...');
+            
+            const deviceId = generateDeviceId();
+            const deviceLabel = getDeviceLabel();
+            
+            log(`Device ID: ${deviceId.slice(0, 20)}...`);
+            log(`Device Label: ${deviceLabel.slice(0, 50)}...`);
+
+            const payload = {
+                name,
+                email,
+                phone,
+                classLevel,
+                password,
+                deviceId,
+                deviceLabel
+            };
+
+            log('📤 Sending request to /api/request-signup-otp');
+            log(`Payload: ${JSON.stringify({...payload, password: '***'})}`);
+
+            try {
+                const response = await fetch(`${API_URL}/api/request-signup-otp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                log(`📥 Response Status: ${response.status} ${response.statusText}`);
+
+                const data = await response.json();
+                log(`📦 Response Data: ${JSON.stringify(data)}`);
+
+                if (data.success) {
+                    showMessage(`✅ ${data.message}`, 'success');
+                    if (data.otp) {
+                        showMessage(`✅ ${data.message}\n🔑 DEBUG OTP: ${data.otp}`, 'success');
+                        log(`🔑 DEBUG OTP: ${data.otp}`);
+                    }
+                } else {
+                    showMessage(`❌ ${data.message}`, 'error');
+                    log(`❌ Error: ${data.message}`);
+                }
+
+            } catch (error) {
+                log(`❌ Exception: ${error.message}`);
+                showMessage(`❌ Network Error: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Test Signup';
+            }
+        });
+
+        log('✅ Test page loaded and ready!');
+        log('📍 API URL: ' + API_URL);
+    </script>
+</body>
+</html>

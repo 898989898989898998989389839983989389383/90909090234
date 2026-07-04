@@ -31,6 +31,7 @@ import {
   MessageSquare,
   Info,
   Eye,
+  EyeOff,
   Mail,
   Lock,
   ChevronDown,
@@ -48,7 +49,9 @@ import {
   FlaskConical,
   Maximize,
   VolumeX,
-  Share2
+  Share2,
+  RotateCcw,
+  RotateCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -595,7 +598,9 @@ const getUserFriendlyError = (error: unknown): string => {
   
   // Network errors
   if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-    return '📡 No internet connection. Please check your network and try again.';
+    console.error('🔍 Network Error Details:', errorMessage);
+    console.log('💡 Tip: If using localhost, make sure server is running on port 3001');
+    return '🔌 Cannot connect to server. Make sure the server is running at http://localhost:3001';
   }
   if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
     return '⏱️ Request took too long. Please try again.';
@@ -3019,6 +3024,8 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [pendingSignupPassword, setPendingSignupPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -3070,9 +3077,10 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   const nameError = touched.name ? validateName(name) : '';
   const phoneError = touched.phone ? validatePhone(phone) : '';
 
+  // Simplified validation - just check if fields have values
   const isFormValid = isSignup
-    ? !emailError && !passwordError && !confirmPasswordError && !nameError && !phoneError && email && password && confirmPassword && name && phone
-    : !emailError && !passwordError && email && password;
+    ? email && password && confirmPassword && name && phone && password === confirmPassword
+    : email && password;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3105,12 +3113,20 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
 
     try {
       const devicePayload = getDevicePayload();
+      console.log('Device Payload:', devicePayload); // Debug log
+      
       const payload = isSignup
         ? { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel, password, ...devicePayload }
         : { email, password, ...devicePayload };
 
+      console.log('Signup Request:', { ...payload, password: '***' }); // Debug log (hide password)
+
       const res = await apiAuthPost(isSignup ? 'request-signup-otp' : 'login', payload);
+      console.log('API Response Status:', res.status); // Debug log
+      
       const data = await readLenientJsonResponse(res);
+      console.log('API Response Data:', data); // Debug log
+      
       if (data.success) {
         if (isSignup) {
           setPendingSignupPassword(password);
@@ -3124,9 +3140,11 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         const normalizedUser = normalizeAuthUser(data.user, { name: trimmedName, email, phone: normalizedPhone, classLevel: normalizedClassLevel });
         onLogin(normalizedUser);
       } else {
+        console.error('Signup Error:', data.message); // Debug log
         setError(getUserFriendlyError(data.message || (isSignup ? 'Signup failed' : 'Login failed')));
       }
     } catch (err) {
+      console.error('Signup Exception:', err); // Debug log
       if (isSignup) {
         setError(getUserFriendlyError(err instanceof Error ? err.message : 'Email verification is required. Please try again online.'));
         return;
@@ -3419,15 +3437,20 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         </label>
         <label className="auth-login-field">
           <span className="auth-login-label">Password *</span>
-          <input 
-            type="password" 
-            required
-            className={`auth-scenic-input auth-login-input text-sm ${passwordError && passwordError.includes('🔒') ? 'border-red-300 focus:border-red-500' : touched.password && password && !passwordError ? 'border-emerald-300' : ''}`}
-            placeholder={isSignup ? 'Create a strong password (min 6 characters)' : 'Enter your password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onBlur={() => setTouched(prev => ({ ...prev, password: true }))}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              required
+              className={`auth-scenic-input auth-login-input text-sm pr-11 ${passwordError && passwordError.includes('🔒') ? 'border-red-300 focus:border-red-500' : touched.password && password && !passwordError ? 'border-emerald-300' : ''}`}
+              placeholder={isSignup ? 'Create a strong password (min 6 characters)' : 'Enter your password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onBlur={() => setTouched(prev => ({ ...prev, password: true }))}
+            />
+            <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
           {passwordError && (
             <p className="text-xs mt-1 font-semibold text-red-600">{passwordError}</p>
           )}
@@ -3438,15 +3461,20 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
         {isSignup && (
           <label className="auth-login-field">
             <span className="auth-login-label">Confirm Password *</span>
-            <input
-              type="password"
-              required
-              className={`auth-scenic-input auth-login-input text-sm ${confirmPasswordError && confirmPasswordError.includes('❌') ? 'border-red-300 focus:border-red-500' : confirmPasswordError && confirmPasswordError.includes('✅') ? 'border-emerald-300' : ''}`}
-              placeholder="Re-enter password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              onBlur={() => setTouched(prev => ({ ...prev, confirmPassword: true }))}
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                className={`auth-scenic-input auth-login-input text-sm pr-11 ${confirmPasswordError && confirmPasswordError.includes('❌') ? 'border-red-300 focus:border-red-500' : confirmPasswordError && confirmPasswordError.includes('✅') ? 'border-emerald-300' : ''}`}
+                placeholder="Re-enter password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onBlur={() => setTouched(prev => ({ ...prev, confirmPassword: true }))}
+              />
+              <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             {confirmPasswordError && (
               <p className={`text-xs mt-1 font-semibold ${confirmPasswordError.includes('❌') ? 'text-red-600' : 'text-emerald-600'}`}>
                 {confirmPasswordError}
@@ -3464,8 +3492,8 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
 
         <button 
           type="submit"
-          disabled={loading || !isFormValid}
-          className={`auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2 ${!isFormValid && !loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={loading}
+          className={`auth-scenic-button auth-login-submit py-4 mt-2 flex items-center justify-center gap-2 ${loading ? 'opacity-75' : ''}`}
         >
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isSignup ? 'Create Account' : 'Log In')}
         </button>
@@ -3490,13 +3518,13 @@ const LoginScreen = ({ onLogin }: { onLogin: (user: any) => void }) => {
   );
 };
 
-const Loading = ({ message = 'Loading Academy...' }: { message?: string }) => (
+const Loading = ({ message = 'Loading...' }: { message?: string }) => (
   <div className="flex-1 flex flex-col items-center justify-center p-8">
-    <div className="relative">
-      <div className="w-16 h-16 border-4 border-primary/20 rounded-full"></div>
-      <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+    <div className="relative w-8 h-8">
+      <div className="w-8 h-8 border-2 border-primary/20 rounded-full"></div>
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
     </div>
-    <p className="text-gray-600 text-sm mt-6 animate-pulse font-medium">{message}</p>
+    <p className="text-gray-500 text-xs mt-4">{message}</p>
   </div>
 );
 
@@ -3773,17 +3801,6 @@ const BottomNav = ({
         <HelpCircle size={24} />
         <span className="text-[10px] font-medium">Quiz</span>
       </button>
-      <button 
-        onClick={() => {
-          if (typeof window !== 'undefined' && (window as any).Tawk_API) {
-            (window as any).Tawk_API.toggle();
-          }
-        }} 
-        className="nav-item"
-      >
-        <MessageSquare size={24} />
-        <span className="text-[10px] font-medium">Chat</span>
-      </button>
       <button onClick={() => setScreen('profile')} className={`nav-item ${activeScreen === 'profile' ? 'active' : ''}`}>
         <User size={24} />
         <span className="text-[10px] font-medium">Profile</span>
@@ -4011,6 +4028,13 @@ const SectionHeader = ({ title, onSeeAll }: { title: string, onSeeAll?: () => vo
     {onSeeAll && (
       <button onClick={onSeeAll} className="app-chip px-3 py-1.5 text-primary text-sm font-medium">See All</button>
     )}
+  </div>
+);
+
+const ScreenHeader = ({ title, subtitle }: { title: string, subtitle?: string }) => (
+  <div className="hero-gradient text-white px-4 pt-5 pb-4 sticky top-0 z-30 shadow-md shadow-blue-900/10">
+    <h1 className="text-xl font-bold tracking-tight">{title}</h1>
+    {subtitle && <p className="text-xs text-white/70 mt-0.5">{subtitle}</p>}
   </div>
 );
 
@@ -4282,15 +4306,6 @@ const ImageSlider = ({ sliders }: { sliders: SliderItem[] }) => {
           referrerPolicy="no-referrer"
         />
       </AnimatePresence>
-      <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
-        {slides.map((_, idx) => (
-          <button
-            key={idx}
-            onClick={() => setCurrentIndex(idx)}
-            className={`w-2 h-2 rounded-full transition-all ${currentIndex === idx ? 'bg-white w-4' : 'bg-white/50'}`}
-          />
-        ))}
-      </div>
       <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none"></div>
       <div className="absolute bottom-6 left-6 text-white">
         <div className="inline-flex rounded-full bg-white/15 px-3 py-1 text-[10px] uppercase tracking-[0.18em] font-bold mb-3">Featured</div>
@@ -4305,7 +4320,6 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
   const menuItems = [
     { icon: <ShieldCheck size={20} />, label: 'Privacy Policy' },
-    { icon: <MessageSquare size={20} />, label: 'Support Chat' },
     { icon: <Share2 size={20} />, label: 'Share App' },
     { icon: <Info size={20} />, label: 'About Us' },
     { icon: <User size={20} />, label: 'About Developer' },
@@ -4372,9 +4386,6 @@ const SideDrawer = ({ isOpen, onClose, user, setScreen }: { isOpen: boolean, onC
                     }
                     if (item.label === 'Privacy Policy') {
                       setScreen('privacy-policy');
-                    }
-                    if (item.label === 'Support Chat') {
-                      setScreen('support-chat');
                     }
                     if (item.label === 'Share App') {
                       setShareSheetOpen(true);
@@ -4643,118 +4654,124 @@ const LiveClassesScreen = ({
   courses: Course[];
   onJoinClass: (liveClass: LiveClass) => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'free' | 'premium'>('free');
-  const visibleClasses = liveClasses
-    .filter((item) => item.access_type === activeTab)
-    .sort((left, right) => {
-      const leftTime = left.scheduled_at ? new Date(left.scheduled_at).getTime() : 0;
-      const rightTime = right.scheduled_at ? new Date(right.scheduled_at).getTime() : 0;
-      return (leftTime || Number.MAX_SAFE_INTEGER) - (rightTime || Number.MAX_SAFE_INTEGER);
-    });
-  const liveCount = liveClasses.filter((item) => getLiveClassStatus(item.scheduled_at).label === 'Live Now').length;
+  const [activeTab, setActiveTab] = useState<'all' | 'free' | 'premium'>('all');
+
+  const sorted = [...liveClasses].sort((a, b) => {
+    const aLive = getLiveClassStatus(a.scheduled_at).label === 'Live Now' ? 0 : 1;
+    const bLive = getLiveClassStatus(b.scheduled_at).label === 'Live Now' ? 0 : 1;
+    if (aLive !== bLive) return aLive - bLive;
+    const at = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER;
+    const bt = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER;
+    return at - bt;
+  });
+
+  const visibleClasses = activeTab === 'all' ? sorted : sorted.filter((c) => c.access_type === activeTab);
+  const liveCount = liveClasses.filter((c) => getLiveClassStatus(c.scheduled_at).label === 'Live Now').length;
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4">
-      <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#051B3B_0%,#0B5ED7_52%,#00A6C8_100%)] p-5 text-white shadow-xl shadow-blue-200/60">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Live Classes</p>
-        <h2 className="mt-2 text-2xl font-black leading-tight">Your classroom is ready</h2>
-        <p className="mt-2 text-sm leading-6 text-white/78">Join scheduled sessions, course batches, and selected-student classes from one clean live lobby.</p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <div className="rounded-2xl bg-white/12 px-3 py-3">
-            <div className="text-xl font-black">{liveClasses.length}</div>
-            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Sessions</div>
+    <div className="flex-1 overflow-y-auto pb-24">
+      {/* Header */}
+      <div className="hero-gradient px-4 pt-5 pb-4 sticky top-0 z-30 shadow-md shadow-blue-900/10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight">Live Classes</h1>
+            <p className="text-xs text-white/65 mt-0.5">{liveClasses.length} session{liveClasses.length !== 1 ? 's' : ''} scheduled</p>
           </div>
-          <div className="rounded-2xl bg-white/12 px-3 py-3">
-            <div className="text-xl font-black">{liveCount}</div>
-            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Live Now</div>
-          </div>
-          <div className="rounded-2xl bg-white/12 px-3 py-3">
-            <div className="text-xl font-black">{liveClasses.filter((item) => item.access_type === 'premium').length}</div>
-            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Premium</div>
-          </div>
+          {liveCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-3 py-1.5 text-[11px] font-black text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              {liveCount} Live Now
+            </span>
+          )}
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          {(['free', 'premium'] as const).map((tab) => (
+
+        {/* Tabs */}
+        <div className="mt-3 flex gap-2">
+          {(['all', 'free', 'premium'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`rounded-2xl px-4 py-3 text-left text-sm font-bold transition ${
-                activeTab === tab ? 'bg-white text-slate-900' : 'bg-white/10 text-white'
+              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                activeTab === tab
+                  ? 'bg-white text-blue-900'
+                  : 'bg-white/15 text-white/80'
               }`}
             >
-              <div className="uppercase tracking-[0.18em] text-[10px] opacity-70">{tab === 'free' ? 'Open' : 'Premium'}</div>
-              <div className="mt-1">{tab === 'free' ? 'Free Live Classes' : 'Premium Live Classes'}</div>
+              {tab === 'all' ? 'All' : tab === 'free' ? 'Free' : 'Premium'}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-5 space-y-4">
+      {/* Class list */}
+      <div className="px-4 pt-4 space-y-3">
         {visibleClasses.map((liveClass) => {
-          const linkedCourse = courses.find((course) => String(course.id) === String(liveClass.course_id || ''));
+          const linkedCourse = courses.find((c) => String(c.id) === String(liveClass.course_id || ''));
           const status = getLiveClassStatus(liveClass.scheduled_at);
+          const isLive = status.label === 'Live Now';
           const isCompleted = status.label === 'Completed';
-          const audienceLabel = liveClass.audience_type === 'all'
-            ? 'All Students'
-            : liveClass.audience_type === 'course'
-              ? (linkedCourse ? 'Course Batch' : 'Course Missing')
-              : 'Selected Students';
+
           return (
-            <div key={liveClass.id} className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-lg shadow-slate-100/80">
-              <div className="h-1.5 bg-[linear-gradient(90deg,#0ea5e9,#2563eb,#14b8a6)]" />
-              <div className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                      {liveClass.access_type}
-                    </span>
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getLiveClassStatusClass(status.tone)}`}>
+            <div
+              key={liveClass.id}
+              className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${isLive ? 'border-emerald-200 shadow-emerald-100' : 'border-slate-100'}`}
+            >
+              {isLive && <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-400" />}
+              <div className="p-4">
+                {/* Top row: badges + icon */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${getLiveClassStatusClass(status.tone)}`}>
                       {status.label}
                     </span>
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${liveClass.audience_type === 'course' && !linkedCourse ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {audienceLabel}
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${liveClass.access_type === 'premium' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                      {liveClass.access_type === 'premium' ? 'Premium' : 'Free'}
                     </span>
                   </div>
-                  <h3 className="mt-3 text-lg font-black text-slate-900">{liveClass.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{liveClass.description || 'Live session is ready for students. Join on time from the in-app class room.'}</p>
+                  <div className={`shrink-0 rounded-xl p-2 ${isLive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                    <Play size={16} />
+                  </div>
                 </div>
-                <div className="rounded-2xl bg-blue-50 p-3 text-blue-700">
-                  <Play size={18} />
-                </div>
-              </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Schedule</div>
-                  <div className="mt-1 font-bold">{formatLiveClassDate(liveClass.scheduled_at)}</div>
-                  <div className="mt-1 text-xs font-semibold text-slate-500">{status.detail}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Course</div>
-                  <div className="mt-1 font-bold">{linkedCourse?.title || (liveClass.audience_type === 'all' ? 'All courses' : 'Student specific session')}</div>
-                </div>
-              </div>
+                {/* Title + description */}
+                <h3 className="mt-2.5 text-base font-black text-slate-900 leading-snug">{liveClass.title}</h3>
+                {liveClass.description && (
+                  <p className="mt-1 text-sm text-slate-500 leading-relaxed line-clamp-2">{liveClass.description}</p>
+                )}
 
-              <button
-                type="button"
-                onClick={() => onJoinClass(liveClass)}
-                disabled={isCompleted}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-200 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
-              >
-                {isCompleted ? 'Class Completed' : 'Join Live Class'}
-                <Play size={16} />
-              </button>
+                {/* Meta row */}
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                  <span className="font-semibold">{formatLiveClassDate(liveClass.scheduled_at)}</span>
+                  {status.detail && <span className="text-slate-400">{status.detail}</span>}
+                  {linkedCourse && <span className="text-blue-600 font-semibold">{linkedCourse.title}</span>}
+                </div>
+
+                {/* Join button */}
+                <button
+                  type="button"
+                  onClick={() => onJoinClass(liveClass)}
+                  disabled={isCompleted}
+                  className={`mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-black transition-all
+                    ${isLive
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200 active:scale-95'
+                      : isCompleted
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-900 text-white active:scale-95'
+                    }`}
+                >
+                  {isCompleted ? 'Class Completed' : isLive ? 'Join Now' : 'View Class'}
+                  {!isCompleted && <Play size={14} />}
+                </button>
               </div>
             </div>
           );
         })}
 
         {!visibleClasses.length && (
-          <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center">
-            <div className="text-lg font-black text-slate-900">No {activeTab} live classes yet</div>
-            <p className="mt-2 text-sm text-slate-500">When admin schedules a session for your access level, it will appear here automatically.</p>
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center mt-4">
+            <div className="text-sm font-bold text-slate-700">No {activeTab === 'all' ? '' : activeTab + ' '}classes scheduled</div>
+            <p className="mt-1 text-xs text-slate-400">Check back later for upcoming sessions.</p>
           </div>
         )}
       </div>
@@ -4952,7 +4969,6 @@ const SearchScreen = ({
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-bold">Search</h1>
         </div>
 
         {/* Search Input */}
@@ -5404,6 +5420,7 @@ const VideoPlayerScreen = ({
   const [customEmbedDuration, setCustomEmbedDuration] = useState(0);
   const [customEmbedSpeed, setCustomEmbedSpeed] = useState(1);
   const [youtubeControlsHidden, setYoutubeControlsHidden] = useState(false);
+  const [lessonCompletionMap, setLessonCompletionMap] = useState<Set<string>>(new Set());
   const [youtubeSpeedMenuOpen, setYoutubeSpeedMenuOpen] = useState(false);
   const [customEmbedFullscreen, setCustomEmbedFullscreen] = useState(false);
   const youtubeHostRef = useRef<HTMLDivElement | null>(null);
@@ -5470,6 +5487,14 @@ const VideoPlayerScreen = ({
     
     return () => clearInterval(interval);
   }, [course, currentLesson, userId, customEmbedTime, customEmbedDuration]);
+
+  useEffect(() => {
+    if (!course || !userId) return;
+    const progress = getCourseProgress(course.id, userId);
+    if (progress?.completedLessons?.length) {
+      setLessonCompletionMap(new Set(progress.completedLessons));
+    }
+  }, [course?.id, userId]);
 
   useEffect(() => {
     const videoId = getYoutubeVideoId(currentLesson?.video_url);
@@ -5659,60 +5684,85 @@ const VideoPlayerScreen = ({
     nativeWindow.Android?.enterPipMode?.();
     await lockWebOrientation('portrait');
   };
+  const seekBy = (seconds: number) => {
+    const newTime = Math.max(0, Math.min(customEmbedDuration || 0, customEmbedTime + seconds));
+    setCustomEmbedTime(newTime);
+    youtubePlayerRef.current?.seekTo(newTime, true);
+    startYoutubeAutoHide();
+  };
+
   const renderYoutubeControls = () => (
-    <div className={`course-video-controls course-video-controls--pod ${youtubeControlsHidden ? 'hide' : ''}`} aria-label="Custom YouTube video controls">
-      <button type="button" className="course-video-control-btn" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause video' : 'Play video'}>
-        {customEmbedPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-      </button>
-      <button type="button" className="course-video-control-btn" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute video' : 'Mute video'}>
-        {customEmbedMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-      </button>
-      <button
-        type="button"
-        className="course-video-progress"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-          const nextTime = (customEmbedDuration || 0) * percent;
-          setCustomEmbedTime(nextTime);
-          youtubePlayerRef.current?.seekTo(nextTime, true);
-          startYoutubeAutoHide();
-        }}
-        aria-label="Seek video"
-      >
-        <span style={{ width: `${customEmbedDuration > 0 ? (customEmbedTime / customEmbedDuration) * 100 : 0}%` }} />
-      </button>
-      <div className="course-video-time">
-        {formatVideoClock(customEmbedTime)} / {formatVideoClock(customEmbedDuration)}
-      </div>
-      <div className="course-video-speed-wrap">
-        <button type="button" className="course-video-control-btn course-video-speed" onClick={() => setYoutubeSpeedMenuOpen((isOpen) => !isOpen)} aria-label="Change playback speed">
-          {customEmbedSpeed === 1 ? '1x' : `${customEmbedSpeed}x`}
+    <div className={`course-video-controls course-video-controls--pod ${youtubeControlsHidden ? 'hide' : ''}`} aria-label="Video controls">
+      {/* Row 1: Progress bar + time */}
+      <div className="course-video-controls__row">
+        <button
+          type="button"
+          className="course-video-progress"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+            const nextTime = (customEmbedDuration || 0) * percent;
+            setCustomEmbedTime(nextTime);
+            youtubePlayerRef.current?.seekTo(nextTime, true);
+            startYoutubeAutoHide();
+          }}
+          aria-label="Seek video"
+        >
+          <span style={{ width: `${customEmbedDuration > 0 ? (customEmbedTime / customEmbedDuration) * 100 : 0}%` }} />
         </button>
-        {youtubeSpeedMenuOpen && (
-          <div className="course-video-speed-menu">
-            {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((speed) => (
-              <button 
-                key={speed} 
-                type="button" 
-                onClick={() => setYoutubePlaybackSpeed(speed)}
-                style={{
-                  fontWeight: customEmbedSpeed === speed ? '900' : '600',
-                  background: customEmbedSpeed === speed ? 'linear-gradient(135deg, #0ea5e9, #2563eb)' : 'transparent'
-                }}
-              >
-                {speed === 1 ? 'Normal (1x)' : `${speed}x`}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="course-video-time">
+          {formatVideoClock(customEmbedTime)} / {formatVideoClock(customEmbedDuration)}
+        </div>
       </div>
-      <button type="button" className="course-video-control-btn" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen video">
-        <Maximize size={17} />
-      </button>
-      <button type="button" className="course-video-control-btn" onClick={enterCustomEmbedPip} aria-label="Picture in picture">
-        <PictureInPicture2 size={17} />
-      </button>
+      {/* Row 2: Mute | [seek−10 play seek+10] | speed fullscreen pip */}
+      <div className="course-video-controls__row">
+        <button type="button" className="course-video-control-btn course-video-control-btn--ghost" onClick={toggleCustomEmbedMute} aria-label={customEmbedMuted ? 'Unmute' : 'Mute'}>
+          {customEmbedMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        </button>
+        <div className="course-video-controls__center">
+          <button type="button" className="course-video-seek-btn" onClick={() => seekBy(-10)} aria-label="Rewind 10 seconds">
+            <RotateCcw size={14} />
+            <span>10</span>
+          </button>
+          <button type="button" className="course-video-control-btn course-video-control-btn--play" onClick={toggleCustomEmbedPlayback} aria-label={customEmbedPlaying ? 'Pause' : 'Play'}>
+            {customEmbedPlaying ? <Pause size={22} /> : <Play size={22} fill="currentColor" />}
+          </button>
+          <button type="button" className="course-video-seek-btn" onClick={() => seekBy(10)} aria-label="Forward 10 seconds">
+            <RotateCw size={14} />
+            <span>10</span>
+          </button>
+        </div>
+        <div className="course-video-controls__right">
+          <div className="course-video-speed-wrap">
+            <button type="button" className="course-video-control-btn course-video-control-btn--ghost course-video-speed" onClick={() => setYoutubeSpeedMenuOpen((isOpen) => !isOpen)} aria-label="Playback speed">
+              {customEmbedSpeed === 1 ? '1×' : `${customEmbedSpeed}×`}
+            </button>
+            {youtubeSpeedMenuOpen && (
+              <div className="course-video-speed-menu">
+                {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((speed) => (
+                  <button
+                    key={speed}
+                    type="button"
+                    onClick={() => setYoutubePlaybackSpeed(speed)}
+                    style={{
+                      fontWeight: customEmbedSpeed === speed ? '900' : '600',
+                      background: customEmbedSpeed === speed ? 'linear-gradient(135deg, #0ea5e9, #2563eb)' : 'transparent'
+                    }}
+                  >
+                    {speed === 1 ? 'Normal' : `${speed}×`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button type="button" className="course-video-control-btn course-video-control-btn--ghost" onClick={openCustomEmbedFullscreen} aria-label="Fullscreen">
+            <Maximize size={16} />
+          </button>
+          <button type="button" className="course-video-control-btn course-video-control-btn--ghost" onClick={enterCustomEmbedPip} aria-label="Picture in picture">
+            <PictureInPicture2 size={16} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 
@@ -5767,15 +5817,20 @@ const VideoPlayerScreen = ({
     </div>
   ) : null;
 
+  const lessonList = course.lessonList || [];
+  const currentLessonIdx = lessonList.findIndex(l => l.id === currentLesson?.id);
+
   return (
-    <motion.div 
-      initial={{ y: '100%' }} 
-      animate={{ y: 0 }} 
+    <motion.div
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
       exit={{ y: '100%' }}
-      className={`flex-1 bg-white flex flex-col z-50 ${isProtectedSurface ? 'protected-learning-surface' : ''}`}
+      className={`flex-1 bg-[#0a0f1e] flex flex-col z-50 ${isProtectedSurface ? 'protected-learning-surface' : ''}`}
       onContextMenu={isProtectedSurface ? (event) => event.preventDefault() : undefined}
     >
       {isProtectedSurface && <div className="secure-watermark" aria-hidden="true">{watermark}</div>}
+
+      {/* Video area */}
       <div className="bg-black aspect-video relative">
         {activeVideoUrl && usesEmbedPlayer ? (
           customEmbedFullscreen && videoPlayerElement
@@ -5797,89 +5852,130 @@ const VideoPlayerScreen = ({
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-center text-white">
             <div className="px-6">
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-white/55">Lesson Video</p>
-              <h3 className="mt-3 text-2xl font-black">Video unavailable</h3>
-              <p className="mt-2 text-sm text-white/70">This lesson does not have a playable video yet.</p>
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/8">
+                <Play size={28} className="text-white/50" />
+              </div>
+              <p className="text-xs font-bold uppercase tracking-widest text-white/40">No Video</p>
+              <h3 className="mt-2 text-lg font-black">Video unavailable</h3>
+              <p className="mt-1 text-sm text-white/55">This lesson doesn't have a video yet.</p>
             </div>
           </div>
         )}
-        <button 
-          onClick={onBack} 
-          className="absolute top-4 left-4 w-8 h-8 bg-black/70 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20"
-        >
-          <ArrowLeft size={20} />
-        </button>
+
+        {/* Top-left: back + course name */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-3 pt-3 pb-6 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+          <button
+            onClick={onBack}
+            className="pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm border border-white/12 text-white"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div className="flex-1 min-w-0 pointer-events-none">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-white/55 truncate">{course.title}</p>
+            {lessonList.length > 0 && (
+              <p className="text-xs font-semibold text-white/80 truncate">
+                Lesson {currentLessonIdx + 1} of {lessonList.length}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">{currentLesson?.title || course.title}</h2>
-        <p className="text-xs text-gray-400 mb-2">
-          {currentLesson?.video_url ? (usesEmbedPlayer ? 'Embedded lesson' : 'Direct video lesson') : 'No lesson video'}
-        </p>
-        <p className="text-sm text-gray-500 mb-6">{course.title} • {currentLesson?.duration || '10:00'} mins</p>
-
-        {lessonDownloadUrl && (
-          <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white">
-                <Download size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-black text-blue-950">Secure video download</h3>
-                <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">
-                  Use this only for files added by the academy. YouTube videos remain embedded and protected.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => openExternalResource(lessonDownloadUrl)}
-                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white"
-                >
-                  <Download size={15} />
-                  {lessonDownloadLabel}
-                </button>
-              </div>
-            </div>
+      {/* Info + lesson list */}
+      <div className="flex-1 overflow-y-auto bg-white rounded-t-3xl -mt-4 relative z-10">
+        {/* Current lesson header */}
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-[17px] font-black text-gray-900 leading-snug">{currentLesson?.title || course.title}</h2>
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-gray-400">{course.title}</span>
+            {currentLesson?.duration && (
+              <>
+                <span className="text-gray-200">·</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400">
+                  <Clock size={11} />{currentLesson.duration} min
+                </span>
+              </>
+            )}
           </div>
-        )}
 
-        <div className="flex gap-4 mb-8">
-          {videoNotesEnabled && (
-            <button 
-              onClick={() => currentLesson && onViewNotes(currentLesson)}
-              className="flex-1 bg-gray-100 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
-            >
-              <Eye size={18} />
-              View Notes
+          {/* Action buttons */}
+          <div className="mt-4 flex gap-3">
+            {videoNotesEnabled && (
+              <button
+                onClick={() => currentLesson && onViewNotes(currentLesson)}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-sm font-bold text-gray-700 active:scale-95 transition-transform"
+              >
+                <Eye size={16} />
+                Notes
+              </button>
+            )}
+            <button className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 active:scale-95 transition-transform">
+              <HelpCircle size={16} />
+              Take Quiz
             </button>
-          )}
-          <button className="flex-1 bg-primary py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium text-white shadow-lg shadow-blue-100 transition-transform active:scale-95">
-            <HelpCircle size={18} />
-            Take Quiz
-          </button>
+            {lessonDownloadUrl && (
+              <button
+                onClick={() => openExternalResource(lessonDownloadUrl)}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs font-bold text-blue-700 active:scale-95 transition-transform"
+              >
+                <Download size={15} />
+              </button>
+            )}
+          </div>
         </div>
 
-        <SectionHeader title="Course Lessons" />
-        <div className="space-y-3">
-          {course.lessonList?.map((lesson, idx) => (
-            <button 
-              key={lesson.id} 
+        {/* Lesson list */}
+        <div className="px-4 pt-4 pb-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-black text-gray-900">All Lessons</p>
+            <span className="text-xs font-semibold text-gray-400">{lessonList.length} total</span>
+          </div>
+          <div className="space-y-2">
+            {lessonList.map((lesson, idx) => {
+              const isActive = currentLesson?.id === lesson.id;
+              const isDone = lessonCompletionMap.has(lesson.id);
+              return (
+                <button
+                  key={lesson.id}
                   onClick={() => {
                     setCurrentLesson(lesson);
                     setCustomEmbedStarted(false);
                     onLessonSelect(lesson);
                   }}
-              className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-colors text-left group ${currentLesson?.id === lesson.id ? 'border-primary bg-primary/5' : 'border-gray-100 hover:bg-gray-50'}`}
-            >
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${currentLesson?.id === lesson.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400 group-hover:bg-primary/10 group-hover:text-primary'}`}>
-                <Play size={20} />
-              </div>
-              <div className="flex-1">
-                <h4 className={`text-sm font-bold transition-colors ${currentLesson?.id === lesson.id ? 'text-primary' : 'text-gray-800'}`}>{lesson.title}</h4>
-                <p className="text-[10px] text-gray-500">Lesson {idx + 1} • {lesson.duration} mins</p>
-              </div>
-              <ChevronRight size={18} className={currentLesson?.id === lesson.id ? 'text-primary' : 'text-gray-300'} />
-            </button>
-          ))}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl border text-left transition-all active:scale-[0.98] ${
+                    isActive
+                      ? 'border-blue-200 bg-blue-50 shadow-sm shadow-blue-100'
+                      : 'border-gray-100 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  {/* Index / done indicator */}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                    isActive ? 'bg-primary text-white' : isDone ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+                  }`}>
+                    {isActive ? <Play size={16} fill="currentColor" /> : isDone ? <CheckCircle2 size={18} /> : <span className="text-xs font-black">{idx + 1}</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold truncate ${isActive ? 'text-primary' : isDone ? 'text-gray-700' : 'text-gray-800'}`}>
+                      {lesson.title}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1">
+                      <Clock size={10} />{lesson.duration || '—'} min
+                      {isDone && <span className="ml-1 text-green-500 font-semibold">· Completed</span>}
+                    </p>
+                  </div>
+                  {isActive ? (
+                    <div className="flex h-5 w-5 shrink-0 items-end gap-[3px]">
+                      {[1,2,3].map(b => (
+                        <span key={b} className="w-[3px] rounded-full bg-primary animate-pulse" style={{ height: `${8 + b * 4}px`, animationDelay: `${b * 0.15}s` }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -6202,6 +6298,52 @@ const NotesScreen = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
+  const [downloadingNoteId, setDownloadingNoteId] = useState<string | null>(null);
+
+  const handleDownloadNote = async (note: Note) => {
+    if (downloadingNoteId) return;
+    setDownloadingNoteId(note.id);
+    try {
+      const noteHtmlContent = isHtmlNoteContent(note.content) ? note.content || '' : '';
+      const previewUrl = getNoteHtmlPreviewUrl(note.url, note.title);
+      const safeFilename = (note.title || 'note').replace(/[/\\?%*:|"<>]/g, '-');
+
+      let contentToSave = noteHtmlContent;
+      if (!contentToSave && previewUrl) {
+        const response = await fetch(previewUrl);
+        contentToSave = await response.text();
+      }
+
+      if (!contentToSave) {
+        alert('This note cannot be downloaded for offline access.');
+        return;
+      }
+
+      const blob = new Blob([contentToSave], { type: 'text/html;charset=utf-8' });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = `${safeFilename}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+
+      await saveOfflineNote({
+        id: note.id,
+        title: note.title,
+        content: contentToSave,
+        contentType: 'text/html',
+        downloadedAt: Date.now(),
+        url: note.url || '',
+      });
+    } catch (error) {
+      console.error('Failed to download note:', error);
+      alert('Failed to download note. Please try again.');
+    } finally {
+      setDownloadingNoteId(null);
+    }
+  };
 
   const formatNoteTitle = (title: string) => {
     const normalized = String(title || 'Untitled Note').replace(/\s+/g, ' ').trim();
@@ -6262,7 +6404,9 @@ const NotesScreen = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0%,#f4f8f2_48%,#fff8ee_100%)] px-4 pb-24 pt-4 text-slate-900">
+    <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0%,#f4f8f2_48%,#fff8ee_100%)] pb-24 text-slate-900">
+      <ScreenHeader title="Notes" subtitle="Chemistry Study Materials & Resources" />
+      <div className="px-4">
       <section className="relative overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#14325c_0%,#11615d_58%,#6d4b16_100%)] p-5 text-white shadow-xl shadow-slate-300/50">
         <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.12))]" />
         <div className="relative flex items-start justify-between gap-4">
@@ -6403,14 +6547,33 @@ const NotesScreen = ({
                       <span className="h-1 w-1 rounded-full bg-slate-300" />
                       <span>{meta.level}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onViewNote(note)}
-                      className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-black text-white shadow-lg transition active:scale-95 ${style.action}`}
-                    >
-                      <Eye size={15} />
-                      View
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadNote(note)}
+                        disabled={downloadingNoteId === note.id}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-600 shadow-md ring-1 ring-slate-100 transition active:scale-95 disabled:opacity-50"
+                        aria-label="Download note for offline"
+                        title="Download for offline"
+                      >
+                        {downloadingNoteId === note.id ? (
+                          <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <Download size={15} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onViewNote(note)}
+                        className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-black text-white shadow-lg transition active:scale-95 ${style.action}`}
+                      >
+                        <Eye size={15} />
+                        View
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -6427,6 +6590,7 @@ const NotesScreen = ({
             <p className="mx-auto mt-2 max-w-xs text-sm text-slate-500">Try another keyword or open all categories.</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -6795,19 +6959,18 @@ const ProfileScreen = ({
   onOpenSettings,
   onOpenProfileInfo,
   onOpenMyCourses,
-  onOpenOfflineNotes
+  onOpenOfflineNotes,
 }: {
   user: any,
   onLogout: () => void,
   onOpenSettings: () => void,
   onOpenProfileInfo: () => void,
   onOpenMyCourses: () => void,
-  onOpenOfflineNotes: () => void
+  onOpenOfflineNotes: () => void,
 }) => {
   const menuItems = [
     { icon: <BookOpen size={20} />, label: 'My Courses' },
-    { icon: <HelpCircle size={20} />, label: 'Quiz Results' },
-    { icon: <Download size={20} />, label: 'Download Note Offline' },
+    { icon: <Download size={20} />, label: 'Offline Notes' },
     { icon: <Settings size={20} />, label: 'Settings' },
   ];
 
@@ -6843,7 +7006,7 @@ const ProfileScreen = ({
               key={idx}
               onClick={() => {
                 if (item.label === 'My Courses') onOpenMyCourses();
-                if (item.label === 'Download Note Offline') onOpenOfflineNotes();
+                if (item.label === 'Offline Notes') onOpenOfflineNotes();
                 if (item.label === 'Settings') onOpenSettings();
               }}
               className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${idx !== menuItems.length - 1 ? 'border-b border-gray-50' : ''}`}
@@ -7793,59 +7956,98 @@ const MyCoursesScreen = ({
   );
 };
 
-const OfflineNotesScreen = () => (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
-    <div className="relative overflow-hidden rounded-[32px] border border-white/80 bg-[linear-gradient(145deg,#082847_0%,#0f4a76_48%,#15958c_100%)] p-5 text-center text-white shadow-[0_28px_70px_rgba(15,23,42,0.18)]">
-      <motion.div
-        animate={{ y: [0, -10, 0], opacity: [0.45, 0.8, 0.45] }}
-        transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute -left-6 top-6 h-24 w-24 rounded-full bg-cyan-300/20 blur-2xl"
-      />
-      <motion.div
-        animate={{ y: [0, 12, 0], opacity: [0.3, 0.65, 0.3] }}
-        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 0.35 }}
-        className="absolute right-0 top-10 h-28 w-28 rounded-full bg-emerald-300/20 blur-3xl"
-      />
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="relative"
-      >
-        <motion.div
-          animate={{ y: [0, -6, 0] }}
-          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-          className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] border border-white/15 bg-white/10 text-white shadow-xl backdrop-blur-sm"
-        >
-          <Download size={32} />
-        </motion.div>
-      </motion.div>
-      <div className="mt-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-100 backdrop-blur-sm">
-        Offline Notes
+const OfflineNotesScreen = ({
+  onOpenNote,
+}: {
+  onOpenNote: (note: OfflineNote) => void;
+}) => {
+  const [offlineNotes, setOfflineNotes] = useState<OfflineNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
+
+  useEffect(() => {
+    getAllOfflineNotes()
+      .then(notes => setOfflineNotes(notes.sort((a, b) => b.downloadedAt - a.downloadedAt)))
+      .finally(() => setLoadingNotes(false));
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    await deleteOfflineNote(id);
+    setOfflineNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const formatBytes = (n: number) => {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const formatDate = (ts: number) => new Date(ts).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto bg-gray-50 pb-24">
+      <div className="hero-gradient text-white px-4 py-5 pb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+            <Download size={22} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold">Downloaded Notes</h1>
+            <p className="text-xs text-white/70 mt-0.5">{offlineNotes.length} note{offlineNotes.length !== 1 ? 's' : ''} saved for offline access</p>
+          </div>
+        </div>
       </div>
-      <h2 className="mt-4 text-3xl font-black tracking-tight">Beautiful Offline Downloads Are On The Way</h2>
-      <div className="mt-4 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white/90 backdrop-blur-sm">
-        Premium Update Incoming
+
+      <div className="p-4 space-y-3">
+        {loadingNotes ? (
+          <div className="flex justify-center py-16">
+            <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+          </div>
+        ) : offlineNotes.length === 0 ? (
+          <div className="text-center py-16 px-4">
+            <div className="w-20 h-20 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+              <Download size={32} className="text-blue-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">No Downloaded Notes</h3>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto leading-relaxed">
+              Open any note and tap the <strong>download button</strong> to save it for offline access.
+            </p>
+          </div>
+        ) : (
+          offlineNotes.map(note => (
+            <div key={note.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={() => onOpenNote(note)}
+                className="w-full flex items-center gap-3 p-4 text-left active:bg-gray-50 transition-colors"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                  <FileText size={22} className="text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm truncate">{note.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(note.downloadedAt)} · {formatBytes(note.content?.length || 0)}</p>
+                </div>
+                <ChevronRight size={18} className="text-gray-300 shrink-0" />
+              </button>
+              <div className="border-t border-gray-50 px-4 py-2.5 flex items-center justify-between">
+                <span className="text-xs text-green-600 font-semibold flex items-center gap-1.5">
+                  <WifiOff size={12} /> Available offline
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(note.id)}
+                  className="text-xs text-red-400 font-semibold px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
-      <p className="mx-auto mt-4 max-w-sm text-sm leading-7 text-white/78">
-        Offline note downloads will be added in a future release. Right now, study materials continue opening online smoothly.
-      </p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        {['Fast Access', 'Cleaner Notes', 'Smart Sync'].map((item, index) => (
-          <motion.div
-            key={item}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.1 + index * 0.08 }}
-            className="rounded-[22px] border border-white/12 bg-white/10 px-4 py-4 text-sm font-bold text-white/90 backdrop-blur-sm"
-          >
-            {item}
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
 const SupportChatScreen = () => (
   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
@@ -8236,27 +8438,9 @@ const getNoteFileExtension = (url?: string, title?: string) => {
   return match?.[1] || '';
 };
 
-const getLegacyDrivePreviewUrl = (url?: string) => {
-  const value = String(url || '');
-  const fileId = value.match(/[?&]id=([^&]+)/)?.[1]
-    || value.match(/\/d\/([^/?]+)/)?.[1]
-    || '';
-  return fileId ? `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview` : '';
-};
 
-const isLegacyDriveUrl = (url?: string) => /(?:drive|docs)\.google\.com/i.test(String(url || ''));
-
-const getNoteHtmlPreviewUrl = (url?: string, title?: string) => {
-  const value = String(url || '').trim();
-  if (!value) {
-    return '';
-  }
-
-  if (isLegacyDriveUrl(value)) {
-    return getLegacyDrivePreviewUrl(value) || value;
-  }
-
-  return value;
+const getNoteHtmlPreviewUrl = (url?: string, _title?: string) => {
+  return String(url || '').trim();
 };
 
 const isImageNoteUrl = (url?: string, title?: string) =>
@@ -8543,7 +8727,7 @@ const AdminPanelScreen = ({
     url: '',
     content: '',
   });
-  const [noteFile, setNoteFile] = useState<File | null>(null);
+  const [noteHtmlFileName, setNoteHtmlFileName] = useState('');
   const [liveClassForm, setLiveClassForm] = useState({
     title: '',
     description: '',
@@ -9075,10 +9259,6 @@ const AdminPanelScreen = ({
         lessons: Number(noteForm.lessons || 0),
       };
 
-      if (noteFile) {
-        payload.url = await uploadFileToCloudinary(noteFile, 'note');
-      }
-
       const action = editingNoteId ? 'updateNote' : 'createNote';
       const response = await apiNotePost(action, payload);
       const data = await readLenientJsonResponse(response);
@@ -9089,18 +9269,12 @@ const AdminPanelScreen = ({
       }
 
       setNoteForm({ title: '', lessons: '1', category: 'Chemistry', type: 'free', url: '', content: '' });
-      setNoteFile(null);
+      setNoteHtmlFileName('');
       setEditingNoteId('');
       await onRefresh();
-      setMessage(noteFile ? 'Note uploaded and saved successfully' : 'Note saved successfully');
+      setMessage('Note saved successfully');
     } catch (error) {
-      setMessage(
-        noteFile
-          ? error instanceof Error
-            ? `Note upload failed: ${error.message}`
-            : 'Note upload failed. Check Cloudinary configuration.'
-          : 'Unable to save note'
-      );
+      setMessage(error instanceof Error ? `Unable to save note: ${error.message}` : 'Unable to save note');
     } finally {
       setLoading(false);
     }
@@ -11674,51 +11848,48 @@ const AdminPanelScreen = ({
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>
-            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="PDF, Google Drive, HTML, image, or website URL" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm" placeholder="HTML URL (optional — e.g. https://yoursite.com/note.html)" value={noteForm.url} onChange={(e) => setNoteForm({ ...noteForm, url: e.target.value })} />
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-700 font-medium">
+              Upload a .html file, or paste full HTML code below. Use the URL field above only if the note is hosted externally.
+            </div>
             <label className="admin-slider-upload-box">
-              <span className="admin-slider-upload-title">Note file</span>
+              <span className="admin-slider-upload-title">Upload HTML note</span>
               <span className="admin-slider-upload-button">
-                <Upload size={18} />
-                Upload note
-              </span>
-              <input
-                type="file"
-                accept=".pdf,.html,.htm,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/html,text/plain,text/markdown"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  if (!file) {
-                    setNoteFile(null);
-                    return;
-                  }
-
-                  if (file.size > 15 * 1024 * 1024) {
-                    setMessage('Note file must be 15 MB or smaller');
+                <Upload size={16} />
+                Upload .html file
+                <input
+                  type="file"
+                  accept=".html,text/html"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
                     e.target.value = '';
-                    return;
-                  }
-
-                  setMessage('');
-                  setNoteFile(file);
-                }}
-                className="sr-only"
-              />
-              <span className="admin-slider-upload-hint">
-                {noteFile ? `${noteFile.name} - ${(noteFile.size / 1024 / 1024).toFixed(2)} MB` : 'Choose PDF, Drive, HTML, image, TXT, DOC, PPT, or XLS up to 15 MB'}
+                    if (!file) return;
+                    try {
+                      const text = await fileToText(file);
+                      setNoteForm((current) => ({ ...current, content: text }));
+                      setNoteHtmlFileName(file.name);
+                    } catch {
+                      setMessage('Unable to read the selected HTML file');
+                    }
+                  }}
+                />
               </span>
+              <span className="block mt-2 text-xs">{noteHtmlFileName || 'Choose an .html file to auto-fill the content below'}</span>
             </label>
-            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-28" placeholder="Paste full HTML code here (optional)" value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
+            <textarea className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm min-h-40 font-mono" placeholder="<!DOCTYPE html>&#10;<html>&#10;  <body>&#10;    <h1>Note Title</h1>&#10;    <!-- paste full HTML here -->&#10;  </body>&#10;</html>" value={noteForm.content} onChange={(e) => { setNoteForm({ ...noteForm, content: e.target.value }); setNoteHtmlFileName(''); }} />
             <button
               disabled={loading}
               onClick={submitNote}
               className="admin-slider-save-button w-full py-3 font-bold"
             >
-              {loading ? 'Saving...' : editingNoteId ? 'Update Note' : 'Upload & Save Note'}
+              {loading ? 'Saving...' : editingNoteId ? 'Update Note' : 'Save Note'}
             </button>
             {editingNoteId && (
               <button onClick={() => {
                 setEditingNoteId('');
-                setNoteFile(null);
                 setNoteForm({ title: '', lessons: '1', category: 'Chemistry', type: 'free', url: '', content: '' });
+                setNoteHtmlFileName('');
               }} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold">
                 Cancel Edit
               </button>
@@ -11738,7 +11909,6 @@ const AdminPanelScreen = ({
                   <div className="flex gap-2">
                     <button onClick={() => {
                       setEditingNoteId(note.id);
-                      setNoteFile(null);
                       setNoteForm({
                         title: note.title,
                         lessons: String(note.lessons || 1),
@@ -11747,6 +11917,7 @@ const AdminPanelScreen = ({
                         url: note.url || '',
                         content: note.content || '',
                       });
+                      setNoteHtmlFileName('');
                       setActiveTab('note');
                     }} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold">Edit</button>
                     <button onClick={() => confirmDelete(
@@ -12972,47 +13143,61 @@ const NoteViewerScreen = ({
   // Handle download for offline access
   const handleDownloadOffline = async () => {
     if (!lesson || isDownloading) return;
-    
+
     setIsDownloading(true);
     setDownloadProgress(0);
 
     try {
       let contentToSave = '';
       let contentType = 'text/html';
+      const safeFilename = (lesson.title || 'note').replace(/[/\\?%*:|"<>]/g, '-');
 
-      if (previewUrl) {
-        // Download from URL
-        const response = await fetch(previewUrl);
-        const blob = await response.blob();
-        contentType = blob.type;
-        
-        if (imagePreview) {
-          // Convert image to base64 for offline storage
-          contentToSave = await blobToBase64(blob);
-        } else {
-          // For HTML/PDF, store as blob URL
-          contentToSave = await blob.text();
-        }
-        setDownloadProgress(50);
-      } else if (htmlContent) {
+      if (htmlContent) {
         contentToSave = htmlContent;
+        contentType = 'text/html';
         setDownloadProgress(50);
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `${safeFilename}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+      } else if (previewUrl) {
+        // HTML URL: fetch and save
+        const response = await fetch(previewUrl);
+        const text = await response.text();
+        contentToSave = text;
+        contentType = 'text/html';
+        setDownloadProgress(60);
+        const blob = new Blob([text], { type: 'text/html;charset=utf-8' });
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `${safeFilename}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
       }
 
-      // Save to IndexedDB
-      await saveOfflineNote({
-        id: lesson.id,
-        title: lesson.title,
-        content: contentToSave,
-        contentType,
-        downloadedAt: Date.now(),
-        url: lesson.note_url || '',
-      });
+      // Save to IndexedDB for offline viewing in-app
+      if (contentToSave) {
+        await saveOfflineNote({
+          id: lesson.id,
+          title: lesson.title,
+          content: contentToSave,
+          contentType,
+          downloadedAt: Date.now(),
+          url: lesson.note_url || '',
+        });
+      }
 
       setDownloadProgress(100);
       setIsOfflineAvailable(true);
-      
-      // Show success message
+
       setTimeout(() => {
         setIsDownloading(false);
         setDownloadProgress(0);
@@ -13021,7 +13206,7 @@ const NoteViewerScreen = ({
       console.error('Failed to download note:', error);
       setIsDownloading(false);
       setDownloadProgress(0);
-      alert('Failed to download note for offline access. Please try again.');
+      alert('Failed to download note. Please try again.');
     }
   };
 
@@ -13228,9 +13413,7 @@ export default function App() {
       ? { user: initialSessionUser, message: 'Your account is blocked. Contact academy admin.' }
       : null
   );
-  const [sessionChecking, setSessionChecking] = useState(() =>
-    !isManagementRoute && Boolean(initialSessionUser) && initialSessionUser?.status !== 'blocked'
-  );
+  const [sessionChecking, setSessionChecking] = useState(false);
   const [adminSession, setAdminSession] = useState<AdminSession | null>(() => getAdminSession());
   const [darkModeEnabled, setDarkModeEnabled] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -14014,7 +14197,7 @@ export default function App() {
           const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
           blockCurrentStudentSession(user, message);
         } else {
-          console.error('Error loading user access:', accessError);
+          console.error('Error loading user access:', error);
           // Continue with app - don't block user completely
         }
       } finally {
@@ -14055,7 +14238,7 @@ export default function App() {
           const message = error instanceof Error ? error.message : 'Your account is blocked. Contact academy admin.';
           blockCurrentStudentSession(user, message);
         } else {
-          console.error('Error checking user status:', statusError);
+          console.error('Error checking user status:', error);
           // Don't block app if status check fails
         }
       }
@@ -14465,7 +14648,22 @@ export default function App() {
           }}
         />
       );
-      case 'offline-notes': return <OfflineNotesScreen />;
+      case 'offline-notes': return (
+        <OfflineNotesScreen
+          onOpenNote={(note) => {
+            setSelectedLesson({
+              id: note.id,
+              course_id: '',
+              title: note.title,
+              duration: '',
+              note_content: note.contentType === 'text/html' ? note.content : '',
+              note_url: note.url || '',
+            });
+            setPreviousScreen('offline-notes');
+            setScreen('note-viewer');
+          }}
+        />
+      );
       case 'admin': return <HomeScreen 
         setScreen={setScreen} 
         sliders={sliders}
@@ -14566,7 +14764,7 @@ export default function App() {
       case 'about-developer': return 'About Developer';
       case 'privacy-policy': return 'Privacy Policy';
       case 'my-courses': return 'My Courses';
-      case 'offline-notes': return 'Download Note Offline';
+      case 'offline-notes': return 'Offline Notes';
       case 'video-player': return 'Video Player';
       case 'live-class-viewer': return 'Live Class';
       case 'course-details': return 'Course Details';

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix API URL - RBS Academy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fix API URL</h1>
+        
+        <div class="info">
+            <strong>Problem:</strong> App is trying to call Vercel API instead of localhost<br>
+            <strong>Solution:</strong> Clear stored API configuration
+        </div>
+
+        <p><strong>Current API URL:</strong> <code id="currentUrl">Loading...</code></p>
+
+        <button onclick="clearApiConfig()">Clear API Config (Use Localhost)</button>
+        <button onclick="setLocalhost()">Force Set Localhost</button>
+        <button onclick="clearAll()">Clear Everything & Reload</button>
+
+        <div id="status" class="status"></div>
+
+        <div class="info" style="margin-top: 30px;">
+            <strong>After fixing:</strong><br>
+            1. Go to <a href="http://localhost:3001" target="_blank">http://localhost:3001</a><br>
+            2. Try signing up<br>
+            3. Should work without CORS errors!
+        </div>
+    </div>
+
+    <script>
+        const API_CONFIG_STORAGE_KEY = 'rbs-academy-api-config';
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        function getCurrentUrl() {
+            const stored = localStorage.getItem(API_CONFIG_STORAGE_KEY);
+            if (stored) {
+                try {
+                    const config = JSON.parse(stored);
+                    return config.primaryUrl || 'Not set';
+                } catch {
+                    return 'Invalid config';
+                }
+            }
+            return 'Not set (will use relative URLs)';
+        }
+
+        function updateDisplay() {
+            document.getElementById('currentUrl').textContent = getCurrentUrl();
+        }
+
+        function clearApiConfig() {
+            localStorage.removeItem(API_CONFIG_STORAGE_KEY);
+            showStatus('✅ API config cleared! Now using relative URLs (localhost).', 'success');
+            updateDisplay();
+            
+            setTimeout(() => {
+                if (confirm('Reload the app now?')) {
+                    window.location.href = 'http://localhost:3001';
+                }
+            }, 1000);
+        }
+
+        function setLocalhost() {
+            const config = {
+                primaryUrl: '',
+                backupUrls: [],
+                lastUpdated: Date.now(),
+                forceUpdate: false
+            };
+            localStorage.setItem(API_CONFIG_STORAGE_KEY, JSON.stringify(config));
+            showStatus('✅ Forced localhost! API will use relative URLs.', 'success');
+            updateDisplay();
+            
+            setTimeout(() => {
+                if (confirm('Reload the app now?')) {
+                    window.location.href = 'http://localhost:3001';
+                }
+            }, 1000);
+        }
+
+        function clearAll() {
+            // Clear all RBS Academy related storage
+            const keys = Object.keys(localStorage);
+            keys.forEach(key => {
+                if (key.includes('rbs-academy')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            showStatus('✅ All data cleared! Redirecting to localhost...', 'success');
+            
+            setTimeout(() => {
+                window.location.href = 'http://localhost:3001';
+            }, 1500);
+        }
+
+        // Initial display
+        updateDisplay();
+    </script>
+</body>
+</html>

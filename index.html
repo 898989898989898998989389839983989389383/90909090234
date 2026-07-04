@@ -35,6 +35,32 @@
       }
     </style>
     <title>RBS Academy</title>
+    <script>
+      // Auto-fix API URL issue - Force localhost
+      (function() {
+        const API_CONFIG_KEY = 'rbs-academy-api-config';
+        const stored = localStorage.getItem(API_CONFIG_KEY);
+        
+        // Check if Vercel URL is stored
+        if (stored && stored.includes('vercel.app')) {
+          console.log('🔧 Fixing API URL: Removing Vercel URL, using localhost...');
+          localStorage.removeItem(API_CONFIG_KEY);
+          console.log('✅ API URL fixed! Using localhost now.');
+        }
+        
+        // Force empty config for localhost
+        if (!stored || stored.includes('vercel')) {
+          const localConfig = {
+            primaryUrl: '',
+            backupUrls: [],
+            lastUpdated: Date.now(),
+            forceUpdate: false
+          };
+          localStorage.setItem(API_CONFIG_KEY, JSON.stringify(localConfig));
+          console.log('✅ Localhost API configured!');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app-splash" aria-hidden="true">
