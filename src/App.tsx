@@ -3887,6 +3887,16 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
           <Search size={20} />
         </button>
       )}
+      <button 
+        onClick={() => {
+          playInteractionSound('tap');
+          setCurrentScreen('support-chat');
+        }} 
+        className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-colors" 
+        aria-label="Open chat support"
+      >
+        <MessageSquare size={20} />
+      </button>
       <button onClick={onNotificationClick} className="relative w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center" aria-label="Open notifications">
         <Bell size={20} />
         {notificationCount > 0 && (
@@ -14088,36 +14098,6 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  // Initialize Tawk.to chat widget
-  useEffect(() => {
-    if (typeof window === 'undefined' || isManagementRoute) return;
-
-    // Tawk.to configuration
-    const Tawk_API: any = (window as any).Tawk_API || {};
-    const Tawk_LoadStart = new Date();
-    (window as any).Tawk_API = Tawk_API;
-    (window as any).Tawk_LoadStart = Tawk_LoadStart;
-
-    // Load Tawk.to script
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = 'https://embed.tawk.to/6a410df7eafe991d4bfa0736/1js71t3u7';
-    script.charset = 'UTF-8';
-    script.setAttribute('crossorigin', '*');
-    
-    const firstScript = document.getElementsByTagName('script')[0];
-    if (firstScript && firstScript.parentNode) {
-      firstScript.parentNode.insertBefore(script, firstScript);
-    }
-
-    return () => {
-      // Cleanup: remove script when component unmounts
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
-  }, [isManagementRoute]);
 
   useEffect(() => {
     if (isManagementRoute) {
