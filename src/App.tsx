@@ -3563,7 +3563,7 @@ const LoadingSpinner = ({ size = 'md', className = '' }: { size?: 'sm' | 'md' | 
   );
 };
 
-const NoInternetScreen = ({ onRetry }: { onRetry: () => void }) => (
+const NoInternetScreen = ({ onRetry, onAccessOfflineNotes }: { onRetry: () => void; onAccessOfflineNotes?: () => void }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
@@ -3578,10 +3578,22 @@ const NoInternetScreen = ({ onRetry }: { onRetry: () => void }) => (
       <p>
         Please check mobile data or Wi-Fi. RBS Academy will reconnect automatically when the network is back.
       </p>
-      <button type="button" onClick={onRetry}>
-        <RefreshCw size={18} />
-        Try Again
-      </button>
+      <div className="flex flex-col gap-3 w-full">
+        <button type="button" onClick={onRetry} className="w-full">
+          <RefreshCw size={18} />
+          Try Again
+        </button>
+        {onAccessOfflineNotes && (
+          <button 
+            type="button" 
+            onClick={onAccessOfflineNotes}
+            className="w-full bg-white/10 hover:bg-white/20 transition-colors"
+          >
+            <Download size={18} />
+            Access Offline Notes
+          </button>
+        )}
+      </div>
       <span>Cached pages and installed app shell stay ready offline.</span>
     </div>
   </motion.div>
@@ -14819,7 +14831,7 @@ export default function App() {
     );
   }
 
-  if (!isManagementRoute && !isOnline && appControlSettings.offlinePage) {
+  if (!isManagementRoute && !isOnline && appControlSettings.offlinePage && screen !== 'offline-notes') {
     return (
       <div className={`mobile-container ${darkModeEnabled ? 'dark-mode' : ''}`}>
         <NoInternetScreen
@@ -14829,6 +14841,7 @@ export default function App() {
               fetchAppData();
             }
           }}
+          onAccessOfflineNotes={() => setScreen('offline-notes')}
         />
       </div>
     );
