@@ -3888,12 +3888,17 @@ const Header = ({ title, user, showBack, onBack, onMenuClick, onNotificationClic
         </button>
       )}
       <button 
-        onClick={() => {
+        onClick={async () => {
           playInteractionSound('tap');
-          setCurrentScreen('support-chat');
+          const tawkUrl = 'https://tawk.to/chat/6a410df7eafe991d4bfa0736/1js71t3u7';
+          if (Capacitor.isNativePlatform()) {
+            await Browser.open({ url: tawkUrl });
+          } else {
+            window.open(tawkUrl, '_blank');
+          }
         }} 
         className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-colors" 
-        aria-label="Open chat support"
+        aria-label="Open Tawk chat support"
       >
         <MessageSquare size={20} />
       </button>
