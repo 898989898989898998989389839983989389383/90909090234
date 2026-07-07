@@ -6318,14 +6318,22 @@ const LegacyNotesScreen = ({
 
 const NotesScreen = ({
   notes,
-  onViewNote
+  onViewNote,
+  onViewOfflineNotes
 }: {
   notes: Note[],
-  onViewNote: (note: Note) => void
+  onViewNote: (note: Note) => void,
+  onViewOfflineNotes?: () => void
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [downloadingNoteId, setDownloadingNoteId] = useState<string | null>(null);
+  const [offlineNotesCount, setOfflineNotesCount] = useState(0);
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+  useEffect(() => {
+    getAllOfflineNotes().then(notes => setOfflineNotesCount(notes.length));
+  }, []);
 
   const handleDownloadNote = async (note: Note) => {
     if (downloadingNoteId) return;
@@ -6461,6 +6469,29 @@ const NotesScreen = ({
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Groups</p>
           </div>
         </div>
+
+        {isOffline && offlineNotesCount > 0 && onViewOfflineNotes && (
+          <div className="relative mt-4">
+            <button
+              type="button"
+              onClick={onViewOfflineNotes}
+              className="w-full rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-left shadow-lg active:scale-[0.98] transition-transform"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                    <WifiOff size={24} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white">Offline Mode</p>
+                    <p className="text-xs text-white/80 mt-0.5">{offlineNotesCount} notes available</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="text-white/80" />
+              </div>
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="sticky top-0 z-20 -mx-1 mt-4 rounded-2xl border border-white/75 bg-white/82 p-3 shadow-lg shadow-slate-200/60 backdrop-blur-xl">
@@ -14597,6 +14628,7 @@ export default function App() {
             setPreviousScreen('notes');
             setScreen('note-viewer');
           }}
+          onViewOfflineNotes={() => setScreen('offline-notes')}
         />
       );
       case 'quiz': return <QuizScreen quizzes={visibleQuizzes} initialQuiz={selectedQuizTopic} />;
