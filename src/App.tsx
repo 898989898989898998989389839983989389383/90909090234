@@ -8523,6 +8523,17 @@ const AdminLoginScreen = ({
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [loginProgress, setLoginProgress] = useState(0);
   const [activeMode, setActiveMode] = useState<AdminRole>(mode);
+  const [stage, setStage] = useState<'credentials' | 'otp'>('credentials');
+  const [otp, setOtp] = useState('');
+  const [pendingCredentials, setPendingCredentials] = useState<{ username: string; password: string } | null>(null);
+
+  const trustStorageKey = `rbs-admin-trust:${activeMode}`;
+  const readTrustToken = () => {
+    try { return window.localStorage.getItem(trustStorageKey) || ''; } catch { return ''; }
+  };
+  const writeTrustToken = (token: string) => {
+    try { if (token) window.localStorage.setItem(trustStorageKey, token); } catch { /* ignore storage errors */ }
+  };
 
   const switchMode = (nextMode: AdminRole) => {
     if (nextMode === activeMode || isSigningIn) {
@@ -8532,6 +8543,9 @@ const AdminLoginScreen = ({
     setError('');
     setUsername('');
     setPassword('');
+    setStage('credentials');
+    setOtp('');
+    setPendingCredentials(null);
   };
 
   const signInAdmin = async (credentials: { username: string; password: string }) => {
@@ -8548,16 +8562,28 @@ const AdminLoginScreen = ({
     }, 120);
 
     try {
+      const cleanCredentials = { username: credentials.username.trim(), password: credentials.password };
       const response = await fetch(apiUrl('/api/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: activeMode,
-          username: credentials.username.trim(),
-          password: credentials.password,
+          username: cleanCredentials.username,
+          password: cleanCredentials.password,
+          deviceId: getClientDeviceId(),
+          trustToken: readTrustToken(),
         }),
       });
       const data = await readJsonResponse(response);
+
+      if (data.success && data.otpRequired) {
+        setPendingCredentials(cleanCredentials);
+        setOtp('');
+        setStage('otp');
+        setLoginProgress(0);
+        setIsSigningIn(false);
+        return;
+      }
 
       if (!data.success || !data.session?.token) {
         setError(data.message || 'Invalid admin credentials');
@@ -8566,6 +8592,9 @@ const AdminLoginScreen = ({
         return;
       }
 
+      if (data.trustToken) {
+        writeTrustToken(data.trustToken);
+      }
       setLoginProgress(100);
       await new Promise((resolve) => window.setTimeout(resolve, 260));
       onLogin({
@@ -8584,6 +8613,81 @@ const AdminLoginScreen = ({
     }
   };
 
+  const verifyAdminOtp = async () => {
+    if (!pendingCredentials) {
+      setStage('credentials');
+      return;
+    }
+    const trimmedOtp = otp.trim();
+    if (trimmedOtp.length < 4) {
+      setError('Enter the verification code sent to the admin email.');
+      return;
+    }
+    setError('');
+    setIsSigningIn(true);
+    setLoginProgress(0);
+    const progressTimer = window.setInterval(() => {
+      setLoginProgress((current) => (current >= 94 ? current : Math.min(94, current + Math.max(2, Math.round((94 - current) * 0.12)))));
+    }, 120);
+
+    try {
+      const response = await fetch(apiUrl('/api/admin/verify-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: activeMode,
+          username: pendingCredentials.username,
+          password: pendingCredentials.password,
+          otp: trimmedOtp,
+          deviceId: getClientDeviceId(),
+        }),
+      });
+      const data = await readJsonResponse(response);
+
+      if (!data.success || !data.session?.token) {
+        setError(data.message || 'Invalid verification code');
+        setLoginProgress(0);
+        setIsSigningIn(false);
+        return;
+      }
+
+      if (data.trustToken) {
+        writeTrustToken(data.trustToken);
+      }
+      setLoginProgress(100);
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
+      onLogin({
+        role: data.session.role,
+        username: data.session.username,
+        token: data.session.token,
+        rememberMe,
+      });
+      return;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to verify code. Please try again.');
+      setLoginProgress(0);
+      setIsSigningIn(false);
+    } finally {
+      window.clearInterval(progressTimer);
+    }
+  };
+
+  const resendAdminOtp = async () => {
+    if (pendingCredentials && !isSigningIn) {
+      setOtp('');
+      await signInAdmin(pendingCredentials);
+    }
+  };
+
+  const backToAdminCredentials = () => {
+    if (isSigningIn) {
+      return;
+    }
+    setStage('credentials');
+    setOtp('');
+    setError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await signInAdmin({ username, password });
@@ -8595,6 +8699,93 @@ const AdminLoginScreen = ({
     setPassword(demoAccount.password);
     await signInAdmin(demoAccount);
   };
+
+  if (stage === 'otp') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="auth-scenic-shell admin-login admin-login-page min-h-screen w-full flex items-center justify-center px-4 py-8 lg:px-10"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 24, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.55, ease: 'easeOut' }}
+          className="auth-scenic-card admin-login-card-neo w-full max-w-[440px] px-6 py-6 sm:px-7 sm:py-7"
+        >
+          <div className="relative z-10">
+            <div className="auth-login-brand auth-login-brand--compact">
+              <div className="auth-login-badge">RBS Academy</div>
+              <div className="auth-login-copy">
+                <h1 className="auth-login-title">Verify it's you</h1>
+                <p className="auth-login-subtitle">
+                  Enter the 6-digit code we sent to the secure admin email to finish signing in as {activeMode === 'superadmin' ? 'Super Admin' : 'Admin'}.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => { e.preventDefault(); void verifyAdminOtp(); }}
+              className="relative z-10 space-y-4 max-w-sm mx-auto"
+            >
+              <label className="admin-login-field">
+                <span className="admin-login-label">Verification code</span>
+                <div className="admin-login-input-wrap">
+                  <input
+                    className="auth-scenic-input admin-login-underline-input text-sm"
+                    placeholder="Enter 6-digit code"
+                    value={otp}
+                    disabled={isSigningIn}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    onChange={(e) => {
+                      setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setError('');
+                    }}
+                  />
+                  <Lock size={18} className="admin-login-input-icon" />
+                </div>
+              </label>
+
+              {error && <p className="auth-login-error">{error}</p>}
+
+              <button type="submit" disabled={isSigningIn} className="auth-scenic-button auth-login-submit py-4 text-lg">
+                {isSigningIn ? 'Verifying...' : 'Verify & continue'}
+              </button>
+              {isSigningIn && (
+                <div className="admin-login-progress" aria-label={`Verifying ${loginProgress}%`}>
+                  <div className="admin-login-progress-track">
+                    <span style={{ width: `${loginProgress}%` }} />
+                  </div>
+                  <b>{loginProgress}%</b>
+                </div>
+              )}
+
+              <div className="admin-login-row" style={{ justifyContent: 'space-between' }}>
+                <button
+                  type="button"
+                  onClick={backToAdminCredentials}
+                  disabled={isSigningIn}
+                  style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.85)', fontWeight: 600, fontSize: '13px', cursor: isSigningIn ? 'not-allowed' : 'pointer' }}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void resendAdminOtp()}
+                  disabled={isSigningIn}
+                  style={{ background: 'transparent', border: 'none', color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: isSigningIn ? 'not-allowed' : 'pointer' }}
+                >
+                  Resend code
+                </button>
+              </div>
+            </form>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

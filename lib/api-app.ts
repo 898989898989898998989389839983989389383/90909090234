@@ -51,12 +51,14 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME?.trim() || "";
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "";
 const ADMIN_AUTH_SECRET = process.env.ADMIN_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const ADMIN_TRUST_TTL_MS = 12 * 60 * 60 * 1000;
 const SMTP_HOST = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || "true").toLowerCase() !== "false";
 const SMTP_USER = process.env.GOOGLE_SMTP_USER?.trim() || process.env.SMTP_USER?.trim() || "";
 const SMTP_PASS = process.env.GOOGLE_SMTP_APP_PASSWORD || process.env.SMTP_PASS || "";
 const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL?.trim() || SMTP_USER;
+const ADMIN_OTP_EMAIL = process.env.ADMIN_OTP_EMAIL?.trim() || SMTP_FROM_EMAIL;
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const PASSWORD_PREFIX = "scrypt";
 const APP_CONTROL_KEY = "app-control";
@@ -155,7 +157,7 @@ type DbLiveClass = RowDataPacket & {
 type DbAuthOtp = RowDataPacket & {
   id: string;
   email: string;
-  purpose: "signup" | "password-reset";
+  purpose: "signup" | "password-reset" | "admin-login";
   otp_hash: string;
   payload?: string;
   expires_at?: Date | string;
@@ -282,12 +284,14 @@ const createOtpEmailContent = (otp: string, purpose: string) => `
   </div>
   
   <h2 style="margin: 0 0 16px; color: #2d3748; font-size: 26px; font-weight: 700; text-align: center;">
-    ${purpose === 'signup' ? 'Welcome to RBS Academy!' : 'Password Reset Request'}
+    ${purpose === 'signup' ? 'Welcome to RBS Academy!' : purpose === 'admin-login' ? 'Admin Login Verification' : 'Password Reset Request'}
   </h2>
-  
+
   <p style="margin: 0 0 30px; color: #4a5568; font-size: 16px; line-height: 1.6; text-align: center;">
-    ${purpose === 'signup' 
-      ? 'Thank you for signing up! Use the OTP below to verify your email and complete your registration.' 
+    ${purpose === 'signup'
+      ? 'Thank you for signing up! Use the OTP below to verify your email and complete your registration.'
+      : purpose === 'admin-login'
+      ? 'Use the code below to complete your RBS Academy admin sign-in. If this was not you, change your admin password immediately.'
       : 'We received a request to reset your password. Use the OTP below to proceed.'}
   </p>
   
@@ -718,6 +722,176 @@ const sendFirebasePushToToken = async (
 };
 
 const hasFirebasePushCredentials = () => Boolean(getFirebaseServiceAccount() || process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY);
+
+// Shared delivery + logging path for every push (manual broadcasts and automatic live-class alerts).
+const dispatchPushToTokens = async (params: {
+  title: string;
+  body: string;
+  audience: string;
+  screen: string;
+  targetUserIds?: string[];
+  rawTokens: string[];
+  data?: Record<string, string>;
+  notificationId?: string;
+  sentAt?: string;
+}) => {
+  const notificationId = params.notificationId || `push-${Date.now()}`;
+  const sentAt = params.sentAt || new Date().toISOString();
+  const tokens = Array.from(new Set(params.rawTokens.map((token) => String(token || "").trim()).filter(Boolean)));
+  const targetUserIds = params.targetUserIds || [];
+  let sent = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  if (hasFirebasePushCredentials()) {
+    for (const token of tokens) {
+      try {
+        await sendFirebasePushToToken(token, {
+          title: params.title,
+          body: params.body,
+          data: {
+            screen: params.screen,
+            notificationId,
+            ...(params.data || {}),
+          },
+        });
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+        if (errors.length < 3) {
+          errors.push(error instanceof Error ? error.message : "FCM send failed");
+        }
+      }
+    }
+  }
+
+  const credentialMissing = !hasFirebasePushCredentials();
+  await execute(
+    `INSERT INTO notification_logs (id, title, body, audience, screen, target_user_ids, total_devices, sent_count, failed_count, credential_missing, errors, sent_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      notificationId,
+      params.title,
+      params.body,
+      params.audience,
+      params.screen,
+      JSON.stringify(targetUserIds),
+      tokens.length,
+      sent,
+      failed,
+      credentialMissing,
+      JSON.stringify(errors),
+      new Date(sentAt),
+    ],
+  );
+  const notification = normalizeNotificationLog({
+    id: notificationId,
+    title: params.title,
+    body: params.body,
+    audience: params.audience,
+    screen: params.screen,
+    target_user_ids: JSON.stringify(targetUserIds),
+    total_devices: tokens.length,
+    sent_count: sent,
+    failed_count: failed,
+    credential_missing: credentialMissing,
+    errors: JSON.stringify(errors),
+    sent_at: sentAt,
+  });
+
+  return { notificationId, sentAt, tokensCount: tokens.length, sent, failed, credentialMissing, errors, notification };
+};
+
+// Instant, audience-targeted push when a live class is created:
+// free -> all students, premium -> premium only, course -> enrolled, selected -> chosen students.
+const sendLiveClassNotification = async (liveClass: {
+  id: string;
+  title: string;
+  description?: string;
+  access_type: string;
+  audience_type: string;
+  course_id?: string | null;
+  selected_user_ids?: string[];
+}) => {
+  const accessType = String(liveClass.access_type || "free").toLowerCase() === "premium" ? "premium" : "free";
+  const audienceType = String(liveClass.audience_type || "all").toLowerCase();
+
+  let rows: DbPushToken[] = [];
+  let audienceLabel = "all";
+  let targetUserIds: string[] = [];
+
+  if (audienceType === "selected") {
+    targetUserIds = Array.from(new Set((liveClass.selected_user_ids || []).map((id) => String(id)).filter(Boolean)));
+    audienceLabel = "selected";
+    if (targetUserIds.length) {
+      rows = await queryRows<DbPushToken>(
+        "SELECT pt.* FROM push_tokens pt JOIN users u ON u.id = pt.user_id WHERE u.status <> 'blocked' AND pt.user_id = ANY($1::text[]) ORDER BY pt.last_seen_at DESC",
+        [targetUserIds],
+      );
+    }
+  } else if (audienceType === "course" && liveClass.course_id) {
+    audienceLabel = "course";
+    rows = await queryRows<DbPushToken>(
+      `SELECT pt.* FROM push_tokens pt
+       JOIN enrollments e ON e.user_id = pt.user_id
+       JOIN users u ON u.id = pt.user_id
+       WHERE u.status <> 'blocked'
+         AND e.course_id = ?
+         AND COALESCE(e.status, 'active') = 'active'
+         AND (e.expires_at IS NULL OR e.expires_at > CURRENT_TIMESTAMP)
+       ORDER BY pt.last_seen_at DESC`,
+      [liveClass.course_id],
+    );
+  } else if (accessType === "premium") {
+    audienceLabel = "premium";
+    rows = await queryRows<DbPushToken>(
+      "SELECT pt.* FROM push_tokens pt JOIN users u ON u.id = pt.user_id WHERE u.status <> 'blocked' AND u.user_category = 'premium' ORDER BY pt.last_seen_at DESC",
+    );
+  } else {
+    audienceLabel = "all";
+    rows = await queryRows<DbPushToken>(
+      "SELECT pt.* FROM push_tokens pt LEFT JOIN users u ON u.id = pt.user_id WHERE COALESCE(u.status, 'active') <> 'blocked' ORDER BY pt.last_seen_at DESC",
+    );
+  }
+
+  const accessLabel = accessType === "premium" ? "Premium" : "Free";
+  const notificationTitle = `New ${accessLabel} live class`;
+  const trimmedDescription = String(liveClass.description || "").trim();
+  const notificationBody = trimmedDescription
+    ? `${liveClass.title} — ${trimmedDescription.slice(0, 120)}`
+    : `${liveClass.title} is now available. Tap to join.`;
+  const notificationId = `live-${Date.now()}`;
+  const sentAt = new Date().toISOString();
+
+  // Mirror manual-push behaviour so the in-app banner shows even without FCM credentials.
+  const settings = normalizeAppControlSettings({
+    ...(await getAppControlSettings()),
+    pushEnabled: true,
+    notificationTitle,
+    notificationBody,
+    notificationId,
+    notificationSentAt: sentAt,
+  });
+  await execute(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT (key)
+     DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    [APP_CONTROL_KEY, JSON.stringify(settings), new Date()],
+  );
+
+  return dispatchPushToTokens({
+    title: notificationTitle,
+    body: notificationBody,
+    audience: `live-class:${audienceLabel}`,
+    screen: "live-classes",
+    targetUserIds,
+    rawTokens: rows.map((row) => String(row.token || "")),
+    data: { type: "live-class", liveClassId: String(liveClass.id) },
+    notificationId,
+    sentAt,
+  });
+};
 
 const normalizeSliderForClient = (slider: Partial<DbSlider>) => {
   const normalized = normalizeSlider(slider);
@@ -1280,6 +1454,85 @@ const createAdminToken = (role: AdminRole, username: string) => {
   return `${encodedPayload}.${signature}`;
 };
 
+const adminOtpKey = (role: AdminRole, username: string) => `admin-login:${role}:${username.trim().toLowerCase()}`;
+
+const createAdminTrustToken = (role: AdminRole, username: string, deviceId: string) => {
+  if (!ADMIN_AUTH_SECRET || !deviceId) {
+    return "";
+  }
+  const payload = JSON.stringify({
+    kind: "admin-trust",
+    role,
+    username: username.trim().toLowerCase(),
+    deviceId,
+    exp: Date.now() + ADMIN_TRUST_TTL_MS,
+  });
+  const encodedPayload = toBase64Url(payload);
+  const signature = hashValue(`${encodedPayload}.${ADMIN_AUTH_SECRET}`);
+  return `${encodedPayload}.${signature}`;
+};
+
+const verifyAdminTrustToken = (token: string, role: AdminRole, username: string, deviceId: string) => {
+  if (!ADMIN_AUTH_SECRET || !token || !deviceId) {
+    return false;
+  }
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) {
+    return false;
+  }
+  const expectedSignature = hashValue(`${encodedPayload}.${ADMIN_AUTH_SECRET}`);
+  if (!safeEqual(signature, expectedSignature)) {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(fromBase64Url(encodedPayload)) as {
+      kind?: string;
+      role?: AdminRole;
+      username?: string;
+      deviceId?: string;
+      exp?: number;
+    };
+    return (
+      payload.kind === "admin-trust"
+      && payload.role === role
+      && payload.username === username.trim().toLowerCase()
+      && payload.deviceId === deviceId
+      && Boolean(payload.exp)
+      && Number(payload.exp) > Date.now()
+    );
+  } catch {
+    return false;
+  }
+};
+
+const authenticateAdminCredentials = async (
+  role: AdminRole,
+  username: string,
+  password: string,
+): Promise<{ authenticatedUsername: string } | null> => {
+  const submittedUsername = String(username || "").trim();
+  if (!submittedUsername) {
+    return null;
+  }
+  const credential = await getAdminCredential(role, submittedUsername);
+  const fallbackUsername = role === "superadmin" ? SUPER_ADMIN_USERNAME : ADMIN_USERNAME;
+  const fallbackPassword = role === "superadmin" ? SUPER_ADMIN_PASSWORD : ADMIN_PASSWORD;
+  const envCredentialMatches = Boolean(fallbackUsername)
+    && Boolean(fallbackPassword)
+    && submittedUsername.toLowerCase() === fallbackUsername.toLowerCase()
+    && safeEqual(String(password || ""), fallbackPassword);
+
+  if ((!credential || !verifyPassword(String(password || ""), credential.password)) && !envCredentialMatches) {
+    return null;
+  }
+
+  if (!credential && envCredentialMatches) {
+    await seedAdminCredential(role, fallbackUsername, fallbackPassword);
+  }
+
+  return { authenticatedUsername: credential?.username || fallbackUsername };
+};
+
 const seedAdminCredential = async (role: AdminRole, username: string, password: string) => {
   const trimmedUsername = username.trim();
   if (!trimmedUsername || !password) {
@@ -1545,44 +1798,105 @@ export const createApiApp = async () => {
       return;
     }
 
-    const { username, password, mode } = req.body || {};
+    const { username, password, mode, deviceId, trustToken } = req.body || {};
     const requestedRole: AdminRole = mode === "superadmin" ? "superadmin" : "admin";
-    const submittedUsername = String(username || "").trim();
+    const normalizedDeviceId = String(deviceId || "").trim();
 
     if (!ADMIN_AUTH_SECRET) {
       res.status(503).json({ success: false, message: "Admin login is not configured" });
       return;
     }
 
-    const credential = submittedUsername
-      ? await getAdminCredential(requestedRole, submittedUsername)
-      : null;
-    const fallbackUsername = requestedRole === "superadmin" ? SUPER_ADMIN_USERNAME : ADMIN_USERNAME;
-    const fallbackPassword = requestedRole === "superadmin" ? SUPER_ADMIN_PASSWORD : ADMIN_PASSWORD;
-    const envCredentialMatches =
-      fallbackUsername
-      && fallbackPassword
-      && submittedUsername.toLowerCase() === fallbackUsername.toLowerCase()
-      && safeEqual(String(password || ""), fallbackPassword);
-
-    if ((!credential || !verifyPassword(String(password || ""), credential.password)) && !envCredentialMatches) {
+    const auth = await authenticateAdminCredentials(requestedRole, String(username || ""), String(password || ""));
+    if (!auth) {
       res.status(401).json({ success: false, message: "Invalid admin credentials" });
       return;
     }
 
-    if (!credential && envCredentialMatches) {
-      await seedAdminCredential(requestedRole, fallbackUsername, fallbackPassword);
+    // Trusted device within the 12h window -> skip OTP and issue the session directly.
+    if (normalizedDeviceId && verifyAdminTrustToken(String(trustToken || ""), requestedRole, auth.authenticatedUsername, normalizedDeviceId)) {
+      res.json({
+        success: true,
+        session: {
+          role: requestedRole,
+          username: auth.authenticatedUsername,
+          token: createAdminToken(requestedRole, auth.authenticatedUsername),
+        },
+        trustToken: createAdminTrustToken(requestedRole, auth.authenticatedUsername, normalizedDeviceId),
+      });
+      return;
     }
 
-    const authenticatedUsername = credential?.username || fallbackUsername;
-    const token = createAdminToken(requestedRole, authenticatedUsername);
+    // Otherwise require a one-time code sent to the secure admin email.
+    if (!SMTP_USER || !SMTP_PASS) {
+      res.status(503).json({ success: false, message: "Admin OTP email is not configured. Set GOOGLE_SMTP_USER and GOOGLE_SMTP_APP_PASSWORD." });
+      return;
+    }
+
+    const otp = createOtpCode();
+    await saveOtp(adminOtpKey(requestedRole, auth.authenticatedUsername), "admin-login", otp, {
+      role: requestedRole,
+      username: auth.authenticatedUsername,
+    });
+
+    try {
+      await sendEmail(
+        ADMIN_OTP_EMAIL,
+        "RBS Academy Admin Login OTP",
+        `Your RBS Academy admin login code is ${otp}. It expires in 10 minutes. If you did not try to sign in, change your admin password immediately.`,
+        createPremiumEmailTemplate(
+          "Admin Login Verification",
+          createOtpEmailContent(otp, "admin-login"),
+          "Security verification for RBS Academy admin access.",
+        ),
+      );
+      res.json({ success: true, otpRequired: true, message: "Verification code sent to the secure admin email." });
+    } catch (emailError) {
+      console.error("⚠️ Admin OTP email failed:", emailError);
+      res.status(502).json({ success: false, message: "Unable to send the admin verification email. Please try again." });
+    }
+  }));
+
+  app.post("/api/admin/verify-otp", asyncHandler(async (req, res) => {
+    if (!checkLoginRateLimit(req, res)) {
+      return;
+    }
+
+    const { username, password, mode, otp, deviceId } = req.body || {};
+    const requestedRole: AdminRole = mode === "superadmin" ? "superadmin" : "admin";
+    const normalizedDeviceId = String(deviceId || "").trim();
+    const submittedOtp = String(otp || "").trim();
+
+    if (!ADMIN_AUTH_SECRET) {
+      res.status(503).json({ success: false, message: "Admin login is not configured" });
+      return;
+    }
+
+    if (!submittedOtp) {
+      res.status(400).json({ success: false, message: "Enter the verification code" });
+      return;
+    }
+
+    const auth = await authenticateAdminCredentials(requestedRole, String(username || ""), String(password || ""));
+    if (!auth) {
+      res.status(401).json({ success: false, message: "Invalid admin credentials" });
+      return;
+    }
+
+    const verification = await verifyOtp(adminOtpKey(requestedRole, auth.authenticatedUsername), "admin-login", submittedOtp);
+    if (!verification.ok) {
+      res.status(verification.status).json({ success: false, message: verification.message });
+      return;
+    }
+
     res.json({
       success: true,
       session: {
         role: requestedRole,
-        username: authenticatedUsername,
-        token,
+        username: auth.authenticatedUsername,
+        token: createAdminToken(requestedRole, auth.authenticatedUsername),
       },
+      trustToken: createAdminTrustToken(requestedRole, auth.authenticatedUsername, normalizedDeviceId),
     });
   }));
 
@@ -2071,69 +2385,21 @@ export const createApiApp = async () => {
       );
     }
 
-    const tokens = Array.from(new Set(rows.map((row) => String(row.token || "").trim()).filter(Boolean)));
-    let sent = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    if (hasFirebasePushCredentials()) {
-      for (const token of tokens) {
-        try {
-          await sendFirebasePushToToken(token, {
-            title,
-            body,
-            data: {
-              type: "admin-broadcast",
-              screen,
-              notificationId,
-            },
-          });
-          sent += 1;
-        } catch (error) {
-          failed += 1;
-          if (errors.length < 3) {
-            errors.push(error instanceof Error ? error.message : "FCM send failed");
-          }
-        }
-      }
-    }
-
-    const credentialMissing = !hasFirebasePushCredentials();
-    const message = credentialMissing
-      ? "Notification saved for app broadcast. Add Firebase service account env to send when app is closed."
-      : `Push notification sent to ${sent} device${sent === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}.`;
-    await execute(
-      `INSERT INTO notification_logs (id, title, body, audience, screen, target_user_ids, total_devices, sent_count, failed_count, credential_missing, errors, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        notificationId,
-        title,
-        body,
-        audience,
-        screen,
-        JSON.stringify(userIds),
-        tokens.length,
-        sent,
-        failed,
-        credentialMissing,
-        JSON.stringify(errors),
-        new Date(sentAt),
-      ],
-    );
-    const notification = normalizeNotificationLog({
-      id: notificationId,
+    const dispatch = await dispatchPushToTokens({
       title,
       body,
       audience,
       screen,
-      target_user_ids: JSON.stringify(userIds),
-      total_devices: tokens.length,
-      sent_count: sent,
-      failed_count: failed,
-      credential_missing: credentialMissing,
-      errors: JSON.stringify(errors),
-      sent_at: sentAt,
+      targetUserIds: userIds,
+      rawTokens: rows.map((row) => String(row.token || "")),
+      data: { type: "admin-broadcast" },
+      notificationId,
+      sentAt,
     });
+    const { sent, failed, credentialMissing, errors, notification } = dispatch;
+    const message = credentialMissing
+      ? "Notification saved for app broadcast. Add Firebase service account env to send when app is closed."
+      : `Push notification sent to ${sent} device${sent === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}.`;
 
     res.json({
       success: true,
@@ -2141,7 +2407,7 @@ export const createApiApp = async () => {
       notificationId,
       sentAt,
       audience,
-      total: tokens.length,
+      total: dispatch.tokensCount,
       sent,
       failed,
       fallbackBroadcast: true,
@@ -2332,6 +2598,22 @@ export const createApiApp = async () => {
         String(is_active) === "false" ? 0 : 1,
       ],
     );
+
+    if (String(is_active) !== "false") {
+      try {
+        await sendLiveClassNotification({
+          id,
+          title: String(title).trim(),
+          description: String(description || "").trim(),
+          access_type: normalizedAccessType,
+          audience_type: normalizedAudienceType,
+          course_id: audience.courseId,
+          selected_user_ids: audience.selectedUserIds,
+        });
+      } catch (notifyError) {
+        console.error("⚠️ Live class notification failed:", notifyError);
+      }
+    }
 
     res.status(201).json({ success: true, message: "Live class created" });
   }));
