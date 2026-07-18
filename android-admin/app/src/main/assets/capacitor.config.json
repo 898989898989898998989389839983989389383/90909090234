@@ -1,0 +1,16 @@
+{
+	"appId": "com.rbsacademy.admin",
+	"appName": "RBS Admin",
+	"webDir": "dist",
+	"server": {
+		"url": "https://rbs-academy-current.vercel.app/adminlogin",
+		"androidScheme": "https"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 1200,
+			"backgroundColor": "#FFFFFF",
+			"showSpinner": false
+		}
+	}
+}

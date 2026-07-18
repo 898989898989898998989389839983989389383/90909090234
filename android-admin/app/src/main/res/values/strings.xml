@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RBS Admin</string>
+    <string name="title_activity_main">RBS Admin</string>
+    <string name="package_name">com.rbsacademy.admin</string>
+    <string name="custom_url_scheme">com.rbsacademy.admin</string>
+    <string name="default_notification_channel_id">rbs-wow-updates</string>
+</resources>

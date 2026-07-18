@@ -8522,6 +8522,17 @@ const AdminLoginScreen = ({
   const [error, setError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [loginProgress, setLoginProgress] = useState(0);
+  const [activeMode, setActiveMode] = useState<AdminRole>(mode);
+
+  const switchMode = (nextMode: AdminRole) => {
+    if (nextMode === activeMode || isSigningIn) {
+      return;
+    }
+    setActiveMode(nextMode);
+    setError('');
+    setUsername('');
+    setPassword('');
+  };
 
   const signInAdmin = async (credentials: { username: string; password: string }) => {
     setError('');
@@ -8541,7 +8552,7 @@ const AdminLoginScreen = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode,
+          mode: activeMode,
           username: credentials.username.trim(),
           password: credentials.password,
         }),
@@ -8579,7 +8590,7 @@ const AdminLoginScreen = ({
   };
 
   const handleDemoAdminLogin = async () => {
-    const demoAccount = DEMO_ADMIN_ACCOUNTS[mode];
+    const demoAccount = DEMO_ADMIN_ACCOUNTS[activeMode];
     setUsername(demoAccount.username);
     setPassword(demoAccount.password);
     await signInAdmin(demoAccount);
@@ -8601,17 +8612,62 @@ const AdminLoginScreen = ({
           <div className="auth-login-brand auth-login-brand--compact">
             <div className="auth-login-badge">RBS Academy</div>
             <div className="auth-login-copy">
-              <h1 className="auth-login-title">{mode === 'superadmin' ? 'Super admin access' : 'Admin login'}</h1>
+              <h1 className="auth-login-title">{activeMode === 'superadmin' ? 'Super admin access' : 'Admin login'}</h1>
               <p className="auth-login-subtitle">
-                {mode === 'superadmin'
+                {activeMode === 'superadmin'
                   ? 'Manage academy admins and platform data from one secure place.'
                   : 'Sign in to manage courses, notes, quizzes, access codes, and student records.'}
               </p>
             </div>
           </div>
 
+          <div
+            className="admin-login-mode-switch"
+            role="tablist"
+            aria-label="Select login role"
+            style={{
+              display: 'flex',
+              gap: '6px',
+              padding: '5px',
+              margin: '0 auto 18px',
+              maxWidth: '320px',
+              background: 'rgba(255,255,255,0.10)',
+              borderRadius: '9999px',
+              border: '1px solid rgba(255,255,255,0.18)',
+            }}
+          >
+            {(['admin', 'superadmin'] as AdminRole[]).map((roleOption) => {
+              const isActive = activeMode === roleOption;
+              return (
+                <button
+                  key={roleOption}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => switchMode(roleOption)}
+                  disabled={isSigningIn}
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: isSigningIn ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease',
+                    color: isActive ? '#0f172a' : 'rgba(255,255,255,0.85)',
+                    background: isActive ? '#ffffff' : 'transparent',
+                    boxShadow: isActive ? '0 6px 16px rgba(0,0,0,0.18)' : 'none',
+                  }}
+                >
+                  {roleOption === 'superadmin' ? 'Super Admin' : 'Admin'}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="admin-login-chip-row">
-            <div className="admin-login-chip">{mode === 'superadmin' ? 'Super Admin' : 'Admin'}</div>
+            <div className="admin-login-chip">{activeMode === 'superadmin' ? 'Super Admin' : 'Admin'}</div>
             <div className="admin-login-chip">Secure Access</div>
           </div>
 
@@ -8677,7 +8733,7 @@ const AdminLoginScreen = ({
                 <b>{loginProgress}%</b>
               </div>
             )}
-            {mode === 'admin' && (
+            {activeMode === 'admin' && (
               <button
                 type="button"
                 onClick={handleDemoAdminLogin}
@@ -14516,7 +14572,9 @@ export default function App() {
   const renderScreen = () => {
     if (isManagementRoute) {
       const requiredRole: AdminRole = isSuperAdminRoute ? 'superadmin' : 'admin';
-      if (!adminSession || adminSession.role !== requiredRole) {
+      const hasManagementAccess = Boolean(adminSession)
+        && (adminSession!.role === 'superadmin' || adminSession!.role === requiredRole);
+      if (!hasManagementAccess) {
         return <AdminLoginScreen mode={requiredRole} onLogin={handleAdminLogin} />;
       }
       return (
