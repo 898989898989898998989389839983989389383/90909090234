@@ -1,0 +1,13 @@
+Data type,Collected,Shared,Processed ephemerally,Required,Purposes: Account management,Purposes: Advertising or marketing,Purposes: Analytics,Purposes: App functionality,Purposes: Developer communications,Purposes: Fraud prevention security and compliance,Purposes: Personalization
+Name,true,false,false,true,true,false,false,true,false,false,false
+Email address,true,false,false,true,true,false,false,true,false,true,false
+User IDs,true,false,false,true,true,false,false,true,false,true,false
+Phone number,true,false,false,false,true,false,false,true,false,false,false
+Purchase history,true,false,false,false,false,false,false,true,false,false,false
+App interactions,true,false,false,false,false,false,true,true,false,false,false
+In-app search history,true,false,false,false,false,false,true,true,false,false,true
+Other user-generated content,true,false,false,false,false,false,false,true,false,false,false
+Other actions,true,false,false,false,false,false,true,true,false,false,false
+Crash logs,true,false,false,false,false,false,true,false,false,false,false
+Diagnostics,true,false,false,false,false,false,true,false,false,false,false
+Device or other IDs,true,false,false,false,false,false,true,true,false,true,false

@@ -1,0 +1,312 @@
+═══════════════════════════════════════════════════════════════
+   RBS ACADEMY APP - DATA SAFETY DECLARATION COMPLETE GUIDE
+═══════════════════════════════════════════════════════════════
+
+📁 CSV IMPORT FILE: RBS-Academy-Data-Safety-Import.csv
+
+This file contains all 12 data types that RBS Academy app collects.
+Import this CSV in Play Console > Data Safety > Import CSV
+
+If CSV import fails, use the manual answers below:
+
+═══════════════════════════════════════════════════════════════
+                    DATA COLLECTION OVERVIEW
+═══════════════════════════════════════════════════════════════
+
+Q: Does your app collect or share any of the required user data types?
+A: YES
+
+Q: Is all of the user data collected by your app encrypted in transit?
+A: YES (HTTPS)
+
+Q: Which account creation methods does your app support?
+A: Username and password
+   (Users sign up with email and password)
+
+Q: Delete account URL
+A: mailto:edu.rbsacademy@gmail.com?subject=Account%20Deletion%20Request
+
+═══════════════════════════════════════════════════════════════
+           DETAILED DATA TYPE DECLARATIONS (12 TYPES)
+═══════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────
+CATEGORY 1: PERSONAL INFO (4 types)
+────────────────────────────────────────────────────────────────
+
+[1] NAME
+─────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   → Account management
+
+────────────────────────────────────────────────────────────────
+
+[2] EMAIL ADDRESS
+──────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   → Account management
+
+────────────────────────────────────────────────────────────────
+
+[3] USER IDS
+────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   → Account management
+
+────────────────────────────────────────────────────────────────
+
+[4] PHONE NUMBER
+────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Users can choose whether this data is collected
+   (Data will be shown as optional on your Store Listing)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   → Account management
+
+────────────────────────────────────────────────────────────────
+CATEGORY 2: FINANCIAL INFO (1 type)
+────────────────────────────────────────────────────────────────
+
+[5] PURCHASE HISTORY
+────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   (To manage premium subscriptions and access)
+
+────────────────────────────────────────────────────────────────
+CATEGORY 3: APP ACTIVITY (3 types)
+────────────────────────────────────────────────────────────────
+
+[6] APP INTERACTIONS
+────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → Analytics
+   → App functionality
+   (To track course progress, quiz scores, lesson completion)
+
+────────────────────────────────────────────────────────────────
+
+[7] IN-APP SEARCH HISTORY
+──────────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → Analytics
+   → Personalisation
+   (To improve search results and suggest relevant content)
+
+────────────────────────────────────────────────────────────────
+
+[8] OTHER USER-GENERATED CONTENT
+─────────────────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Users can choose whether this data is collected
+   (Data will be shown as optional on your Store Listing)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   (Notes, bookmarks, saved content)
+
+────────────────────────────────────────────────────────────────
+CATEGORY 4: APP INFO AND PERFORMANCE (3 types)
+────────────────────────────────────────────────────────────────
+
+[9] CRASH LOGS
+──────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → Analytics
+   → Fraud prevention, security and compliance
+
+────────────────────────────────────────────────────────────────
+
+[10] DIAGNOSTICS
+────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → Analytics
+   → Fraud prevention, security and compliance
+
+────────────────────────────────────────────────────────────────
+
+[11] OTHER APP PERFORMANCE DATA
+────────────────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → Analytics
+
+────────────────────────────────────────────────────────────────
+CATEGORY 5: DEVICE OR OTHER IDS (1 type)
+────────────────────────────────────────────────────────────────
+
+[12] DEVICE OR OTHER IDS
+────────────────────────
+✅ Is this data collected, shared or both?
+   → Collected
+
+✅ Is this data processed ephemerally?
+   → No, this collected data is not processed ephemerally
+
+✅ Is this data required for your app?
+   → Data collection is required (users can't turn off this data collection)
+
+✅ Why is this user data collected? Select all that apply
+   → App functionality
+   → Analytics
+   (To track user sessions, prevent fraud, and provide personalized experience)
+
+═══════════════════════════════════════════════════════════════
+                      QUICK SUMMARY TABLE
+═══════════════════════════════════════════════════════════════
+
+Data Type                  | Collected | Shared | Required | Purposes
+─────────────────────────────────────────────────────────────────────
+Name                       | YES       | NO     | YES      | App func, Account mgmt
+Email address              | YES       | NO     | YES      | App func, Account mgmt
+User IDs                   | YES       | NO     | YES      | App func, Account mgmt
+Phone number               | YES       | NO     | OPTIONAL | App func, Account mgmt
+Purchase history           | YES       | NO     | YES      | App functionality
+App interactions           | YES       | NO     | YES      | Analytics, App func
+In-app search history      | YES       | NO     | YES      | Analytics, Personalisation
+Other user content         | YES       | NO     | OPTIONAL | App functionality
+Crash logs                 | YES       | NO     | YES      | Analytics, Security
+Diagnostics                | YES       | NO     | YES      | Analytics, Security
+Other app performance      | YES       | NO     | YES      | Analytics
+Device or other IDs        | YES       | NO     | YES      | App func, Analytics
+
+═══════════════════════════════════════════════════════════════
+                  IMPORTANT NOTES FOR REVIEWER
+═══════════════════════════════════════════════════════════════
+
+✅ ALL DATA IS ENCRYPTED IN TRANSIT (HTTPS)
+✅ NO DATA IS SHARED WITH THIRD PARTIES
+✅ NO DATA IS PROCESSED EPHEMERALLY
+✅ ONLY 2 DATA TYPES ARE OPTIONAL (Phone number, User-generated content)
+✅ ACCOUNT DELETION: Email to edu.rbsacademy@gmail.com
+
+═══════════════════════════════════════════════════════════════
+                      CSV IMPORT STEPS
+═══════════════════════════════════════════════════════════════
+
+1. Go to Play Console → Your App → Data Safety
+2. Click "Import CSV" button
+3. Upload: RBS-Academy-Data-Safety-Import.csv
+4. Review imported data
+5. If any errors, manually add using guide above
+6. Click "Save" after all 12 data types are added
+
+═══════════════════════════════════════════════════════════════
+                    TROUBLESHOOTING CSV IMPORT
+═══════════════════════════════════════════════════════════════
+
+If CSV import fails:
+→ Download Google's sample CSV from Play Console
+→ Compare headers with our CSV
+→ Adjust format if needed
+→ Re-upload
+
+If still failing:
+→ Use manual entry with guide above
+→ Fill each of 12 data types one by one
+→ Takes ~15 minutes but ensures accuracy
+
+═══════════════════════════════════════════════════════════════
+                          END OF GUIDE
+═══════════════════════════════════════════════════════════════
+
+📧 Contact: edu.rbsacademy@gmail.com
+📱 Package: com.rbsacademy.app
+🔢 Version: 1.21 (versionCode: 21)

@@ -1,0 +1,213 @@
+PRIVACY POLICY FOR RBS ACADEMY
+
+Last Updated: January 9, 2026
+
+---
+
+1. INTRODUCTION
+
+Welcome to RBS Academy ("we," "our," or "us"). We are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy explains how we collect, use, and protect your data when you use our educational mobile application.
+
+Contact Information:
+- Email: edu.rbsacademy@gmail.com
+- App Package: com.rbsacademy.app
+
+---
+
+2. INFORMATION WE COLLECT
+
+2.1 Personal Information (Required)
+- Name: Used for account identification and personalization
+- Email Address: Used for account authentication, communication, and security
+- User ID: Unique identifier for your account
+- Phone Number: Optional, for additional account recovery options
+
+2.2 Financial Information (Optional)
+- Purchase History: Records of premium subscription purchases made through Google Play Billing
+- Note: We do NOT collect or store payment card information. All payments are processed securely by Google Play.
+
+2.3 App Usage Information (Optional)
+- App Interactions: How you use features within the app
+- Search History: Your in-app searches to improve recommendations
+- User-Generated Content: Notes and content you create within the app
+- Device Information: Device IDs for session management and fraud prevention
+
+2.4 Technical Information (Optional)
+- Crash Logs: Error reports to help us fix bugs
+- Diagnostics: App performance data to improve user experience
+- App Performance Data: Usage statistics and metrics
+
+---
+
+3. HOW WE USE YOUR INFORMATION
+
+3.1 App Functionality
+- Provide access to educational content (videos, notes, tests)
+- Enable user authentication and account management
+- Deliver premium features to subscribed users
+- Store and sync your learning progress
+
+3.2 Analytics & Improvement
+- Monitor app performance and fix technical issues
+- Analyze usage patterns to improve features
+- Understand which content is most helpful to students
+
+3.3 Security & Fraud Prevention
+- Prevent unauthorized access to accounts
+- Detect and prevent fraudulent activities
+- Monitor for security threats
+
+3.4 Personalization
+- Recommend relevant educational content
+- Customize your learning experience based on your search history
+
+---
+
+4. DATA STORAGE & SECURITY
+
+4.1 Data Security
+- All data transmitted between your device and our servers is encrypted using HTTPS
+- We implement industry-standard security measures to protect your information
+- User passwords are encrypted and never stored in plain text
+
+4.2 Data Retention
+- Account information is retained as long as your account is active
+- You can request account deletion at any time
+- Deleted data is permanently removed within 90 days
+
+---
+
+5. DATA SHARING
+
+We DO NOT sell, rent, or share your personal information with third parties except:
+- With your explicit consent
+- To comply with legal obligations
+- To protect our rights and safety
+
+All payments are processed by Google Play, which has its own privacy policy.
+
+---
+
+6. YOUR RIGHTS & CHOICES
+
+6.1 Access & Control
+- View and update your personal information in the app settings
+- Choose whether to provide optional information (phone number)
+- Control data collection for analytics and diagnostics
+
+6.2 Account Deletion
+You can request account deletion by:
+- Emailing: edu.rbsacademy@gmail.com
+- Subject: Account Deletion Request
+- Include: Your registered email address
+
+We will delete your account and associated data within 30 days of your request.
+
+6.3 Data Portability
+You can request a copy of your data by emailing edu.rbsacademy@gmail.com
+
+---
+
+7. CHILDREN'S PRIVACY
+
+Our app is designed for students aged 13 and above. We comply with applicable laws regarding children's privacy. If you are under 13, please do not use this app without parental consent.
+
+---
+
+8. OFFLINE FEATURES
+
+- Downloaded educational content is stored locally on your device
+- Offline notes and progress are synced when you reconnect to the internet
+- You can manage offline storage in the app settings
+
+---
+
+9. THIRD-PARTY SERVICES
+
+9.1 Google Play Billing
+- Handles all payment processing
+- Subject to Google's Privacy Policy: https://policies.google.com/privacy
+
+9.2 Tawk.to Chat Support
+- Provides customer support chat functionality
+- Subject to Tawk.to's Privacy Policy: https://www.tawk.to/privacy-policy/
+
+---
+
+10. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of significant changes by:
+- Posting the new policy in the app
+- Sending an email notification (for material changes)
+- Updating the "Last Updated" date
+
+Continued use of the app after changes indicates acceptance of the updated policy.
+
+---
+
+11. COOKIES & TRACKING
+
+Our app does not use cookies. We collect minimal device information (Device IDs) only for:
+- Session management
+- Fraud prevention
+- Analytics (optional, can be disabled)
+
+---
+
+12. DATA BREACH NOTIFICATION
+
+In the unlikely event of a data breach affecting your personal information, we will:
+- Notify affected users within 72 hours
+- Provide details about the breach and steps being taken
+- Offer guidance on protecting your account
+
+---
+
+13. INTERNATIONAL DATA TRANSFERS
+
+Your data may be stored on servers located in different countries. We ensure appropriate safeguards are in place to protect your information regardless of location.
+
+---
+
+14. YOUR CONSENT
+
+By using RBS Academy, you consent to:
+- The collection and use of information as described in this policy
+- Data transmission over the internet (encrypted)
+- Storage of your data on our secure servers
+
+---
+
+15. CONTACT US
+
+If you have questions, concerns, or requests regarding this Privacy Policy or your data:
+
+Email: edu.rbsacademy@gmail.com
+Subject: Privacy Policy Inquiry
+
+We will respond to all requests within 30 days.
+
+---
+
+16. LEGAL COMPLIANCE
+
+This Privacy Policy complies with:
+- Google Play Developer Program Policies
+- General Data Protection Regulation (GDPR)
+- Information Technology Act, 2000 (India)
+- Other applicable data protection laws
+
+---
+
+17. DISPUTE RESOLUTION
+
+Any disputes regarding this Privacy Policy will be resolved through:
+1. Good faith negotiation
+2. Mediation (if negotiation fails)
+3. Jurisdiction: Courts in India
+
+---
+
+END OF PRIVACY POLICY
+
+© 2026 RBS Academy. All rights reserved.
