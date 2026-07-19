@@ -51,7 +51,8 @@ import {
   VolumeX,
   Share2,
   RotateCcw,
-  RotateCw
+  RotateCw,
+  Gift
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -246,6 +247,7 @@ interface AuthUser {
   deviceLabel?: string;
   deviceBoundAt?: string;
   deviceLocked?: boolean;
+  premiumTrialUsed?: boolean;
 }
 
 interface StoredUser extends AuthUser {
@@ -584,11 +586,6 @@ const updateApiBaseUrl = (newUrl: string) => {
 };
 
 const API_BASE_URL = ACTIVE_API_BASE_URL;
-
-const DEMO_ADMIN_ACCOUNTS: Record<AdminRole, { username: string; password: string }> = {
-  admin: { username: 'admin', password: 'admin123' },
-  superadmin: { username: 'adminsachin', password: 'admin123' },
-};
 
 // User-friendly error messages
 const getUserFriendlyError = (error: unknown): string => {
@@ -2025,6 +2022,7 @@ const normalizeAuthUser = (
   deviceLabel: String(user?.deviceLabel || user?.device_label || ''),
   deviceBoundAt: String(user?.deviceBoundAt || user?.device_bound_at || ''),
   deviceLocked: Boolean(user?.deviceLocked || user?.device_id || user?.deviceId),
+  premiumTrialUsed: Boolean(user?.premiumTrialUsed || user?.premium_trial_started_at),
 });
 
 const isLegacySeedUser = (value: { id?: string; name?: string; email?: string } | null | undefined) =>
@@ -3672,20 +3670,25 @@ const BlockedAccountScreen = ({
   </motion.div>
 );
 
-const AccessCodeModal = ({ 
-  isOpen, 
-  onClose, 
-  onUnlock, 
-  courseTitle 
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
+const AccessCodeModal = ({
+  isOpen,
+  onClose,
+  onUnlock,
+  courseTitle,
+  canStartTrial = false,
+  onStartFreeTrial,
+}: {
+  isOpen: boolean,
+  onClose: () => void,
   onUnlock: (code: string) => Promise<{ success: boolean; message?: string }>,
-  courseTitle: string
+  courseTitle: string,
+  canStartTrial?: boolean,
+  onStartFreeTrial?: () => Promise<{ success: boolean; message?: string }>,
 }) => {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [trialLoading, setTrialLoading] = useState(false);
 
   const handleUnlock = async () => {
     if (!code.trim()) {
@@ -3699,6 +3702,19 @@ const AccessCodeModal = ({
       setError(result.message || 'Invalid access code');
     }
     setLoading(false);
+  };
+
+  const handleFreeTrial = async () => {
+    if (!onStartFreeTrial || trialLoading) {
+      return;
+    }
+    setError('');
+    setTrialLoading(true);
+    const result = await onStartFreeTrial();
+    if (!result.success) {
+      setError(result.message || 'Unable to start free trial. Please try again.');
+    }
+    setTrialLoading(false);
   };
 
   const handleWhatsApp = () => {
@@ -3749,13 +3765,24 @@ const AccessCodeModal = ({
                   {error && <p className="text-red-500 text-[10px] mt-1 text-center font-medium">{error}</p>}
                 </div>
 
-                <button 
+                <button
                   onClick={handleUnlock}
                   disabled={loading}
                   className="w-full bg-primary text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 transition-transform active:scale-95"
                 >
                   {loading ? 'Checking...' : 'Unlock Now'}
                 </button>
+
+                {canStartTrial && onStartFreeTrial && (
+                  <button
+                    onClick={handleFreeTrial}
+                    disabled={trialLoading || loading}
+                    className="w-full bg-gradient-to-r from-amber-400 to-orange-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-orange-100 flex items-center justify-center gap-2 transition-transform active:scale-95"
+                  >
+                    <Gift size={20} />
+                    {trialLoading ? 'Activating...' : 'Try 1 Day FREE'}
+                  </button>
+                )}
 
                 <div className="relative py-2">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100"></div></div>
@@ -8693,13 +8720,6 @@ const AdminLoginScreen = ({
     await signInAdmin({ username, password });
   };
 
-  const handleDemoAdminLogin = async () => {
-    const demoAccount = DEMO_ADMIN_ACCOUNTS[activeMode];
-    setUsername(demoAccount.username);
-    setPassword(demoAccount.password);
-    await signInAdmin(demoAccount);
-  };
-
   if (stage === 'otp') {
     return (
       <motion.div
@@ -8923,16 +8943,6 @@ const AdminLoginScreen = ({
                 </div>
                 <b>{loginProgress}%</b>
               </div>
-            )}
-            {activeMode === 'admin' && (
-              <button
-                type="button"
-                onClick={handleDemoAdminLogin}
-                disabled={isSigningIn}
-                className="admin-login-demo-button w-full rounded-2xl px-4 py-3 text-sm font-bold transition"
-              >
-                Demo Admin
-              </button>
             )}
           </form>
         </div>
@@ -13064,6 +13074,9 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                   setGeneratedCustomerCode('');
                 }}
               >
+                <option value="1">1 day access</option>
+                <option value="2">2 days access</option>
+                <option value="3">3 days access</option>
                 <option value="7">7 days access</option>
                 <option value="30">30 days access</option>
                 <option value="90">90 days access</option>
@@ -13306,6 +13319,9 @@ Questions are read from your JSON and imported into the selected quiz subject sh
                     value={studentAccessForm.durationDays}
                     onChange={(event) => setStudentAccessForm((current) => ({ ...current, durationDays: event.target.value }))}
                   >
+                    <option value="1">1 day access</option>
+                    <option value="2">2 days access</option>
+                    <option value="3">3 days access</option>
                     <option value="7">7 days access</option>
                     <option value="30">30 days access</option>
                     <option value="90">90 days access</option>
@@ -14685,6 +14701,62 @@ export default function App() {
     }
   };
 
+  const handleStartFreeTrial = async () => {
+    if (!user) {
+      return { success: false, message: 'Please log in to start your free trial.' };
+    }
+    const targetCourse = selectedCourseForUnlock;
+    try {
+      const response = await apiPost('start-premium-trial', {
+        userId: user.id,
+        ...getDevicePayload(),
+      });
+      const data = await response.json();
+
+      if (!data.success) {
+        if (data.blocked || response.status === 403) {
+          blockCurrentStudentSession(user, data.message || 'Your account is blocked. Contact academy admin.');
+        }
+        return { success: false, message: data.message || 'Unable to start free trial.' };
+      }
+
+      const grantedIds = Array.isArray(data.user?.grantedCourseIds)
+        ? data.user.grantedCourseIds.map((id: unknown) => String(id))
+        : unlockedCourseIds;
+      setUnlockedCourseIds(grantedIds);
+      unlockedCourseIdsRef.current = grantedIds;
+      const nextUser = {
+        ...normalizeAuthUser(data.user || user),
+        grantedCourseIds: grantedIds,
+        premiumTrialUsed: true,
+      };
+      setUser(nextUser);
+      saveSessionUser(nextUser);
+
+      if (appControlSettings.pushEnabled) {
+        const shown = await showAppNotification(
+          'Free trial activated',
+          'Your 1-day free premium access is now active. Enjoy all premium classes!',
+          { type: 'premium-trial', screen: 'courses' },
+          NOTIFICATION_CHANNEL_COURSE_ACCESS
+        );
+        if (shown) {
+          setNotificationStatus('premium-trial');
+          setNotificationsEnabled(true);
+        }
+      }
+
+      setSelectedCourseForUnlock(null);
+      if (targetCourse) {
+        setSelectedCourse(targetCourse);
+        setScreen('video-player');
+      }
+      return { success: true, message: data.message };
+    } catch (error) {
+      return { success: false, message: 'Unable to start free trial. Please try again.' };
+    }
+  };
+
   const handleOpenCoursesTab = (tab: 'free' | 'premium') => {
     setCoursesInitialTab(tab);
     setScreen('courses');
@@ -14762,11 +14834,12 @@ export default function App() {
 
   const renderScreen = () => {
     if (isManagementRoute) {
-      const requiredRole: AdminRole = isSuperAdminRoute ? 'superadmin' : 'admin';
-      const hasManagementAccess = Boolean(adminSession)
-        && (adminSession!.role === 'superadmin' || adminSession!.role === requiredRole);
-      if (!hasManagementAccess) {
-        return <AdminLoginScreen mode={requiredRole} onLogin={handleAdminLogin} />;
+      // The login screen's Admin/Super Admin toggle decides the role, so grant access to any
+      // authenticated admin session. Super-admin-only features stay gated inside the panel
+      // (isSuperAdmin) and on the backend (requireAdmin), so a plain admin cannot escalate.
+      if (!adminSession) {
+        const defaultRole: AdminRole = isSuperAdminRoute ? 'superadmin' : 'admin';
+        return <AdminLoginScreen mode={defaultRole} onLogin={handleAdminLogin} />;
       }
       return (
         <AdminPanelScreen
@@ -14777,7 +14850,7 @@ export default function App() {
           liveClasses={liveClasses}
           users={adminUsers}
           authSession={adminSession}
-          initialTab={isAppControlRoute ? 'app-control' : 'dashboard'}
+          initialTab={isAppControlRoute && adminSession.role === 'superadmin' ? 'app-control' : 'dashboard'}
           appControlSettings={appControlSettings}
           appControlLastSynced={appControlLastSynced}
           onSaveAppControlSettings={handleSaveAppControlSettings}
@@ -15176,11 +15249,13 @@ export default function App() {
         />
       )}
 
-      <AccessCodeModal 
+      <AccessCodeModal
         isOpen={!!selectedCourseForUnlock && !isCourseFree(selectedCourseForUnlock)}
         onClose={() => setSelectedCourseForUnlock(null)}
         onUnlock={handleUnlockCourse}
         courseTitle={selectedCourseForUnlock?.title || ''}
+        canStartTrial={!!user && !user.premiumTrialUsed}
+        onStartFreeTrial={handleStartFreeTrial}
       />
 
       {!isManagementRoute && showControlledSplash && (

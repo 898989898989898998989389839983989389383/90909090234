@@ -1097,6 +1097,7 @@ const createSchema = async (client: Pool | PoolClient) => {
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_label TEXT DEFAULT ''`);
   await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_bound_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_trial_started_at TIMESTAMPTZ`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS auth_otps (

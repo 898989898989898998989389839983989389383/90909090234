@@ -109,6 +109,7 @@ type DbUser = RowDataPacket & {
   device_id?: string;
   device_label?: string;
   device_bound_at?: Date | string | null;
+  premium_trial_started_at?: Date | string | null;
 };
 type DbCourse = RowDataPacket & { id: string; title: string; lessons: number; image: string; description?: string; price: number; oldPrice: number; type: string; category: string; access_code?: string };
 type DbLesson = RowDataPacket & { id: string; course_id: string; title: string; duration: string; note_content: string; note_url?: string; video_url?: string; thumbnail_url?: string; download_url?: string; download_label?: string; download_enabled?: boolean; sort_order?: number };
@@ -1324,6 +1325,7 @@ const normalizeUser = async (user: Pick<DbUser, "id" | "name" | "email" | "phone
     deviceLabel: String(user.device_label || ""),
     deviceBoundAt,
     deviceLocked: Boolean(user.device_id),
+    premiumTrialUsed: Boolean(user.premium_trial_started_at),
   };
 };
 
@@ -1380,6 +1382,7 @@ const normalizeUsers = async (users: (Pick<DbUser, "id" | "name" | "email" | "ph
     deviceLabel: String(user.device_label || ""),
     deviceBoundAt: user.device_bound_at ? new Date(user.device_bound_at).toISOString() : "",
     deviceLocked: Boolean(user.device_id),
+    premiumTrialUsed: Boolean(user.premium_trial_started_at),
   }));
 };
 
@@ -2960,6 +2963,88 @@ export const createApiApp = async () => {
     }
 
     res.json({ success: true, message: "Course unlocked" });
+  }));
+
+  app.post("/api/start-premium-trial", asyncHandler(async (req, res) => {
+    const { userId, deviceId, deviceLabel } = req.body || {};
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User id is required" });
+      return;
+    }
+
+    const user = await queryOne<DbUser>("SELECT * FROM users WHERE id = ?", [userId]);
+    if (!user) {
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+    if (String(user.status || "active").toLowerCase() === "blocked") {
+      res.status(403).json({ success: false, blocked: true, message: "Your account is blocked. Contact academy admin." });
+      return;
+    }
+
+    const deviceCheck = await verifyAndBindUserDevice(user, String(deviceId || ""), String(deviceLabel || ""));
+    if (!deviceCheck.ok) {
+      res.status(deviceCheck.status).json({
+        success: false,
+        blocked: deviceCheck.status === 403,
+        deviceLocked: deviceCheck.deviceLocked,
+        message: deviceCheck.message,
+      });
+      return;
+    }
+
+    if (user.premium_trial_started_at) {
+      res.status(409).json({ success: false, message: "You have already used your free premium trial." });
+      return;
+    }
+
+    const premiumCourses = await queryRows<DbCourse>("SELECT id FROM courses WHERE LOWER(COALESCE(type, 'free')) = 'premium'");
+    if (!premiumCourses.length) {
+      res.status(400).json({ success: false, message: "No premium content is available right now." });
+      return;
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    let grantedCount = 0;
+    for (const course of premiumCourses) {
+      const existing = await queryOne<RowDataPacket & { id: string; status?: string; expires_at?: Date }>(
+        "SELECT id, status, expires_at FROM enrollments WHERE user_id = ? AND course_id = ?",
+        [userId, course.id],
+      );
+      if (existing) {
+        // Respect an admin block, and never shorten an already-valid (e.g. paid) access.
+        if (String(existing.status || "active").toLowerCase() === "blocked") {
+          continue;
+        }
+        const activeUnexpired = String(existing.status || "active").toLowerCase() === "active"
+          && (!existing.expires_at || new Date(existing.expires_at).getTime() > Date.now());
+        if (activeUnexpired) {
+          continue;
+        }
+        await execute(
+          "UPDATE enrollments SET access_code = 'FREETRIAL', granted_at = ?, expires_at = ?, status = 'active' WHERE id = ?",
+          [now, expiresAt, existing.id],
+        );
+      } else {
+        await execute(
+          "INSERT INTO enrollments (id, user_id, course_id, access_code, granted_at, expires_at, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+          [createId("en"), userId, course.id, "FREETRIAL", now, expiresAt],
+        );
+      }
+      grantedCount += 1;
+    }
+
+    await execute("UPDATE users SET premium_trial_started_at = ? WHERE id = ?", [now, userId]);
+    await syncUserCategory(String(userId));
+
+    res.json({
+      success: true,
+      message: "Your 1-day free premium trial is now active. Enjoy!",
+      trialExpiresAt: expiresAt.toISOString(),
+      grantedCount,
+      user: await getFreshNormalizedUser(String(userId)),
+    });
   }));
 
   app.post("/api/createLesson", requireAdmin(), asyncHandler(async (req, res) => {
