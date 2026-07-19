@@ -8548,7 +8548,7 @@ const AdminLoginScreen = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [activeMode, setActiveMode] = useState<AdminRole>(mode);
+  const [activeMode, setActiveMode] = useState<AdminRole>('admin');
   const [stage, setStage] = useState<'credentials' | 'otp'>('credentials');
   const [otp, setOtp] = useState('');
   const [pendingCredentials, setPendingCredentials] = useState<{ username: string; password: string } | null>(null);
@@ -8806,10 +8806,10 @@ const AdminLoginScreen = ({
               gap: '6px',
               padding: '5px',
               margin: '0 auto 18px',
-              maxWidth: '320px',
-              background: 'rgba(255,255,255,0.10)',
+              maxWidth: '340px',
+              background: 'rgba(37, 99, 235, 0.08)',
               borderRadius: '9999px',
-              border: '1px solid rgba(255,255,255,0.18)',
+              border: '1px solid rgba(37, 99, 235, 0.18)',
             }}
           >
             {(['admin', 'superadmin'] as AdminRole[]).map((roleOption) => {
@@ -8824,16 +8824,16 @@ const AdminLoginScreen = ({
                   disabled={isSigningIn}
                   style={{
                     flex: 1,
-                    padding: '10px 12px',
+                    padding: '11px 12px',
                     borderRadius: '9999px',
                     fontSize: '13px',
                     fontWeight: 700,
                     border: 'none',
                     cursor: isSigningIn ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease',
-                    color: isActive ? '#0f172a' : 'rgba(255,255,255,0.85)',
-                    background: isActive ? '#ffffff' : 'transparent',
-                    boxShadow: isActive ? '0 6px 16px rgba(0,0,0,0.18)' : 'none',
+                    color: isActive ? '#ffffff' : '#1d4ed8',
+                    background: isActive ? '#2563eb' : 'transparent',
+                    boxShadow: isActive ? '0 6px 16px rgba(37, 99, 235, 0.32)' : 'none',
                   }}
                 >
                   {roleOption === 'superadmin' ? 'Super Admin' : 'Admin'}
