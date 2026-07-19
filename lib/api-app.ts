@@ -356,18 +356,31 @@ const createPasswordEmailContent = (password: string) => `
   </div>
 `;
 
+let cachedTransporter: nodemailer.Transporter | null = null;
+const getMailTransporter = () => {
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+      // Reuse the SMTP connection and fail fast instead of hanging.
+      pool: true,
+      maxConnections: 3,
+      connectionTimeout: 10000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
+    });
+  }
+  return cachedTransporter;
+};
+
 const sendEmail = async (to: string, subject: string, text: string, html?: string) => {
   assertSmtpConfigured();
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-  });
-  await transporter.sendMail({
+  await getMailTransporter().sendMail({
     from: `"RBS Academy" <${SMTP_FROM_EMAIL}>`,
     to,
     subject,

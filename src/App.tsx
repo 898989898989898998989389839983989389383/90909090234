@@ -8548,7 +8548,6 @@ const AdminLoginScreen = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [loginProgress, setLoginProgress] = useState(0);
   const [activeMode, setActiveMode] = useState<AdminRole>(mode);
   const [stage, setStage] = useState<'credentials' | 'otp'>('credentials');
   const [otp, setOtp] = useState('');
@@ -8578,15 +8577,6 @@ const AdminLoginScreen = ({
   const signInAdmin = async (credentials: { username: string; password: string }) => {
     setError('');
     setIsSigningIn(true);
-    setLoginProgress(0);
-    const progressTimer = window.setInterval(() => {
-      setLoginProgress((current) => {
-        if (current >= 94) {
-          return current;
-        }
-        return Math.min(94, current + Math.max(2, Math.round((94 - current) * 0.12)));
-      });
-    }, 120);
 
     try {
       const cleanCredentials = { username: credentials.username.trim(), password: credentials.password };
@@ -8607,14 +8597,12 @@ const AdminLoginScreen = ({
         setPendingCredentials(cleanCredentials);
         setOtp('');
         setStage('otp');
-        setLoginProgress(0);
         setIsSigningIn(false);
         return;
       }
 
       if (!data.success || !data.session?.token) {
         setError(data.message || 'Invalid admin credentials');
-        setLoginProgress(0);
         setIsSigningIn(false);
         return;
       }
@@ -8622,8 +8610,6 @@ const AdminLoginScreen = ({
       if (data.trustToken) {
         writeTrustToken(data.trustToken);
       }
-      setLoginProgress(100);
-      await new Promise((resolve) => window.setTimeout(resolve, 260));
       onLogin({
         role: data.session.role,
         username: data.session.username,
@@ -8633,10 +8619,7 @@ const AdminLoginScreen = ({
       return;
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to sign in. Check server admin configuration.');
-      setLoginProgress(0);
       setIsSigningIn(false);
-    } finally {
-      window.clearInterval(progressTimer);
     }
   };
 
@@ -8652,10 +8635,6 @@ const AdminLoginScreen = ({
     }
     setError('');
     setIsSigningIn(true);
-    setLoginProgress(0);
-    const progressTimer = window.setInterval(() => {
-      setLoginProgress((current) => (current >= 94 ? current : Math.min(94, current + Math.max(2, Math.round((94 - current) * 0.12)))));
-    }, 120);
 
     try {
       const response = await fetch(apiUrl('/api/admin/verify-otp'), {
@@ -8673,7 +8652,6 @@ const AdminLoginScreen = ({
 
       if (!data.success || !data.session?.token) {
         setError(data.message || 'Invalid verification code');
-        setLoginProgress(0);
         setIsSigningIn(false);
         return;
       }
@@ -8681,8 +8659,6 @@ const AdminLoginScreen = ({
       if (data.trustToken) {
         writeTrustToken(data.trustToken);
       }
-      setLoginProgress(100);
-      await new Promise((resolve) => window.setTimeout(resolve, 260));
       onLogin({
         role: data.session.role,
         username: data.session.username,
@@ -8692,10 +8668,7 @@ const AdminLoginScreen = ({
       return;
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to verify code. Please try again.');
-      setLoginProgress(0);
       setIsSigningIn(false);
-    } finally {
-      window.clearInterval(progressTimer);
     }
   };
 
@@ -8773,14 +8746,6 @@ const AdminLoginScreen = ({
               <button type="submit" disabled={isSigningIn} className="auth-scenic-button auth-login-submit py-4 text-lg">
                 {isSigningIn ? 'Verifying...' : 'Verify & continue'}
               </button>
-              {isSigningIn && (
-                <div className="admin-login-progress" aria-label={`Verifying ${loginProgress}%`}>
-                  <div className="admin-login-progress-track">
-                    <span style={{ width: `${loginProgress}%` }} />
-                  </div>
-                  <b>{loginProgress}%</b>
-                </div>
-              )}
 
               <div className="admin-login-row" style={{ justifyContent: 'space-between' }}>
                 <button
@@ -8934,16 +8899,8 @@ const AdminLoginScreen = ({
             {error && <p className="auth-login-error">{error}</p>}
 
             <button type="submit" disabled={isSigningIn} className="auth-scenic-button auth-login-submit py-4 text-lg">
-              {isSigningIn ? 'Opening...' : 'Continue'}
+              {isSigningIn ? 'Signing in…' : 'Continue'}
             </button>
-            {isSigningIn && (
-              <div className="admin-login-progress" aria-label={`Login loading ${loginProgress}%`}>
-                <div className="admin-login-progress-track">
-                  <span style={{ width: `${loginProgress}%` }} />
-                </div>
-                <b>{loginProgress}%</b>
-              </div>
-            )}
           </form>
         </div>
       </motion.div>
